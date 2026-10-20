@@ -1,0 +1,11 @@
+# Configuration temporaire : site d'accueil statique uniquement.
+# Codex remplacera cette configuration lors de l'intégration du backend.
+[build]
+  publish = "public"
+
+[[headers]]
+  for = "/*"
+  [headers.values]
+    X-Robots-Tag = "noindex, nofollow"
+    X-Content-Type-Options = "nosniff"
+    Referrer-Policy = "strict-origin-when-cross-origin"
