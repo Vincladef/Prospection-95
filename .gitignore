@@ -1,0 +1,10 @@
+# Secrets et configuration locale
+.env
+.env.*
+!.env.example
+.netlify/
+node_modules/
+dist/
+coverage/
+.DS_Store
+*.log
