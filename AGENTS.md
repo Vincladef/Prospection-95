@@ -52,4 +52,4 @@ Application privée de prospection B2B : React/Vite sur Netlify, fonctions Netli
 
 ## État de sécurité initial
 
-Le dépôt peut être déployé avec les envois coupés. L'ajout de secrets Gmail/BobWork doit rester désactivé dans l'interface tant que `CREDENTIALS_ENCRYPTION_KEY` n'est pas une clé base64 de 32 octets disponible uniquement aux Functions. Ne jamais contourner ce prérequis en stockant la clé comme variable publique.
+Le dépôt peut être déployé avec les envois coupés. L'ajout de secrets Gmail/BobWork doit rester désactivé tant que la clé maître AES n'est disponible que côté serveur, soit dans le store privé Netlify Blobs `prospection95-vault-keys`, soit via `CREDENTIALS_ENCRYPTION_KEY` limitée aux Functions. Ne jamais contourner ce prérequis avec une variable publique ou préfixée `VITE_`.

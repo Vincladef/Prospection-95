@@ -3,12 +3,15 @@ import {
   createDecipheriv,
   randomBytes,
 } from "node:crypto";
-import { env, requireEnv } from "./env.mts";
+import { getStore } from "@netlify/blobs";
+import { env } from "./env.mts";
 import { sqlOne, sqlQuery } from "./db.mts";
 import { HttpError } from "./http.mts";
 
 const ALGORITHM = "aes-256-gcm";
 const AAD = Buffer.from("prospection95:credential:v1", "utf8");
+const VAULT_KEY_STORE = "prospection95-vault-keys";
+const VAULT_KEY_REGION = "eu-central-1";
 
 export type CredentialKind =
   | "gmail_sender"
@@ -31,10 +34,7 @@ function currentKeyVersion(): number {
   return value;
 }
 
-function keyForVersion(version: number): Buffer {
-  const versioned = env(`CREDENTIALS_ENCRYPTION_KEY_V${version}`);
-  const encoded = versioned ?? (version === currentKeyVersion() ? requireEnv("CREDENTIALS_ENCRYPTION_KEY") : undefined);
-  if (!encoded) throw new Error(`Missing encryption key version ${version}`);
+function decodeKey(encoded: string, version: number): Buffer {
   const key = Buffer.from(encoded, "base64");
   if (key.byteLength !== 32) {
     throw new Error(`Encryption key version ${version} must decode to exactly 32 bytes`);
@@ -42,25 +42,97 @@ function keyForVersion(version: number): Buffer {
   return key;
 }
 
-export function encryptSecret(plaintext: string): EncryptedSecret {
+function environmentKey(version: number): Buffer | null {
+  const versioned = env(`CREDENTIALS_ENCRYPTION_KEY_V${version}`);
+  const encoded = versioned ?? (version === currentKeyVersion() ? env("CREDENTIALS_ENCRYPTION_KEY") : undefined);
+  return encoded ? decodeKey(encoded, version) : null;
+}
+
+function vaultKeyStore() {
+  return getStore({
+    name: VAULT_KEY_STORE,
+    consistency: "strong",
+    region: VAULT_KEY_REGION,
+  });
+}
+
+function blobKey(version: number): string {
+  return `credentials-master-v${version}`;
+}
+
+async function keyForVersion(version: number): Promise<Buffer> {
+  const configured = environmentKey(version);
+  if (configured) return configured;
+
+  const encoded = await vaultKeyStore().get(blobKey(version), {
+    consistency: "strong",
+    type: "text",
+  });
+  if (!encoded) throw new Error(`Missing encryption key version ${version}`);
+  return decodeKey(encoded, version);
+}
+
+export async function credentialVaultConfigured(): Promise<boolean> {
+  const version = currentKeyVersion();
+  if (environmentKey(version)) return true;
+  try {
+    return Boolean(await vaultKeyStore().getMetadata(blobKey(version), { consistency: "strong" }));
+  } catch {
+    return false;
+  }
+}
+
+export async function initializeCredentialVault(): Promise<{
+  configured: true;
+  created: boolean;
+  source: "environment" | "netlify_blobs";
+}> {
+  const version = currentKeyVersion();
+  if (environmentKey(version)) {
+    return { configured: true, created: false, source: "environment" };
+  }
+
+  const store = vaultKeyStore();
+  const key = blobKey(version);
+  if (await store.getMetadata(key, { consistency: "strong" })) {
+    return { configured: true, created: false, source: "netlify_blobs" };
+  }
+
+  const generated = randomBytes(32).toString("base64");
+  const result = await store.set(key, generated, {
+    onlyIfNew: true,
+    metadata: {
+      algorithm: ALGORITHM,
+      createdAt: new Date().toISOString(),
+      keyVersion: version,
+      purpose: "prospection95-credential-encryption",
+    },
+  });
+  if (!result.modified && !(await store.getMetadata(key, { consistency: "strong" }))) {
+    throw new Error("Credential vault initialization did not persist a master key");
+  }
+  return { configured: true, created: result.modified, source: "netlify_blobs" };
+}
+
+export async function encryptSecret(plaintext: string): Promise<EncryptedSecret> {
   if (!plaintext) throw new HttpError(422, "empty_secret", "Le secret ne peut pas être vide.");
   const keyVersion = currentKeyVersion();
   const nonce = randomBytes(12);
-  const cipher = createCipheriv(ALGORITHM, keyForVersion(keyVersion), nonce);
+  const cipher = createCipheriv(ALGORITHM, await keyForVersion(keyVersion), nonce);
   cipher.setAAD(AAD);
   const ciphertext = Buffer.concat([cipher.update(plaintext, "utf8"), cipher.final()]);
   return { ciphertext, nonce, authTag: cipher.getAuthTag(), keyVersion };
 }
 
-export function decryptSecret(input: {
+export async function decryptSecret(input: {
   ciphertext: Uint8Array;
   nonce: Uint8Array;
   authTag: Uint8Array;
   keyVersion: number;
-}): string {
+}): Promise<string> {
   const decipher = createDecipheriv(
     ALGORITHM,
-    keyForVersion(input.keyVersion),
+    await keyForVersion(input.keyVersion),
     Buffer.from(input.nonce),
   );
   decipher.setAAD(AAD);
@@ -78,7 +150,8 @@ export async function storeCredential(input: {
   secret: string;
   metadata?: Record<string, unknown>;
 }): Promise<{ id: string; configured: true; verificationStatus: string }> {
-  const encrypted = encryptSecret(input.secret);
+  if (!(await credentialVaultConfigured())) await initializeCredentialVault();
+  const encrypted = await encryptSecret(input.secret);
   const row = input.id
     ? await sqlOne<{ id: string; verification_status: string }>(
         `update vault.credentials
@@ -151,7 +224,7 @@ export async function readCredential(id: string): Promise<{
     kind: row.kind,
     label: row.label,
     metadata: row.metadata ?? {},
-    secret: decryptSecret({
+    secret: await decryptSecret({
       ciphertext: row.ciphertext,
       nonce: row.nonce,
       authTag: row.auth_tag,

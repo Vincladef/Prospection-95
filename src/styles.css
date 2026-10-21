@@ -1362,8 +1362,17 @@ input[type="radio"] {
 
 .secret-inline-form {
   display: grid;
-  grid-template-columns: minmax(120px, .5fr) 1fr auto;
+  grid-template-columns: minmax(120px, 1fr) auto;
   gap: 7px;
+}
+
+.secret-inline-form details {
+  grid-column: 1 / -1;
+}
+
+.secret-inline-form summary {
+  cursor: pointer;
+  margin-block: 4px 8px;
 }
 
 .mini-account-list {

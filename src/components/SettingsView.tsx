@@ -103,7 +103,7 @@ function GmailPanel({ accounts, vaultConfigured, onMutated }: { accounts: GmailA
   return (
     <div className="settings-panel">
       <div className="panel-heading"><div><h2>Comptes Gmail</h2><p>Expéditeurs, Gmail principal et boîtes de test. Les mots de passe d’application restent dans le coffre chiffré.</p></div><button className="win-button primary" disabled={!vaultConfigured} onClick={() => setOpen((value) => !value)}>+ Ajouter un compte</button></div>
-      {!vaultConfigured ? <div className="win-alert warning" role="alert">Coffre indisponible : configurez <code>CREDENTIALS_ENCRYPTION_KEY</code> comme secret Netlify limité aux Functions avant d’ajouter un compte.</div> : null}
+      {!vaultConfigured ? <div className="win-alert warning" role="alert">Le coffre privé Netlify n’est pas encore disponible. Rechargez la page pour relancer son initialisation automatique.</div> : null}
       {message ? <div className="win-alert info" role="status">{message}</div> : null}
       {open ? (
         <form className="account-form win-group" onSubmit={(event) => void save(event)}>
@@ -163,10 +163,24 @@ function DeliverabilityPanel({ providers, accounts, vaultConfigured, onMutated }
     const form = event.currentTarget;
     const data = new FormData(form);
     const secret = String(data.get("secret") || "");
+    const baseUrl = String(data.get("baseUrl") || "").trim();
+    const accountsPath = String(data.get("accountsPath") || "").trim();
+    const documentationUrl = String(data.get("documentationUrl") || "").trim();
+    const metadata = baseUrl && accountsPath && documentationUrl
+      ? {
+          baseUrl,
+          accountsPath,
+          documentationUrl,
+          authHeader: String(data.get("authHeader") || "authorization").trim(),
+          authScheme: String(data.get("authScheme") || "Bearer").trim(),
+        }
+      : undefined;
     try {
-      await api.saveCredential({ kind: "bobwork", label: "BobWork", secret });
+      await api.saveCredential({ kind: "bobwork", label: "BobWork", secret, metadata });
       form.reset();
-      setMessage("Clé BobWork chiffrée. État API : non vérifié tant qu’une synchronisation réelle n’a pas réussi.");
+      setMessage(metadata
+        ? "Clé BobWork et contrat API chiffrés. État non vérifié tant qu’une synchronisation réelle n’a pas réussi."
+        : "Clé BobWork chiffrée. La synchronisation reste inconnue tant qu’un contrat API officiel n’est pas renseigné.");
     } catch (error) {
       setMessage(error instanceof Error ? error.message : "Clé non enregistrée");
     }
@@ -180,8 +194,21 @@ function DeliverabilityPanel({ providers, accounts, vaultConfigured, onMutated }
         <fieldset className="win-group">
           <legend>BobWork</legend>
           <p>La clé est enregistrée dans le coffre. « Configuré » ne signifie ni connecté, ni préchauffé, ni délivrable.</p>
-          {!vaultConfigured ? <div className="win-alert warning" role="alert">Configurez d’abord la clé de chiffrement du coffre dans Netlify.</div> : null}
-          <form className="secret-inline-form" onSubmit={(event) => void saveBobWork(event)}><input name="secret" type="password" required disabled={!vaultConfigured} placeholder="Remplacer la clé API" autoComplete="new-password" /><button className="win-button primary" disabled={!vaultConfigured}>Enregistrer</button></form>
+          {!vaultConfigured ? <div className="win-alert warning" role="alert">Le coffre privé Netlify n’est pas encore disponible. Rechargez la page pour relancer son initialisation automatique.</div> : null}
+          <form className="secret-inline-form" onSubmit={(event) => void saveBobWork(event)}>
+            <input name="secret" type="password" required disabled={!vaultConfigured} placeholder="Remplacer la clé API" autoComplete="new-password" />
+            <button className="win-button primary" disabled={!vaultConfigured}>Enregistrer</button>
+            <details className="full-field">
+              <summary>Contrat API avancé (uniquement d’après la documentation BobWork)</summary>
+              <div className="form-grid">
+                <label className="field"><span>URL de base HTTPS</span><input name="baseUrl" type="url" placeholder="https://api.exemple.tld" /></label>
+                <label className="field"><span>Chemin des comptes</span><input name="accountsPath" placeholder="/v1/accounts" /></label>
+                <label className="field"><span>Documentation officielle</span><input name="documentationUrl" type="url" /></label>
+                <label className="field"><span>En-tête d’authentification</span><input name="authHeader" defaultValue="authorization" /></label>
+                <label className="field"><span>Schéma</span><input name="authScheme" defaultValue="Bearer" /></label>
+              </div>
+            </details>
+          </form>
           <div className="mini-account-list">{accounts.filter((account) => account.role === "sender").map((account) => <span key={account.id}>{account.email}<em>état BobWork inconnu</em></span>)}</div>
         </fieldset>
         <fieldset className="win-group">

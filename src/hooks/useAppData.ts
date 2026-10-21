@@ -12,7 +12,20 @@ export function useAppData(enabled: boolean) {
     setLoading(true);
     setError(null);
     try {
-      setData(await api.dashboard());
+      let dashboard = await api.dashboard();
+      let warning: string | null = null;
+      if (!dashboard.settings.vaultConfigured) {
+        try {
+          await api.initializeVault();
+          dashboard = await api.dashboard();
+        } catch (caught) {
+          warning = caught instanceof Error
+            ? `Application chargée, mais le coffre privé n’a pas pu être initialisé : ${caught.message}`
+            : "Application chargée, mais le coffre privé n’a pas pu être initialisé.";
+        }
+      }
+      setData(dashboard);
+      setError(warning);
     } catch (caught) {
       setError(caught instanceof Error ? caught.message : "Chargement impossible");
     } finally {

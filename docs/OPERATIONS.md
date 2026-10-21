@@ -24,27 +24,20 @@ Une branche Neon temporaire doit toujours précéder une migration de la branche
 | Variable | Portée attendue | Sensibilité | État lors de la préparation |
 | --- | --- | --- | --- |
 | `VITE_NEON_AUTH_URL` | Builds | publique | configurée |
-| `DATABASE_URL` | Functions | secrète | présente ; remplacer par le rôle applicatif restreint après migration |
+| `DATABASE_URL` | Functions | secrète | configurée avec `prospection95_runtime`, rôle applicatif restreint |
 | `NEON_AUTH_JWKS_URL` | Functions | publique | configurée |
 | `ADMIN_EMAIL` | Functions | non secrète | configurée |
-| `CREDENTIALS_ENCRYPTION_KEY` | Functions | secrète | absente, bloque Gmail/BobWork |
 | `APP_BASE_URL` | Functions | publique | configurée |
 | `APP_TIMEZONE` | Functions | publique | configurée à `Europe/Paris` |
 | `OUTBOUND_ENABLED` | Functions | non secrète | configurée à `false` |
 
-`NEON_API_KEY` et `NETLIFY_AUTH_TOKEN` sont des jetons d'administration et ne sont pas requis par l'application. Ils sont actuellement présents dans la configuration du site avec une portée trop large. L'offre Netlify Free a refusé par API la création de nouveaux secrets limités aux Functions. Avant une mise en production fonctionnelle, retirer ces deux jetons du runtime du site ou passer à une configuration qui permet une portée d'outillage séparée. Ne jamais les renommer pour les faire consommer par l'application.
+`NEON_API_KEY` et `NETLIFY_AUTH_TOKEN` sont des jetons d'administration et ne sont pas requis par l'application. Ils doivent être absents de la configuration du site. Ne jamais les renommer pour les faire consommer par l'application.
 
 ### Clé du coffre
 
-Générer une seule fois 32 octets aléatoires, hors de Git et hors des journaux :
+La clé AES de 32 octets est créée automatiquement après la première connexion de l’administrateur et conservée dans le store privé Netlify Blobs `prospection95-vault-keys`, région `eu-central-1`. La création est atomique (`onlyIfNew`) et les lectures utilisent la cohérence forte. La clé n’est envoyée ni au navigateur ni à Neon ; les Blobs ne sont accessibles qu’au code serveur du site.
 
-```bash
-openssl rand -base64 32
-```
-
-Enregistrer le résultat comme secret `CREDENTIALS_ENCRYPTION_KEY` limité aux Functions. Ne jamais le placer dans `netlify.toml`, `.env.example`, une commande partagée ou une discussion. Sauvegarder la clé dans le gestionnaire de secrets du propriétaire : sa perte rend les identifiants chiffrés irrécupérables.
-
-Pour une rotation : ajouter d'abord `CREDENTIALS_ENCRYPTION_KEY_V2`, définir `CREDENTIALS_KEY_VERSION=2`, réenregistrer chaque secret via l'interface, vérifier les services, puis conserver V1 jusqu'à ce qu'aucune ligne du coffre ne l'utilise. Le code sait lire une clé versionnée antérieure.
+`CREDENTIALS_ENCRYPTION_KEY` peut remplacer ce mécanisme en développement local. Une rotation utilise une nouvelle version (`CREDENTIALS_KEY_VERSION`) et doit réenregistrer les identifiants avant le retrait de l’ancienne clé. Ne jamais supprimer le store ou une version encore référencée par `vault.credentials.key_version` : les identifiants deviendraient irrécupérables.
 
 ## Migrations Neon
 
@@ -107,7 +100,7 @@ Le CRM transmis a été uniquement prévisualisé localement pendant le dévelop
 
 ## Ajouter les comptes Gmail
 
-Prérequis : clé du coffre configurée, HTTPS, utilisateur Neon Auth correspondant à `ADMIN_EMAIL`.
+Prérequis : HTTPS et utilisateur Neon Auth correspondant à `ADMIN_EMAIL`. Le coffre est initialisé automatiquement à la première connexion.
 
 1. Activer la validation en deux étapes du compte Google.
 2. Créer un mot de passe d'application dédié.
@@ -142,6 +135,8 @@ Le backend IMAP positionne les en-têtes RFC mais ne peut pas garantir à lui se
 ## BobWork et vérificateurs
 
 La clé BobWork est saisie dans **Paramètres → Tests & réception** et stockée dans le coffre, jamais comme variable BobWork Netlify. L'état « configuré » ne prouve pas que l'API fonctionne.
+
+Si BobWork fournit une documentation d’API officielle, ouvrir **Contrat API avancé** et renseigner l’URL HTTPS, le chemin des comptes, l’URL de documentation et le schéma d’authentification exactement comme documentés. En l’absence de contrat officiel vérifiable, conserver uniquement la clé : le worker laisse alors l’état inconnu au lieu d’inventer un endpoint.
 
 Après saisie :
 
@@ -214,7 +209,7 @@ Retour arrière applicatif : republier le dernier déploiement Netlify sain ou r
 ## Limites à ne pas masquer
 
 - Aucun email Gmail, brouillon/alias, BobWork ou parcours TinyFish réel n'a encore été validé avec des identifiants utilisateur.
-- Le coffre est bloqué tant que la clé maître ne peut pas être stockée avec une portée Functions sûre.
+- Le coffre dépend du store privé Netlify Blobs ; ne jamais supprimer `prospection95-vault-keys` tant que des identifiants existent dans Neon.
 - Le suivi d'ouverture/clic possède son modèle de données et ses options de campagne, mais les endpoints signés et l'instrumentation ne sont pas encore implémentés ; laisser ces options désactivées.
 - Les métriques A/B reposent sur les événements présents ; aucune conclusion statistique automatique n'est fabriquée.
 - Le build et une branche Neon de validation ne prouvent pas le fonctionnement des services externes.
@@ -224,7 +219,7 @@ Retour arrière applicatif : republier le dernier déploiement Netlify sain ou r
 - [ ] neuf migrations et toutes les assertions `db/verify.sql` sur la branche principale ;
 - [ ] `DATABASE_URL` du rôle runtime restreint ;
 - [ ] aucun jeton d'administration dans le runtime Netlify ;
-- [ ] clé du coffre sauvegardée et limitée aux Functions ;
+- [ ] coffre Netlify Blobs initialisé et ajout Gmail/BobWork disponible ;
 - [ ] compte Neon Auth administrateur et refus d'un autre compte ;
 - [ ] import contrôlé sans travail SMTP ;
 - [ ] Gmail principal + expéditeur de test, IMAP réel ;

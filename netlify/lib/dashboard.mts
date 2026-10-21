@@ -1,5 +1,5 @@
 import { sqlQuery } from "./db.mts";
-import { env } from "./env.mts";
+import { credentialVaultConfigured } from "./credentials.mts";
 
 type DbRow = Record<string, unknown>;
 
@@ -29,7 +29,8 @@ function timeValue(value: unknown): string {
 }
 
 export async function loadDashboard(): Promise<Record<string, unknown>> {
-  const [settingsRows, folderRows, campaignRows, templateRows, prospectRows, messageRows, accountRows, providerRows, experimentRows, variantRows] = await Promise.all([
+  const [vaultConfigured, settingsRows, folderRows, campaignRows, templateRows, prospectRows, messageRows, accountRows, providerRows, experimentRows, variantRows] = await Promise.all([
+    credentialVaultConfigured(),
     sqlQuery(`select * from app.settings where singleton`),
     sqlQuery(`select id::text, name, position from app.campaign_folders order by position, name`),
     sqlQuery(`
@@ -276,7 +277,7 @@ export async function loadDashboard(): Promise<Record<string, unknown>> {
     settings: {
       timezone: textValue(settingsRow.timezone, "Europe/Paris"),
       outboundEnabled: Boolean(settingsRow.outbound_enabled),
-      vaultConfigured: Buffer.from(env("CREDENTIALS_ENCRYPTION_KEY", "")!, "base64").byteLength === 32,
+      vaultConfigured,
       emergencyStop: Boolean(settingsRow.emergency_stop),
       emergencyStopReason: nullableText(settingsRow.emergency_stop_reason),
       generalWritingInstructions: textValue(settingsRow.general_writing_instructions),

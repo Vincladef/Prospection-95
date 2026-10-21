@@ -3,7 +3,7 @@ import type { Config, Context } from "@netlify/functions";
 import { z } from "zod";
 import { requireAdmin, type AdminIdentity } from "../lib/auth.mts";
 import { auditEvent } from "../lib/audit.mts";
-import { retireCredential, storeCredential } from "../lib/credentials.mts";
+import { initializeCredentialVault, retireCredential, storeCredential } from "../lib/credentials.mts";
 import { loadDashboard } from "../lib/dashboard.mts";
 import { pingDatabase, sqlOne, sqlQuery } from "../lib/db.mts";
 import { env } from "../lib/env.mts";
@@ -643,6 +643,17 @@ async function saveCredential(request: Request, identity: AdminIdentity, request
   return json({ configured: saved.configured, verificationStatus: saved.verificationStatus }, 201);
 }
 
+async function initializeVault(identity: AdminIdentity, requestId: string): Promise<Response> {
+  const result = await initializeCredentialVault();
+  await logMutation(identity, requestId, {
+    action: result.created ? "credential_vault_initialized" : "credential_vault_checked",
+    entityType: "credential_vault",
+    entityId: "global",
+    metadata: { source: result.source },
+  });
+  return json(result, result.created ? 201 : 200);
+}
+
 async function importPreview(request: Request, identity: AdminIdentity, requestId: string): Promise<Response> {
   const payload = await parseJson(request, importPayloadSchema, 16_000_000);
   const normalized = await stageImport(payload, identity.email);
@@ -780,6 +791,7 @@ async function privateRoute(request: Request, parts: string[], identity: AdminId
     requireMethod(request, "PATCH", "DELETE");
   }
   if (parts[0] === "credentials" && parts.length === 1) { requireMethod(request, "POST"); return saveCredential(request, identity, requestId); }
+  if (parts[0] === "vault" && parts[1] === "initialize" && parts.length === 2) { requireMethod(request, "POST"); return initializeVault(identity, requestId); }
   if (parts[0] === "import" && parts[1] === "preview" && parts.length === 2) { requireMethod(request, "POST"); return importPreview(request, identity, requestId); }
   if (parts[0] === "import" && parts[1] === "commit" && parts.length === 2) { requireMethod(request, "POST"); return importCommit(request, identity, requestId); }
   if (parts[0] === "export" && parts.length === 1) { requireMethod(request, "GET"); return exportData(); }

@@ -8,7 +8,7 @@ Le dépôt ne contient ni prospect réel, ni mot de passe Gmail, ni clé d’API
 
 - tableau J0–R5 avec recherche, filtres, colonnes figées, édition et validation groupée ;
 - campagnes, règles de cadence, attribution Gmail et tests A/B versionnés ;
-- coffre AES-256-GCM pour les mots de passe d’application et clés externes ;
+- coffre AES-256-GCM pour les mots de passe d’application et clés externes, avec clé maître privée dans Netlify Blobs ;
 - diagnostics de délivrabilité, comptes de réception et état BobWork sans résultat simulé ;
 - import contrôlé CSV/JSON avec prévisualisation, dédoublonnage et campagnes forcées inactives ;
 - historique anti-recontact, exclusions, audit append-only et arrêt d’urgence ;
@@ -62,14 +62,13 @@ La variable `DATABASE_URL` doit viser une branche Neon de développement. N’ap
 | `DATABASE_URL` | Functions | oui | connexion PostgreSQL poolée |
 | `NEON_AUTH_JWKS_URL` | Functions | non | validation locale des JWT |
 | `ADMIN_EMAIL` | Functions | non | unique administrateur autorisé |
-| `CREDENTIALS_ENCRYPTION_KEY` | Functions | oui | clé AES 256 bits encodée en base64 |
 | `APP_BASE_URL` | Functions | non | URL canonique du site |
 | `APP_TIMEZONE` | Functions | non | `Europe/Paris` |
 | `OUTBOUND_ENABLED` | Functions | non | doit rester `false` avant recette |
 
 `NEON_API_KEY` sert uniquement aux opérations d’infrastructure et n’est pas consommée par l’application. Un jeton Netlify ne doit pas être exposé au runtime des fonctions.
 
-Sur l’offre Netlify actuellement reliée, la création API d’un nouveau secret limité aux Functions a été refusée. Tant que `CREDENTIALS_ENCRYPTION_KEY` n’est pas stockée avec cette portée sûre, l’interface désactive l’ajout de secrets Gmail/BobWork. Ne pas contourner ce verrou avec une variable publique.
+Au premier accès de l’administrateur, l’application initialise automatiquement une clé maître aléatoire dans un store privé Netlify Blobs, partagé par les déploiements du site et lu uniquement par les fonctions. Neon ne reçoit que les secrets chiffrés AES-256-GCM. `CREDENTIALS_ENCRYPTION_KEY` reste disponible comme remplacement local ou pour une migration contrôlée, mais n’est pas nécessaire en production.
 
 ## Import du CRM historique
 

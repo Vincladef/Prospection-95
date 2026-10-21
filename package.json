@@ -17,6 +17,7 @@
   "dependencies": {
     "@neondatabase/auth": "0.6.0-beta",
     "@neondatabase/serverless": "1.2.0",
+    "@netlify/blobs": "11.1.5",
     "csv-parse": "^7.0.3",
     "date-fns": "4.4.0",
     "date-fns-tz": "3.2.0",

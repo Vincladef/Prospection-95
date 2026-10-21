@@ -94,6 +94,10 @@ export const api = {
       method: "POST",
       body: JSON.stringify(payload),
     }),
+  initializeVault: () =>
+    request<{ configured: true; created: boolean; source: "environment" | "netlify_blobs" }>("/vault/initialize", {
+      method: "POST",
+    }),
   previewImport: (payload: Record<string, unknown>) =>
     request<ImportPreview>("/import/preview", {
       method: "POST",
