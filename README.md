@@ -1,31 +1,104 @@
 # Prospection 95
 
-Application privée de gestion de prospection, en cours de développement.
+Application privée de gestion de prospection, inspirée de la maquette V53 et de son interface Windows 95. Le frontend React est hébergé sur Netlify, les fonctions serveur parlent à Neon PostgreSQL et l’authentification repose sur Neon Auth.
 
-## Dépôt et hébergement
+Le dépôt ne contient ni prospect réel, ni mot de passe Gmail, ni clé d’API. Le CSV historique et le HTML V53 sont uniquement des sources de migration locales.
 
-- GitHub : https://github.com/Vincladef/Prospection-95
-- Netlify : https://app.netlify.com/projects/prospection-95
-- Branche de production : `main`
-- Répertoire publié provisoirement : `public/` (voir `netlify.toml`)
+## Fonctions principales
 
-## État actuel
+- tableau J0–R5 avec recherche, filtres, colonnes figées, édition et validation groupée ;
+- campagnes, règles de cadence, attribution Gmail et tests A/B versionnés ;
+- coffre AES-256-GCM pour les mots de passe d’application et clés externes ;
+- diagnostics de délivrabilité, comptes de réception et état BobWork sans résultat simulé ;
+- import contrôlé CSV/JSON avec prévisualisation, dédoublonnage et campagnes forcées inactives ;
+- historique anti-recontact, exclusions, audit append-only et arrêt d’urgence ;
+- API SQL dédiée aux agents ChatGPT, sans appel OpenAI dans le backend.
 
-Ce dépôt contient uniquement une page d'attente **sans donnée personnelle**. Il ne contient pas encore la maquette HTML V53 ni le backend.
+L’expédition réelle est désactivée par défaut à trois niveaux : `OUTBOUND_ENABLED=false`, `app.settings.outbound_enabled=false` et arrêt d’urgence actif.
 
-**Ne pas publier directement le HTML V53 dans ce dépôt public :** sa structure de données embarquée contient des contacts et des historiques. Codex doit prévoir une migration contrôlée vers Neon et éviter de placer les données privées dans le frontend ou Git.
+## Architecture
 
-## Architecture cible
+```text
+React + Vite
+    │ JWT Neon Auth
+    ▼
+Netlify Functions ─── Neon PostgreSQL
+    │                 app / vault / agent_api / audit
+    ├── SMTP/IMAP Gmail
+    └── BobWork / vérificateurs configurables
+```
 
-- Interface Netlify préservant la direction artistique Windows 95.
-- Backend Netlify et base Neon PostgreSQL.
-- Moteur Gmail SMTP/IMAP via mots de passe d'application stockés exclusivement dans les secrets serveur.
-- Boîte Gmail principale avec transfert automatique et alias configurés manuellement.
-- Préchauffage BobWork et diagnostics externes via les planifications ChatGPT/Neon/TinyFish.
-- Pas d'API OpenAI dans le backend : la rédaction et l'analyse seront assurées par les planifications ChatGPT.
+- `src/` : interface React et client API ;
+- `netlify/functions/` : API authentifiée et traitements serveur ;
+- `netlify/lib/` : authentification, SQL, coffre, planification et import ;
+- `db/migrations/` : neuf migrations PostgreSQL additives et rejouables ;
+- `docs/` : contrats des agents et procédures d’exploitation.
 
-Les phases de développement sont définies dans les prompts Codex du projet.
+Contrats et exploitation : [agent de prospection](AGENT_PROSPECTION.md), [agent de délivrabilité](AGENT_DELIVRABILITE.md) et [guide d’exploitation](docs/OPERATIONS.md).
 
-## Sécurité
+## Développement local
 
-Aucun mot de passe d'application, URL PostgreSQL avec identifiants, token ou clé API ne doit être commité. Les variables de production appartiennent au gestionnaire de secrets Netlify. La mise en ligne de cette page ne permet aucun envoi d'email.
+Prérequis : Node.js 22 et un projet Neon de test.
+
+```bash
+npm install
+cp .env.example .env
+npm run dev
+```
+
+Contrôle complet :
+
+```bash
+npm run check
+```
+
+La variable `DATABASE_URL` doit viser une branche Neon de développement. N’appliquez pas les migrations directement sur la branche de production : préparez et validez toujours une branche temporaire.
+
+## Variables Netlify
+
+| Variable | Portée | Secret | Usage |
+| --- | --- | --- | --- |
+| `VITE_NEON_AUTH_URL` | Builds | non | URL publique de Neon Auth |
+| `DATABASE_URL` | Functions | oui | connexion PostgreSQL poolée |
+| `NEON_AUTH_JWKS_URL` | Functions | non | validation locale des JWT |
+| `ADMIN_EMAIL` | Functions | non | unique administrateur autorisé |
+| `CREDENTIALS_ENCRYPTION_KEY` | Functions | oui | clé AES 256 bits encodée en base64 |
+| `APP_BASE_URL` | Functions | non | URL canonique du site |
+| `APP_TIMEZONE` | Functions | non | `Europe/Paris` |
+| `OUTBOUND_ENABLED` | Functions | non | doit rester `false` avant recette |
+
+`NEON_API_KEY` sert uniquement aux opérations d’infrastructure et n’est pas consommée par l’application. Un jeton Netlify ne doit pas être exposé au runtime des fonctions.
+
+Sur l’offre Netlify actuellement reliée, la création API d’un nouveau secret limité aux Functions a été refusée. Tant que `CREDENTIALS_ENCRYPTION_KEY` n’est pas stockée avec cette portée sûre, l’interface désactive l’ajout de secrets Gmail/BobWork. Ne pas contourner ce verrou avec une variable publique.
+
+## Import du CRM historique
+
+Dans **Paramètres → Prospects**, choisissez le CSV puis contrôlez la prévisualisation avant de confirmer. L’import :
+
+- conserve les vingt colonnes sources dans les tables de staging ;
+- normalise les emails et sépare les liens/non-adressables ;
+- transforme la blacklist en exclusions et l’historique en anti-recontact ;
+- marque les contacts historiques comme déclarés mais non techniquement confirmés ;
+- crée les campagnes en état inactif et ne crée aucun envoi.
+
+Le fichier CRM ne doit jamais être ajouté à Git ou au bundle `dist/`.
+
+## Production
+
+- GitHub : <https://github.com/Vincladef/Prospection-95>
+- Netlify : <https://app.netlify.com/projects/prospection-95>
+- URL : <https://prospection-95.netlify.app>
+- branche de production : `main`
+
+Avant le premier déploiement fonctionnel : valider les migrations sur une branche Neon temporaire, les appliquer après accord explicite, renseigner les variables, ajouter le domaine Netlify aux domaines de confiance Neon Auth, puis lancer `npm run check`.
+
+## Sécurité et limites
+
+- aucune donnée privée n’est injectée dans le frontend ;
+- les secrets sont chiffrés avant stockage et ne sont jamais relus par le navigateur ;
+- chaque route privée exige un JWT valide et l’adresse `ADMIN_EMAIL` ;
+- une réponse pertinente annule les relances restantes ;
+- un résultat inconnu reste inconnu : l’interface ne fabrique ni connexion, ni délivrabilité, ni envoi ;
+- une acceptation SMTP incertaine passe en revue manuelle, sans nouvelle tentative automatique.
+
+Le tracking d’ouverture/clic reste désactivé : les options et tables sont présentes, mais l’instrumentation et les endpoints signés ne sont pas encore livrés. Gmail, l’alias des brouillons, BobWork et TinyFish exigent également une recette réelle avec les comptes autorisés avant d’être annoncés opérationnels.

@@ -1,0 +1,235 @@
+# Guide d'exploitation — Prospection 95
+
+## État initial sûr
+
+Le système possède trois verrous indépendants :
+
+1. variable Netlify `OUTBOUND_ENABLED=false` ;
+2. `app.settings.outbound_enabled=false` ;
+3. `app.settings.emergency_stop=true`.
+
+Un déploiement ou un import ne doit modifier aucun de ces verrous. Les diagnostics utilisent la même file SMTP et sont donc également bloqués tant que l'envoi serveur n'est pas activé.
+
+## Environnements distants
+
+- dépôt : `Vincladef/Prospection-95`, production sur `main` ;
+- site Netlify : `prospection-95`, URL `https://prospection-95.netlify.app` ;
+- projet Neon : `snowy-math-99695975`, base `prospection95` ;
+- branche Neon principale : `br-bitter-hill-baxuhpw7`.
+
+Une branche Neon temporaire doit toujours précéder une migration de la branche principale. Ne pas utiliser `DATABASE_URL` du runtime pour appliquer le schéma.
+
+## Variables Netlify minimales
+
+| Variable | Portée attendue | Sensibilité | État lors de la préparation |
+| --- | --- | --- | --- |
+| `VITE_NEON_AUTH_URL` | Builds | publique | configurée |
+| `DATABASE_URL` | Functions | secrète | présente ; remplacer par le rôle applicatif restreint après migration |
+| `NEON_AUTH_JWKS_URL` | Functions | publique | configurée |
+| `ADMIN_EMAIL` | Functions | non secrète | configurée |
+| `CREDENTIALS_ENCRYPTION_KEY` | Functions | secrète | absente, bloque Gmail/BobWork |
+| `APP_BASE_URL` | Functions | publique | configurée |
+| `APP_TIMEZONE` | Functions | publique | configurée à `Europe/Paris` |
+| `OUTBOUND_ENABLED` | Functions | non secrète | configurée à `false` |
+
+`NEON_API_KEY` et `NETLIFY_AUTH_TOKEN` sont des jetons d'administration et ne sont pas requis par l'application. Ils sont actuellement présents dans la configuration du site avec une portée trop large. L'offre Netlify Free a refusé par API la création de nouveaux secrets limités aux Functions. Avant une mise en production fonctionnelle, retirer ces deux jetons du runtime du site ou passer à une configuration qui permet une portée d'outillage séparée. Ne jamais les renommer pour les faire consommer par l'application.
+
+### Clé du coffre
+
+Générer une seule fois 32 octets aléatoires, hors de Git et hors des journaux :
+
+```bash
+openssl rand -base64 32
+```
+
+Enregistrer le résultat comme secret `CREDENTIALS_ENCRYPTION_KEY` limité aux Functions. Ne jamais le placer dans `netlify.toml`, `.env.example`, une commande partagée ou une discussion. Sauvegarder la clé dans le gestionnaire de secrets du propriétaire : sa perte rend les identifiants chiffrés irrécupérables.
+
+Pour une rotation : ajouter d'abord `CREDENTIALS_ENCRYPTION_KEY_V2`, définir `CREDENTIALS_KEY_VERSION=2`, réenregistrer chaque secret via l'interface, vérifier les services, puis conserver V1 jusqu'à ce qu'aucune ligne du coffre ne l'utilise. Le code sait lire une clé versionnée antérieure.
+
+## Migrations Neon
+
+Les neuf migrations sont additives et s'appliquent dans l'ordre lexical. Procédure :
+
+1. créer une branche enfant de la branche principale ;
+2. appliquer `db/migrations/001_...` à `009_...` avec le propriétaire de cette branche ;
+3. exécuter toutes les assertions de `db/verify.sql` ;
+4. inspecter le diff de schéma ;
+5. obtenir l'accord explicite du propriétaire ;
+6. prendre un snapshot/point de restauration ;
+7. appliquer exactement les mêmes fichiers à la branche principale ;
+8. relancer `db/verify.sql` avant de remplacer `DATABASE_URL`.
+
+Pour un retour de sécurité sans destruction :
+
+```sql
+\i db/rollback/disable-application.sql
+```
+
+Ce script coupe l'envoi et diffère le travail actif. Un retour de schéma doit utiliser une restauration Neon contrôlée ; ne jamais supprimer des tables en urgence.
+
+## Rôles SQL du runtime et des agents
+
+Les migrations créent deux rôles de groupe `NOLOGIN` : `prospection95_app` et `prospection95_agent`.
+
+Créer avec Neon un rôle LOGIN distinct pour le backend, puis :
+
+```sql
+GRANT prospection95_app TO prospection95_runtime;
+```
+
+Générer son URL poolée TLS et l'enregistrer dans `DATABASE_URL`. Vérifier :
+
+```sql
+SELECT pg_has_role(current_user, 'prospection95_app', 'member');
+SELECT NOT has_schema_privilege(current_user, 'agent_api', 'CREATE');
+```
+
+Pour les planifications ChatGPT, créer un autre rôle LOGIN :
+
+```sql
+GRANT prospection95_agent TO prospection95_chatgpt;
+```
+
+Il ne doit recevoir aucun autre rôle. Vérifier avec les assertions de `db/verify.sql`, notamment l'absence totale d'accès à `vault.credentials`, `app.outbox_jobs` et `app.confirm_smtp_acceptance`.
+
+## Import du CRM et de la V53
+
+Dans **Paramètres → Prospects** :
+
+1. sélectionner le CSV/JSON ou analyser les clés `localStorage` du navigateur V53 ;
+2. examiner les volumes, emails valides, contacts non adressables, exclusions, historiques et doublons ;
+3. confirmer uniquement après sauvegarde ;
+4. contrôler les lignes rejetées et les campagnes créées.
+
+Toutes les campagnes importées restent `inactive` avec `imported_disabled=true`. L'import ne crée aucun travail SMTP. Les vingt colonnes du CSV restent dans `app.import_rows`; une date française est interprétée en `Europe/Paris`. Un lien ou texte non-email reste dans `contact_raw` et n'est jamais destinataire SMTP.
+
+Le CRM transmis a été uniquement prévisualisé localement pendant le développement : aucune donnée réelle n'a été ajoutée au dépôt ni à Neon.
+
+## Ajouter les comptes Gmail
+
+Prérequis : clé du coffre configurée, HTTPS, utilisateur Neon Auth correspondant à `ADMIN_EMAIL`.
+
+1. Activer la validation en deux étapes du compte Google.
+2. Créer un mot de passe d'application dédié.
+3. Dans **Paramètres → Comptes Gmail**, choisir le rôle : expéditeur, Gmail principal ou boîte de test.
+4. Saisir adresse, identité, mot de passe, limite et calendrier.
+5. Lancer le test. Avec `OUTBOUND_ENABLED=false`, l'IMAP peut être vérifié mais aucune expédition n'est réalisée ; l'interface ne doit pas appeler cela un test d'envoi.
+6. Vérifier la date IMAP et les éventuels codes d'erreur.
+
+Dans le Gmail principal, configurer manuellement :
+
+- les transferts des comptes expéditeurs vers le compte principal ;
+- les identités **Envoyer des e-mails en tant que** ;
+- l'autorisation et l'adresse de réponse correctes pour chaque alias.
+
+Le worker lit `INBOX` et le dossier spécial IMAP `\Sent` de façon incrémentale. Un message envoyé manuellement n'est conservé que s'il correspond à une conversation existante.
+
+### Recette réelle brouillon/alias
+
+Cette recette ne peut pas être remplacée par un test unitaire :
+
+1. utiliser deux adresses de test explicitement autorisées ;
+2. envoyer J0 vers le destinataire de test ;
+3. répondre, laisser le transfert arriver au Gmail principal ;
+4. vérifier dans Neon la réponse et l'arrêt des relances ;
+5. faire proposer un brouillon via `agent_api.propose_reply_draft` ;
+6. confirmer que le brouillon apparaît dans le Gmail principal, dans le bon fil, avec le bon alias `From` ;
+7. le modifier et l'envoyer manuellement ;
+8. confirmer la détection dans `\Sent` et l'absence de second brouillon/relance.
+
+Le backend IMAP positionne les en-têtes RFC mais ne peut pas garantir à lui seul le fil ou l'alias sélectionné par l'interface Gmail. Si ce test échoue, conserver la demande en attente et prévoir un consentement OAuth Gmail API explicite ; un mot de passe d'application ne donne pas accès à l'API REST Gmail.
+
+## BobWork et vérificateurs
+
+La clé BobWork est saisie dans **Paramètres → Tests & réception** et stockée dans le coffre, jamais comme variable BobWork Netlify. L'état « configuré » ne prouve pas que l'API fonctionne.
+
+Après saisie :
+
+1. attendre le worker `sync-bobwork` ;
+2. vérifier une réponse réelle et la date `observed_at` ;
+3. comparer les comptes renvoyés aux comptes Gmail ;
+4. conserver `unknown` pour toute propriété absente ;
+5. ne modifier aucun paramètre de préchauffage automatiquement.
+
+L'adaptateur doit être validé contre la documentation et une clé réelles avant de considérer l'intégration opérationnelle. TinyFish reste dans la planification ChatGPT, jamais dans Netlify.
+
+## Arrêt, reprise et activation SMTP
+
+### Arrêt immédiat
+
+Utiliser le bouton d'arrêt d'urgence. Si l'interface est indisponible, exécuter `db/rollback/disable-application.sql`, puis remettre `OUTBOUND_ENABLED=false`.
+
+### Reprise
+
+Avant de désactiver l'arrêt d'urgence :
+
+- résoudre les travaux `uncertain` et les incidents sérieux ;
+- vérifier les exclusions et l'historique global ;
+- vérifier chaque compte, quota, horaire et état BobWork réellement disponible ;
+- contrôler les campagnes actives et l'approbation des messages ;
+- effectuer la recette de réponse juste avant relance ;
+- saisir une raison de reprise dans l'interface.
+
+### Activation commerciale
+
+L'activation nécessite une autorisation explicite du propriétaire. Ordre conseillé :
+
+1. compte et destinataire de test uniquement ;
+2. `OUTBOUND_ENABLED=true` ;
+3. arrêt d'urgence encore actif ;
+4. activer `app.settings.outbound_enabled` ;
+5. désactiver l'arrêt d'urgence avec une raison ;
+6. vérifier un unique message de test et sa réconciliation ;
+7. réactiver seulement les campagnes voulues.
+
+## Sauvegarde et restauration
+
+L'export JSON depuis **Paramètres → Prospects** sert à l'inspection et à la conservation métier. Il ne remplace pas une sauvegarde de base complète.
+
+Avant migration, import important ou activation : créer un snapshot/une branche Neon. Pour restaurer :
+
+1. activer l'arrêt d'urgence et couper `OUTBOUND_ENABLED` ;
+2. restaurer le snapshot dans une branche séparée ;
+3. exécuter `db/verify.sql` et comparer les volumes ;
+4. basculer seulement après validation ;
+5. conserver l'ancienne branche jusqu'à la fin de la recette.
+
+Ne pas réimporter aveuglément l'export JSON dans le formulaire CSV : les formats n'ont pas le même rôle.
+
+## Build, déploiement et retour arrière
+
+Avant commit :
+
+```bash
+npm ci
+npm run check
+npx netlify-cli@latest build --offline
+git diff --check
+```
+
+Le push sur `main` déclenche la production Netlify. Ne pousser qu'après migration principale réussie et configuration sûre des variables. Après déploiement : vérifier `/api/health`, la connexion, le tableau de bord et les fonctions planifiées, sans activer SMTP.
+
+Retour arrière applicatif : republier le dernier déploiement Netlify sain ou revert du commit, puis laisser les verrous d'envoi actifs. Les migrations sont additives ; restaurer Neon séparément seulement si la compatibilité l'exige.
+
+## Limites à ne pas masquer
+
+- Aucun email Gmail, brouillon/alias, BobWork ou parcours TinyFish réel n'a encore été validé avec des identifiants utilisateur.
+- Le coffre est bloqué tant que la clé maître ne peut pas être stockée avec une portée Functions sûre.
+- Le suivi d'ouverture/clic possède son modèle de données et ses options de campagne, mais les endpoints signés et l'instrumentation ne sont pas encore implémentés ; laisser ces options désactivées.
+- Les métriques A/B reposent sur les événements présents ; aucune conclusion statistique automatique n'est fabriquée.
+- Le build et une branche Neon de validation ne prouvent pas le fonctionnement des services externes.
+
+## Checklist de recette finale
+
+- [ ] neuf migrations et toutes les assertions `db/verify.sql` sur la branche principale ;
+- [ ] `DATABASE_URL` du rôle runtime restreint ;
+- [ ] aucun jeton d'administration dans le runtime Netlify ;
+- [ ] clé du coffre sauvegardée et limitée aux Functions ;
+- [ ] compte Neon Auth administrateur et refus d'un autre compte ;
+- [ ] import contrôlé sans travail SMTP ;
+- [ ] Gmail principal + expéditeur de test, IMAP réel ;
+- [ ] J0 de test, réponse, arrêt des relances, brouillon, alias/fil, envoi manuel et réconciliation `\Sent` ;
+- [ ] diagnostic de test idempotent et rapport sourcé ;
+- [ ] BobWork réel ou état explicitement inconnu ;
+- [ ] concurrence, quota, résultat SMTP incertain et arrêt d'urgence ;
+- [ ] `OUTBOUND_ENABLED` maintenu à `false` jusqu'à l'autorisation commerciale explicite.
