@@ -20,8 +20,8 @@ export async function auditEvent(input: {
       input.action,
       input.entityType,
       input.entityId ?? null,
-      JSON.stringify(input.before ?? null),
-      JSON.stringify(input.after ?? null),
+      input.before == null ? null : JSON.stringify(input.before),
+      input.after == null ? null : JSON.stringify(input.after),
       JSON.stringify(input.metadata ?? {}),
     ],
   );
