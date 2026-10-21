@@ -9,7 +9,15 @@ export const authClient = createAuthClient(authUrl, {
 });
 
 export async function getAccessToken(): Promise<string> {
-  const { data, error } = await authClient.token();
+  // @neondatabase/auth 0.6.0-beta classifies /token like /get-session and can
+  // serve the cached session object instead of fetching the JWT. Its adapter
+  // consumes this internal header before the network request and bypasses that
+  // cache for the token call only.
+  const { data, error } = await authClient.token({
+    fetchOptions: {
+      headers: { "X-Force-Fetch": "true" },
+    },
+  });
   if (error || !data?.token) {
     throw new Error(error?.message || "Session expirée. Reconnectez-vous.");
   }
