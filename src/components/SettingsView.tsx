@@ -106,6 +106,33 @@ function GmailPanel({ accounts, vaultConfigured, onMutated, onOpenDeliverability
     }
   }
 
+  async function sendTestEmail(event: FormEvent<HTMLFormElement>, account: GmailAccount) {
+    event.preventDefault();
+    const form = event.currentTarget;
+    const recipient = String(new FormData(form).get("recipient") || "").trim();
+    if (!recipient) return;
+    setBusyId(account.id);
+    setMessage(null);
+    try {
+      const result = await api.sendGmailTestEmail(account.id, recipient);
+      await onMutated();
+      if (result.state === "accepted") {
+        setMessage(`Email test accepté par Gmail et envoyé à ${recipient}. Aucun prospect ni aucune campagne n’a été déclenché.`);
+        form.reset();
+      } else if (result.state === "uncertain") {
+        setMessage("Gmail n’a pas confirmé clairement l’envoi. Vérifie la boîte destinataire avant de recommencer pour éviter un doublon.");
+      } else if (["gmail_auth_failed", "gmail_app_password_required", "eauth"].includes(result.errorCode || "")) {
+        setMessage("Google a refusé l’envoi SMTP. Vérifie que le mot de passe d’application appartient exactement à cette adresse Gmail.");
+      } else {
+        setMessage(`Email test non envoyé${result.errorCode ? ` (${result.errorCode})` : ""}.`);
+      }
+    } catch (error) {
+      setMessage(error instanceof Error ? error.message : "Envoi du test impossible");
+    } finally {
+      setBusyId(null);
+    }
+  }
+
   return (
     <div className="settings-panel">
       <div className="panel-heading"><div><h2>Comptes Gmail</h2><p>Connecte tes adresses une fois, puis consulte leur délivrabilité.</p></div><button className="win-button primary" disabled={!vaultConfigured} onClick={() => setOpen((value) => !value)}>+ Ajouter un compte</button></div>
@@ -137,6 +164,11 @@ function GmailPanel({ accounts, vaultConfigured, onMutated, onOpenDeliverability
               <div><dt>Dernière synchro</dt><dd>{account.lastSyncAt ? new Date(account.lastSyncAt).toLocaleString("fr-FR") : "Jamais"}</dd></div>
               <div><dt>État</dt><dd>{account.pausedAt ? `Suspendu (${account.pauseSource || "inconnu"})` : "Disponible selon garde-fous"}</dd></div>
             </dl>
+            <form className="gmail-test-send" onSubmit={(event) => void sendTestEmail(event, account)}>
+              <label><span>Envoyer un email test à</span><input name="recipient" type="email" required placeholder="adresse@exemple.com" autoComplete="email" /></label>
+              <button className="win-button primary" disabled={busyId === account.id || !account.hasCredential}>{busyId === account.id ? "Envoi…" : "Envoyer le test"}</button>
+              <small>Envoi diagnostic unique : l’arrêt des campagnes reste actif.</small>
+            </form>
             <footer><button className="win-button" disabled={busyId === account.id || !account.hasCredential} onClick={() => void test(account.id)}>{busyId === account.id ? "Test…" : "Tester SMTP / IMAP"}</button><button className="win-button danger" onClick={async () => { if (!window.confirm(`Supprimer ${account.email} ?`)) return; await api.deleteGmailAccount(account.id); await onMutated(); }}>Supprimer</button></footer>
           </article>
         ))}

@@ -269,6 +269,7 @@ export async function loadDashboard(): Promise<Record<string, unknown>> {
     list.push({
       id: textValue(row.id),
       label: textValue(row.code),
+      name: nullableText(row.name),
       allocationWeight: numberValue(row.weight),
       overrides: (row.overrides as DbRow | null) ?? {},
       assignedCount: numberValue(row.assigned_count),

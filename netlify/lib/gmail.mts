@@ -16,6 +16,14 @@ export interface GmailVerificationResult {
   errorCode?: string;
 }
 
+export interface GmailDiagnosticResult {
+  state: "accepted" | "failed" | "uncertain";
+  checkedAt: string;
+  messageId?: string;
+  response?: string;
+  errorCode?: string;
+}
+
 async function appPassword(connection: GmailConnection): Promise<string> {
   const credential = await readCredential(connection.credentialId);
   if (!["gmail_sender", "gmail_primary", "test_inbox"].includes(credential.kind)) {
@@ -130,6 +138,57 @@ export async function sendGmailMessage(message: OutboundEmail): Promise<SmtpResu
     const code = gmailErrorCode(error);
     if (isAmbiguousSmtpFailure(error)) return { state: "uncertain", code };
     return { state: "failed", code, retryable: isRetryableSmtpFailure(error) };
+  } finally {
+    transport.close();
+  }
+}
+
+/**
+ * Sends one explicit diagnostic message requested by the authenticated owner.
+ * This deliberately does not consult OUTBOUND_ENABLED: that flag continues to
+ * guard campaign jobs, while this isolated path is only exposed by the private
+ * test-send API route and never creates an outbox job.
+ */
+export async function sendGmailDiagnostic(input: {
+  email: string;
+  credentialId: string;
+  recipient: string;
+}): Promise<GmailDiagnosticResult> {
+  const checkedAt = new Date().toISOString();
+  const password = await appPassword({ email: input.email, credentialId: input.credentialId });
+  const transport = smtpTransport(input.email, password);
+  try {
+    const result = await transport.sendMail({
+      from: { name: "Prospection 95", address: input.email },
+      to: input.recipient,
+      subject: "Test d’envoi Prospection 95",
+      text: [
+        "Ceci est un email de diagnostic envoyé manuellement depuis Prospection 95.",
+        "",
+        `Compte expéditeur : ${input.email}`,
+        `Date du test : ${checkedAt}`,
+        "",
+        "Aucune campagne ni aucune relance n’a été déclenchée.",
+      ].join("\n"),
+      headers: { "X-Prospection95-Diagnostic": "manual-test" },
+    });
+    const accepted = result.accepted.map(String);
+    if (accepted.length) {
+      return {
+        state: "accepted",
+        checkedAt,
+        messageId: result.messageId,
+        response: result.response,
+      };
+    }
+    return { state: "failed", checkedAt, errorCode: "smtp_rejected" };
+  } catch (error) {
+    const errorCode = gmailErrorCode(error);
+    return {
+      state: isAmbiguousSmtpFailure(error) ? "uncertain" : "failed",
+      checkedAt,
+      errorCode,
+    };
   } finally {
     transport.close();
   }

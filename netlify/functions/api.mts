@@ -7,7 +7,7 @@ import { initializeCredentialVault, retireCredential, storeCredential } from "..
 import { loadDashboard } from "../lib/dashboard.mts";
 import { pingDatabase, sqlOne, sqlQuery } from "../lib/db.mts";
 import { env } from "../lib/env.mts";
-import { verifyGmail } from "../lib/gmail.mts";
+import { sendGmailDiagnostic, verifyGmail } from "../lib/gmail.mts";
 import { handleError, HttpError, json, noContent, parseJson } from "../lib/http.mts";
 import { commitStagedImport, stageImport } from "../lib/import-store.mts";
 import { importPayloadSchema } from "../lib/importer.mts";
@@ -593,6 +593,51 @@ async function testGmailAccount(id: string, identity: AdminIdentity, requestId: 
   return json(result);
 }
 
+async function sendGmailTestEmail(request: Request, id: string, identity: AdminIdentity, requestId: string): Promise<Response> {
+  const value = await parseJson(request, z.object({
+    recipient: z.string().trim().email().max(320),
+  }));
+  const account = await sqlOne<{ email: string; credential_id: string | null }>(
+    `select email, credential_id::text
+     from app.gmail_accounts
+     where id = $1::uuid and deleted_at is null and role in ('sender', 'primary')`,
+    [id],
+  );
+  if (!account) throw new HttpError(404, "gmail_account_not_found", "Compte Gmail expéditeur introuvable.");
+  if (!account.credential_id) throw new HttpError(409, "credential_missing", "Aucun mot de passe d’application n’est configuré.");
+
+  const result = await sendGmailDiagnostic({
+    email: account.email,
+    credentialId: account.credential_id,
+    recipient: value.recipient,
+  });
+  await sqlQuery(
+    `update app.gmail_accounts set
+       smtp_verified_at = case when $2 = 'accepted' then clock_timestamp() else smtp_verified_at end,
+       status = case
+         when $2 = 'accepted' or imap_verified_at is not null then 'active'::app.account_status
+         else 'error'::app.account_status
+       end,
+       last_error_code = case when $2 = 'accepted' then null else $3 end,
+       last_error_at = case when $2 = 'accepted' then last_error_at else clock_timestamp() end,
+       version = version + 1
+     where id = $1::uuid`,
+    [id, result.state, result.errorCode ?? null],
+  );
+  await logMutation(identity, requestId, {
+    action: "gmail_diagnostic_completed",
+    entityType: "gmail_account",
+    entityId: id,
+    metadata: { state: result.state, errorCode: result.errorCode ?? null },
+  });
+  return json({
+    state: result.state,
+    checkedAt: result.checkedAt,
+    messageId: result.messageId,
+    errorCode: result.errorCode,
+  });
+}
+
 const providerSchema = z.object({
   name: z.string().trim().min(1).max(180),
   url: z.string().url().max(2_000),
@@ -731,7 +776,7 @@ async function diagnostics(request: Request): Promise<Response> {
   return json({ diagnostic: row }, 201);
 }
 
-async function experiments(request: Request, id?: string): Promise<Response> {
+async function experiments(request: Request, identity: AdminIdentity, requestId: string, id?: string): Promise<Response> {
   if (!id && request.method === "GET") {
     const dashboard = await loadDashboard();
     return json({ experiments: dashboard.experiments });
@@ -745,7 +790,7 @@ async function experiments(request: Request, id?: string): Promise<Response> {
       thresholdContactsPerVariant: z.number().int().positive().default(40),
       thresholdReplies: z.number().int().positive().default(20),
       idempotencyKey: z.string().min(8).max(240),
-      variants: z.array(z.object({ label: z.string().regex(/^[A-Z]{1,3}$/), name: z.string().max(180).optional(), allocationWeight: z.number().positive().default(1), overrides: z.record(z.string(), z.unknown()).default({}) })).min(2).max(12),
+      variants: z.array(z.object({ label: z.string().regex(/^[A-Z]{1,3}$/), name: z.string().max(180).optional(), allocationWeight: z.number().positive().default(1), overrides: z.record(z.string(), z.unknown()).default({}) })).min(1).max(12),
     }));
     const row = await sqlOne<{ id: string }>(
       `with created as (
@@ -766,18 +811,94 @@ async function experiments(request: Request, id?: string): Promise<Response> {
         value.thresholdContactsPerVariant, value.thresholdReplies, value.idempotencyKey,
         JSON.stringify(value.variants.map((variant) => ({ label: variant.label, name: variant.name ?? null, weight: variant.allocationWeight, overrides: variant.overrides })))],
     );
+    if (!row) throw new HttpError(409, "experiment_create_failed", "Le test n’a pas pu être créé.");
+    await logMutation(identity, requestId, { action: "experiment_created", entityType: "experiment", entityId: row.id, after: value });
     return json({ experiment: row }, 201);
   }
   requireMethod(request, "PATCH", "DELETE");
   if (request.method === "DELETE") {
     const row = await sqlOne(`update app.experiments set status = 'cancelled', closed_at = clock_timestamp() where id = $1::uuid returning id`, [id]);
     if (!row) throw new HttpError(404, "experiment_not_found", "Expérience introuvable.");
+    await logMutation(identity, requestId, { action: "experiment_cancelled", entityType: "experiment", entityId: id });
     return noContent();
   }
   const value = await parseJson(request, z.object({ status: z.enum(["draft", "recruiting", "threshold_reached", "awaiting_observations", "mature", "analyzed", "closed", "cancelled"]), decision: z.string().max(10_000).optional(), limitations: z.string().max(10_000).optional() }));
-  const row = await sqlOne(`update app.experiments set status = $2::app.experiment_status, decision = coalesce($3, decision), limitations = coalesce($4, limitations), closed_at = case when $2 in ('closed','cancelled') then clock_timestamp() else closed_at end where id = $1::uuid returning id::text`, [id, value.status, value.decision ?? null, value.limitations ?? null]);
-  if (!row) throw new HttpError(404, "experiment_not_found", "Expérience introuvable.");
+  const row = await sqlOne(
+    `update app.experiments e set
+       status = $2::app.experiment_status,
+       decision = coalesce($3, decision),
+       limitations = coalesce($4, limitations),
+       started_at = case when $2 = 'recruiting' and started_at is null then clock_timestamp() else started_at end,
+       closed_at = case when $2 in ('closed','cancelled') then clock_timestamp() else closed_at end,
+       updated_at = clock_timestamp()
+     where e.id = $1::uuid
+       and ($2 <> 'recruiting' or (select count(*) from app.experiment_variants v where v.experiment_id = e.id) >= 2)
+     returning id::text`,
+    [id, value.status, value.decision ?? null, value.limitations ?? null],
+  );
+  if (!row) throw new HttpError(409, "experiment_not_ready", "Ajoute au moins deux versions avant de démarrer ce test.");
+  await logMutation(identity, requestId, { action: "experiment_updated", entityType: "experiment", entityId: id, after: value });
   return json({ experiment: row });
+}
+
+async function addExperimentVariant(request: Request, experimentId: string, identity: AdminIdentity, requestId: string): Promise<Response> {
+  const value = await parseJson(request, z.object({
+    name: z.string().trim().min(1).max(180).optional(),
+    allocationWeight: z.number().positive().max(1_000).default(1),
+    overrides: z.record(z.string(), z.unknown()).default({}),
+  }));
+  const row = await sqlOne<{ id: string; label: string; name: string | null }>(
+    `with locked as (
+       select pg_advisory_xact_lock(hashtextextended($1::text, 95))
+     ), target as (
+       select e.id
+       from app.experiments e cross join locked
+       where e.id = $1::uuid and e.status = 'draft'
+         and (select count(*) from app.experiment_variants v where v.experiment_id = e.id) < 12
+     ), next_code as (
+       select chr(ascii('A') + candidate.n) as code
+       from target
+       cross join generate_series(0, 25) as candidate(n)
+       where not exists (
+         select 1 from app.experiment_variants existing
+         where existing.experiment_id = target.id
+           and existing.code = chr(ascii('A') + candidate.n)
+       )
+       order by candidate.n
+       limit 1
+     )
+     insert into app.experiment_variants (experiment_id, code, name, weight, overrides)
+     select target.id, next_code.code, coalesce($2, 'Version ' || next_code.code), $3, $4::jsonb
+     from target cross join next_code
+     returning id::text, code as label, name`,
+    [experimentId, value.name ?? null, value.allocationWeight, JSON.stringify(value.overrides)],
+  );
+  if (!row) throw new HttpError(409, "experiment_variant_locked", "Ce test n’est plus modifiable ou contient déjà douze versions.");
+  await logMutation(identity, requestId, { action: "experiment_variant_created", entityType: "experiment_variant", entityId: row.id, metadata: { experimentId, label: row.label } });
+  return json({ variant: row }, 201);
+}
+
+async function updateExperimentVariant(request: Request, id: string, identity: AdminIdentity, requestId: string): Promise<Response> {
+  const value = await parseJson(request, z.object({
+    name: z.string().trim().min(1).max(180).optional(),
+    allocationWeight: z.number().positive().max(1_000).optional(),
+    overrides: z.record(z.string(), z.unknown()).optional(),
+  }).refine((candidate) => Object.keys(candidate).length > 0));
+  const row = await sqlOne<{ id: string; label: string }>(
+    `update app.experiment_variants v set
+       name = coalesce($2, v.name),
+       weight = coalesce($3, v.weight),
+       overrides = coalesce($4::jsonb, v.overrides),
+       version = v.version + 1
+     from app.experiments e
+     where v.id = $1::uuid and e.id = v.experiment_id and e.status = 'draft'
+       and not exists (select 1 from app.experiment_assignments a where a.variant_id = v.id)
+     returning v.id::text, v.code as label`,
+    [id, value.name ?? null, value.allocationWeight ?? null, value.overrides === undefined ? null : JSON.stringify(value.overrides)],
+  );
+  if (!row) throw new HttpError(409, "experiment_variant_locked", "Cette version a déjà été utilisée ou le test n’est plus modifiable.");
+  await logMutation(identity, requestId, { action: "experiment_variant_updated", entityType: "experiment_variant", entityId: id, metadata: { label: row.label } });
+  return json({ variant: row });
 }
 
 async function privateRoute(request: Request, parts: string[], identity: AdminIdentity, requestId: string): Promise<Response> {
@@ -799,6 +920,7 @@ async function privateRoute(request: Request, parts: string[], identity: AdminId
   if (parts[0] === "exclusions" && parts.length === 2) { requireMethod(request, "DELETE"); return revokeExclusion(routeUuid(parts[1]), identity, requestId); }
   if (parts[0] === "gmail-accounts" && parts.length === 1) { requireMethod(request, "POST"); return createGmailAccount(request, identity, requestId); }
   if (parts[0] === "gmail-accounts" && parts.length === 3 && parts[2] === "test") { requireMethod(request, "POST"); return testGmailAccount(routeUuid(parts[1]), identity, requestId); }
+  if (parts[0] === "gmail-accounts" && parts.length === 3 && parts[2] === "test-send") { requireMethod(request, "POST"); return sendGmailTestEmail(request, routeUuid(parts[1]), identity, requestId); }
   if (parts[0] === "gmail-accounts" && parts.length === 2) {
     const id = routeUuid(parts[1]);
     if (request.method === "PATCH") return updateGmailAccount(request, id, identity, requestId);
@@ -818,7 +940,15 @@ async function privateRoute(request: Request, parts: string[], identity: AdminId
   if (parts[0] === "import" && parts[1] === "commit" && parts.length === 2) { requireMethod(request, "POST"); return importCommit(request, identity, requestId); }
   if (parts[0] === "export" && parts.length === 1) { requireMethod(request, "GET"); return exportData(); }
   if (parts[0] === "diagnostics" && parts.length === 1) return diagnostics(request);
-  if (parts[0] === "experiments" && parts.length <= 2) return experiments(request, parts[1] ? routeUuid(parts[1]) : undefined);
+  if (parts[0] === "experiments" && parts.length === 3 && parts[2] === "variants") {
+    requireMethod(request, "POST");
+    return addExperimentVariant(request, routeUuid(parts[1]), identity, requestId);
+  }
+  if (parts[0] === "experiments" && parts.length <= 2) return experiments(request, identity, requestId, parts[1] ? routeUuid(parts[1]) : undefined);
+  if (parts[0] === "experiment-variants" && parts.length === 2) {
+    requireMethod(request, "PATCH");
+    return updateExperimentVariant(request, routeUuid(parts[1]), identity, requestId);
+  }
   throw new HttpError(404, "not_found", "Route API introuvable.");
 }
 

@@ -106,6 +106,13 @@ export interface GmailVerificationResult {
   errorCode?: string;
 }
 
+export interface GmailTestSendResult {
+  state: "accepted" | "failed" | "uncertain";
+  checkedAt: string;
+  messageId?: string;
+  errorCode?: string;
+}
+
 export interface DeliverabilityProvider {
   id: string;
   name: string;
@@ -122,8 +129,9 @@ export interface DeliverabilityProvider {
 export interface ExperimentVariant {
   id: string;
   label: string;
+  name: string | null;
   allocationWeight: number;
-  overrides: Partial<SequenceContent> & Record<string, unknown>;
+  overrides: Record<string, unknown>;
   assignedCount: number;
   sentCount: number;
   humanReplyCount: number;

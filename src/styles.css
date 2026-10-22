@@ -1334,6 +1334,54 @@ input[type="radio"] {
   border-top: 1px solid #aaa;
 }
 
+.gmail-test-send {
+  display: grid;
+  grid-template-columns: minmax(220px, 1fr) auto;
+  align-items: end;
+  gap: 7px 10px;
+  padding: 10px;
+  background: #f4f4f4;
+  border-top: 1px solid #aaa;
+}
+
+.gmail-test-send label {
+  min-width: 0;
+  display: grid;
+  gap: 5px;
+  color: #333;
+  font-size: 11px;
+  font-weight: 700;
+}
+
+.gmail-test-send input {
+  width: 100%;
+  min-width: 0;
+  height: 35px;
+  padding: 6px 8px;
+  background: #fff;
+  border: 2px solid;
+  border-color: #777 #fff #fff #777;
+  border-radius: 0;
+  box-shadow: none;
+}
+
+.gmail-test-send small {
+  grid-column: 1 / -1;
+  color: #555;
+  font-size: 10px;
+}
+
+@media (max-width: 560px) {
+  .gmail-test-send {
+    grid-template-columns: 1fr;
+  }
+
+  .gmail-test-send .win-button,
+  .gmail-test-send small {
+    grid-column: 1;
+  }
+}
+
 .account-form,
 .provider-form {
   display: grid;
@@ -2880,6 +2928,133 @@ input[type="radio"] {
 
 .v35-options {
   margin-top: 8px;
+}
+
+.v35-explain {
+  margin: 9px 0 0;
+  color: #505050;
+  font-size: 10px;
+  line-height: 1.5;
+}
+
+.v35-tabs #v35-add-version {
+  color: #000080;
+  background: #f6f6f6;
+}
+
+.v35-group {
+  min-width: 0;
+  margin: 0 0 10px;
+  background: #fff;
+  border: 1px solid #bbb;
+}
+
+.v35-group-head {
+  min-height: 34px;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+  flex-wrap: wrap;
+  padding: 7px 10px;
+  background: #ededed;
+  border-bottom: 1px solid #cecece;
+}
+
+.v35-group-head > span {
+  color: #303030;
+  font-size: 11px;
+  font-weight: 800;
+}
+
+.v35-group-tools {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  flex-wrap: wrap;
+}
+
+.v35-flag {
+  color: #656565;
+  font-size: 10px;
+}
+
+.v35-group-action {
+  padding: 6px 9px;
+  color: #333;
+  background: #ededed;
+  border: 2px solid;
+  border-color: #fff #777 #777 #fff;
+  font: 700 10.5px Tahoma, Verdana, sans-serif;
+  cursor: pointer;
+}
+
+.v35-custom {
+  border-left: 3px solid #000080;
+}
+
+.v35-custom > .v35-group-head {
+  background: #e9ecff;
+}
+
+.v35-custom .v35-flag {
+  color: #000080;
+  font-weight: 700;
+}
+
+.v35-inherited {
+  background: #f3f3f3;
+}
+
+.v35-inherited .v35-inputs {
+  opacity: .7;
+}
+
+.v35-inherited .v35-group-head {
+  background: #e1e1e1;
+}
+
+.v35-inherited .v35-group-action {
+  color: #000080;
+}
+
+.v35-inputs {
+  min-width: 0;
+  margin: 0;
+  padding: 11px;
+  border: 0;
+}
+
+.v35-inputs .target-field,
+.v35-inputs textarea,
+.v35-inputs input {
+  max-width: 100%;
+}
+
+.v35-inputs .v23-pass-config {
+  margin: 0;
+}
+
+.v35-followup-slot {
+  display: contents;
+}
+
+.v35-followups > .v35-group,
+.v35-followups > .v35-base-group {
+  min-width: 0;
+  margin: 0;
+}
+
+.v35-followups .v35-group-head {
+  padding: 7px;
+}
+
+.v35-followups .v35-inputs {
+  padding: 5px;
+}
+
+.v35-followups .target-sequence-card {
+  width: 100%;
 }
 
 .v23-pass-config {

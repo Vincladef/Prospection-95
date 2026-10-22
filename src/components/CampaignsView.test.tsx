@@ -1,9 +1,14 @@
-import { render, screen } from "@testing-library/react";
-import { describe, expect, it, vi } from "vitest";
-import type { Campaign } from "../types";
+import { cleanup, fireEvent, render, screen, waitFor } from "@testing-library/react";
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
+import type { Campaign, Experiment } from "../types";
 import { CampaignsView } from "./CampaignsView";
 
-vi.mock("../lib/api", () => ({ api: {} }));
+const apiMocks = vi.hoisted(() => ({
+  addExperimentVariant: vi.fn(),
+  updateExperimentVariant: vi.fn(),
+}));
+
+vi.mock("../lib/api", () => ({ api: apiMocks }));
 
 const campaign: Campaign = {
   id: "11111111-1111-4111-8111-111111111111",
@@ -33,20 +38,46 @@ const campaign: Campaign = {
   updatedAt: "2026-10-22T00:00:00.000Z",
 };
 
+const experiment: Experiment = {
+  id: "22222222-2222-4222-8222-222222222222",
+  campaignId: campaign.id,
+  name: "Test 1",
+  status: "draft",
+  thresholdContactsPerVariant: 40,
+  thresholdReplies: 20,
+  variants: [
+    { id: "aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa", label: "A", name: "Référence", allocationWeight: 1, overrides: {}, assignedCount: 0, sentCount: 0, humanReplyCount: 0, positiveReplyCount: 0, confirmedMeetingCount: 0 },
+    { id: "bbbbbbbb-bbbb-4bbb-8bbb-bbbbbbbbbbbb", label: "B", name: "Version B", allocationWeight: 1, overrides: { search: { criteria: "Recherche propre à la version B" } }, assignedCount: 0, sentCount: 0, humanReplyCount: 0, positiveReplyCount: 0, confirmedMeetingCount: 0 },
+  ],
+};
+
+function renderCampaigns(experiments: Experiment[] = []) {
+  const onMutated = vi.fn().mockResolvedValue(undefined);
+  render(
+    <CampaignsView
+      campaigns={[campaign]}
+      folders={[]}
+      accounts={[]}
+      experiments={experiments}
+      prospects={[]}
+      totals={{ pendingApproval: 0 }}
+      onOpenSettings={vi.fn()}
+      onMutated={onMutated}
+    />,
+  );
+  return { onMutated };
+}
+
 describe("CampaignsView V53", () => {
+  beforeEach(() => {
+    vi.clearAllMocks();
+    apiMocks.addExperimentVariant.mockResolvedValue({ variant: { id: "cccccccc-cccc-4ccc-8ccc-cccccccccccc", label: "C", name: "Version C" } });
+  });
+
+  afterEach(cleanup);
+
   it("uses the continuous V53 editor instead of the old tabbed layout", () => {
-    render(
-      <CampaignsView
-        campaigns={[campaign]}
-        folders={[]}
-        accounts={[]}
-        experiments={[]}
-        prospects={[]}
-        totals={{ pendingApproval: 0 }}
-        onOpenSettings={vi.fn()}
-        onMutated={vi.fn().mockResolvedValue(undefined)}
-      />,
-    );
+    renderCampaigns();
 
     expect(screen.getAllByText("Nouvelle campagne").length).toBeGreaterThan(0);
     const orderedSections = [
@@ -64,5 +95,26 @@ describe("CampaignsView V53", () => {
     });
     expect(screen.queryByRole("tab", { name: "Cible & envoi" })).not.toBeInTheDocument();
     expect(screen.getAllByRole("button", { name: "Enregistrer" }).every((button) => button.hasAttribute("disabled"))).toBe(true);
+  });
+
+  it("switches to B and exposes its persisted custom blocks", () => {
+    renderCampaigns([experiment]);
+
+    const variantB = screen.getByRole("button", { name: /^B1/ });
+    fireEvent.click(variantB);
+
+    expect(variantB).toHaveClass("on");
+    expect(screen.getByText("Recherche · version B")).toBeInTheDocument();
+    expect(screen.getByDisplayValue("Recherche propre à la version B")).toBeInTheDocument();
+    expect(screen.getByRole("button", { name: "↶ Reprendre A" })).toBeInTheDocument();
+  });
+
+  it("adds the next version through the API", async () => {
+    const { onMutated } = renderCampaigns([experiment]);
+
+    fireEvent.click(screen.getByRole("button", { name: "+ Version" }));
+
+    await waitFor(() => expect(apiMocks.addExperimentVariant).toHaveBeenCalledWith(experiment.id));
+    expect(onMutated).toHaveBeenCalledOnce();
   });
 });

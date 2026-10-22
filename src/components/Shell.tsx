@@ -93,7 +93,7 @@ export function Shell({
 
       {hasActiveSender && emergencyStop ? (
         <div className="emergency-banner" role="status">
-          <strong>Arrêt serveur actif.</strong> Aucun email SMTP ne peut partir.
+          <strong>Arrêt serveur actif.</strong> Aucun email de campagne ne peut partir. Seul un test explicite depuis les paramètres est autorisé.
           {emergencyReason ? <span> Motif : {emergencyReason}</span> : null}
         </div>
       ) : null}

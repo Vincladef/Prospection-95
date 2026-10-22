@@ -34,4 +34,21 @@ describe("database safety contract", () => {
     expect(api).toContain("'active'::app.account_status");
     expect(api).toContain("'error'::app.account_status");
   });
+
+  it("keeps campaign SMTP blocked while exposing only the explicit diagnostic route", () => {
+    const api = readFileSync(join(process.cwd(), "netlify", "functions", "api.mts"), "utf8");
+    const gmail = readFileSync(join(process.cwd(), "netlify", "lib", "gmail.mts"), "utf8");
+    expect(api).toContain('parts[2] === "test-send"');
+    expect(api).toContain("sendGmailDiagnostic");
+    expect(gmail).toContain("if (!isProductionOutboundEnabled())");
+    expect(gmail).toContain('"X-Prospection95-Diagnostic": "manual-test"');
+  });
+
+  it("persists A/B variant creation and overrides through private routes", () => {
+    const api = readFileSync(join(process.cwd(), "netlify", "functions", "api.mts"), "utf8");
+    expect(api).toContain("addExperimentVariant");
+    expect(api).toContain("updateExperimentVariant");
+    expect(api).toContain('parts[0] === "experiment-variants"');
+    expect(api).toContain("overrides = coalesce($4::jsonb, v.overrides)");
+  });
 });
