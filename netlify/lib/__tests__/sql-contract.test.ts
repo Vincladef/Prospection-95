@@ -28,4 +28,10 @@ describe("database safety contract", () => {
     expect(sql).toContain("restent backend-only");
     expect(verify).toContain("app.confirm_smtp_acceptance(uuid,uuid,text,timestamptz)");
   });
+
+  it("casts both Gmail verification states to the account enum", () => {
+    const api = readFileSync(join(process.cwd(), "netlify", "functions", "api.mts"), "utf8");
+    expect(api).toContain("'active'::app.account_status");
+    expect(api).toContain("'error'::app.account_status");
+  });
 });

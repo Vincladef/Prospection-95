@@ -16,10 +16,15 @@ const uuid = z.string().uuid();
 const version = z.number().int().positive();
 const sequence = z.object({
   subject: z.string().max(500),
+  subjectInstructions: z.string().max(100_000).default(""),
   steps: z.tuple([
     z.string().max(100_000), z.string().max(100_000), z.string().max(100_000),
     z.string().max(100_000), z.string().max(100_000), z.string().max(100_000),
   ]),
+  stepInstructions: z.tuple([
+    z.string().max(100_000), z.string().max(100_000), z.string().max(100_000),
+    z.string().max(100_000), z.string().max(100_000), z.string().max(100_000),
+  ]).default(["", "", "", "", "", ""]),
 });
 const campaignFields = {
   name: z.string().trim().min(1).max(180),
@@ -156,10 +161,10 @@ async function createCampaign(request: Request, identity: AdminIdentity, request
                $10, $11, $12, $13, $14)
        returning id, version
      ), inserted_templates as (
-       insert into app.message_templates (campaign_id, step, iteration, version, subject, body, created_by)
-       select created.id, incoming.step::app.sequence_step, 1, 1, $15, incoming.body, $17
+       insert into app.message_templates (campaign_id, step, iteration, version, subject, body, instructions, created_by)
+       select created.id, incoming.step::app.sequence_step, 1, 1, $15, incoming.body, incoming.instructions, $17
        from created
-       cross join jsonb_to_recordset($16::jsonb) as incoming(step text, body text)
+       cross join jsonb_to_recordset($16::jsonb) as incoming(step text, body text, instructions text)
        returning id
      ), inserted_senders as (
        insert into app.campaign_sender_accounts (campaign_id, account_id)
@@ -173,7 +178,13 @@ async function createCampaign(request: Request, identity: AdminIdentity, request
       value.validationPolicy, value.senderStrategy, value.fixedSenderAccountId ?? null, value.aiInstructions,
       value.replyInstructions, value.trackingOpensEnabled, value.trackingClicksEnabled,
       value.experimentPolicy, value.nextTestInstructions, value.sequence.subject,
-      JSON.stringify(["J0", "R1", "R2", "R3", "R4", "R5"].map((step, index) => ({ step, body: value.sequence.steps[index] }))), identity.email,
+      JSON.stringify(["J0", "R1", "R2", "R3", "R4", "R5"].map((step, index) => ({
+        step,
+        body: value.sequence.steps[index],
+        instructions: index === 0
+          ? JSON.stringify({ subject: value.sequence.subjectInstructions, body: value.sequence.stepInstructions[index] })
+          : value.sequence.stepInstructions[index],
+      }))), identity.email,
       value.senderStrategy === "pool" ? value.senderAccountIds : []],
   );
   if (!row) throw new HttpError(500, "campaign_create_failed", "La campagne n’a pas pu être créée.");
@@ -200,19 +211,21 @@ async function updateCampaign(request: Request, id: string, identity: AdminIdent
          version = version + 1
        where id = $1::uuid and version = $16 returning id, version
      ), incoming as (
-       select * from jsonb_to_recordset($18::jsonb) as value(step text, body text)
+       select * from jsonb_to_recordset($18::jsonb) as value(step text, body text, instructions text)
      ), inserted_templates as (
        insert into app.message_templates
-         (campaign_id, step, iteration, version, subject, body, supersedes_id, created_by)
+         (campaign_id, step, iteration, version, subject, body, instructions, supersedes_id, created_by)
        select updated.id, incoming.step::app.sequence_step, 1,
-              coalesce(previous.version, 0) + 1, $17, incoming.body, previous.id, $19
+              coalesce(previous.version, 0) + 1, $17, incoming.body, incoming.instructions, previous.id, $19
        from updated cross join incoming
        left join lateral (
-         select t.id, t.version, t.subject, t.body from app.message_templates t
+         select t.id, t.version, t.subject, t.body, t.instructions from app.message_templates t
          where t.campaign_id = updated.id and t.step = incoming.step::app.sequence_step and t.iteration = 1
          order by t.version desc limit 1
        ) previous on true
-       where previous.id is null or (previous.subject, previous.body) is distinct from ($17, incoming.body)
+       where previous.id is null
+          or (previous.subject, previous.body, previous.instructions)
+             is distinct from ($17, incoming.body, incoming.instructions)
        returning id
      ), updated_senders as (
        update app.campaign_sender_accounts csa
@@ -234,7 +247,13 @@ async function updateCampaign(request: Request, id: string, identity: AdminIdent
       value.validationPolicy, value.senderStrategy, value.fixedSenderAccountId ?? null, value.aiInstructions,
       value.replyInstructions, value.trackingOpensEnabled, value.trackingClicksEnabled,
       value.experimentPolicy, value.nextTestInstructions, value.version, value.sequence.subject,
-      JSON.stringify(["J0", "R1", "R2", "R3", "R4", "R5"].map((step, index) => ({ step, body: value.sequence.steps[index] }))), identity.email,
+      JSON.stringify(["J0", "R1", "R2", "R3", "R4", "R5"].map((step, index) => ({
+        step,
+        body: value.sequence.steps[index],
+        instructions: index === 0
+          ? JSON.stringify({ subject: value.sequence.subjectInstructions, body: value.sequence.stepInstructions[index] })
+          : value.sequence.stepInstructions[index],
+      }))), identity.email,
       value.senderStrategy === "pool" ? value.senderAccountIds : []],
   );
   if (!row) throw new HttpError(409, "version_conflict", "La campagne a été modifiée ailleurs.");
@@ -562,7 +581,10 @@ async function testGmailAccount(id: string, identity: AdminIdentity, requestId: 
     `update app.gmail_accounts set
        smtp_verified_at = case when $2 then clock_timestamp() else smtp_verified_at end,
        imap_verified_at = case when $3 then clock_timestamp() else imap_verified_at end,
-       status = case when $3 and ($2 or $4 = 'outbound_disabled') then 'active' else 'error' end,
+       status = case
+         when $3 and ($2 or $4 = 'outbound_disabled') then 'active'::app.account_status
+         else 'error'::app.account_status
+       end,
        last_error_code = $4, last_error_at = case when $4 is null then last_error_at else clock_timestamp() end,
        version = version + 1 where id = $1::uuid`,
     [id, result.smtp, result.imap, result.errorCode ?? null],

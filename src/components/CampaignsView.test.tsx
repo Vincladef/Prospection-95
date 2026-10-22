@@ -24,7 +24,12 @@ const campaign: Campaign = {
   nextTestInstructions: "",
   importedDisabled: true,
   version: 1,
-  sequence: { subject: "", steps: ["", "", "", "", "", ""] },
+  sequence: {
+    subject: "",
+    subjectInstructions: "",
+    steps: ["", "", "", "", "", ""],
+    stepInstructions: ["", "", "", "", "", ""],
+  },
   updatedAt: "2026-10-22T00:00:00.000Z",
 };
 
@@ -44,9 +49,19 @@ describe("CampaignsView V53", () => {
     );
 
     expect(screen.getAllByText("Nouvelle campagne").length).toBeGreaterThan(0);
-    expect(screen.getByText("Définition de la campagne")).toBeInTheDocument();
-    expect(screen.getByText("Validation des emails")).toBeInTheDocument();
-    expect(screen.getByText("Rédaction de la campagne")).toBeInTheDocument();
+    const orderedSections = [
+      "Définition de la campagne",
+      "Validation des emails",
+      "Tests A/B",
+      "Critères et instructions de recherche des prospects",
+      "Itérations de rédaction IA",
+      "Premier email",
+      "Relances",
+      "Instructions pour les réponses",
+    ].map((label) => screen.getByText(label));
+    orderedSections.slice(0, -1).forEach((section, index) => {
+      expect(section.compareDocumentPosition(orderedSections[index + 1]) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy();
+    });
     expect(screen.queryByRole("tab", { name: "Cible & envoi" })).not.toBeInTheDocument();
     expect(screen.getAllByRole("button", { name: "Enregistrer" }).every((button) => button.hasAttribute("disabled"))).toBe(true);
   });

@@ -13,7 +13,12 @@ interface CampaignsViewProps {
   onMutated: () => Promise<void>;
 }
 
-const emptySequence: SequenceContent = { subject: "", steps: ["", "", "", "", "", ""] };
+const emptySequence: SequenceContent = {
+  subject: "",
+  subjectInstructions: "",
+  steps: ["", "", "", "", "", ""],
+  stepInstructions: ["", "", "", "", "", ""],
+};
 
 function campaignPayload(campaign: Campaign) {
   return {
@@ -58,6 +63,8 @@ function CampaignEditor({
 }) {
   const [draft, setDraft] = useState(campaign);
   const [saving, setSaving] = useState(false);
+  const [experimentBusy, setExperimentBusy] = useState(false);
+  const [selectedExperimentId, setSelectedExperimentId] = useState<string | null>(null);
   const [message, setMessage] = useState<string | null>(null);
 
   useEffect(() => {
@@ -73,6 +80,9 @@ function CampaignEditor({
     () => experiments.filter((experiment) => experiment.campaignId === campaign.id),
     [campaign.id, experiments],
   );
+  const selectedExperiment = relatedExperiments.find((experiment) => experiment.id === selectedExperimentId)
+    ?? relatedExperiments[0]
+    ?? null;
   const dirty = JSON.stringify(campaignPayload(draft)) !== JSON.stringify(campaignPayload(campaign));
 
   async function save(event: FormEvent) {
@@ -106,6 +116,45 @@ function CampaignEditor({
       setMessage(error instanceof Error ? error.message : "Action impossible");
     } finally {
       setSaving(false);
+    }
+  }
+
+  async function createExperiment() {
+    setExperimentBusy(true);
+    setMessage(null);
+    try {
+      const result = await api.createExperiment({
+        campaignId: campaign.id,
+        name: `Test ${relatedExperiments.length + 1}`,
+        scope: "sequence",
+        thresholdContactsPerVariant: 40,
+        thresholdReplies: 20,
+        idempotencyKey: `ui-${campaign.id}-${Date.now()}`,
+        variants: [
+          { label: "A", name: "Référence", allocationWeight: 1, overrides: {} },
+          { label: "B", name: "Version B", allocationWeight: 1, overrides: {} },
+        ],
+      });
+      setSelectedExperimentId(result.experiment.id);
+      await onSaved();
+    } catch (error) {
+      setMessage(error instanceof Error ? error.message : "Création du test impossible");
+    } finally {
+      setExperimentBusy(false);
+    }
+  }
+
+  async function startExperiment() {
+    if (!selectedExperiment || selectedExperiment.variants.length < 2) return;
+    setExperimentBusy(true);
+    setMessage(null);
+    try {
+      await api.updateExperiment(selectedExperiment.id, { status: "recruiting" });
+      await onSaved();
+    } catch (error) {
+      setMessage(error instanceof Error ? error.message : "Démarrage du test impossible");
+    } finally {
+      setExperimentBusy(false);
     }
   }
 
@@ -216,48 +265,87 @@ function CampaignEditor({
         <section className="target-section">
           <div className="target-section-title"><h3>Validation des emails</h3><small>Mode appliqué aux futurs messages générés</small></div>
           <div className="v21-approval-options">
-            <label className="v21-choice"><input type="radio" name="approval-mode" checked={draft.validationPolicy === "manual"} onChange={() => setDraft((current) => ({ ...current, validationPolicy: "manual" }))} /><span><strong>Validation manuelle</strong><small>Les nouveaux emails commencent « En attente… » et vous les validez dans Messages.</small></span></label>
-            <label className="v21-choice"><input type="radio" name="approval-mode" checked={draft.validationPolicy === "automatic"} onChange={() => setDraft((current) => ({ ...current, validationPolicy: "automatic" }))} /><span><strong>Validation automatique</strong><small>Les futurs emails peuvent passer « Validé » après les contrôles obligatoires.</small></span></label>
+            <label className="v21-choice"><input type="radio" name="approval-mode" checked={draft.validationPolicy === "manual"} onChange={() => setDraft((current) => ({ ...current, validationPolicy: "manual" }))} /><span><strong>Validation manuelle</strong><small>Les nouveaux emails commencent « En attente… » et tu les valides toi-même dans Prospects.</small></span></label>
+            <label className="v21-choice"><input type="radio" name="approval-mode" checked={draft.validationPolicy === "automatic"} onChange={() => setDraft((current) => ({ ...current, validationPolicy: "automatic" }))} /><span><strong>Validation automatique</strong><small>Les futurs emails peuvent passer « Validé » après les contrôles obligatoires, sans clic humain.</small></span></label>
           </div>
           <div className="v21-config-example">{draft.validationPolicy === "automatic" ? "Prochain email conforme : Validé automatiquement" : "Prochain email : En attente de validation humaine"}</div>
         </section>
 
-        <section className="target-section">
-          <div className="target-section-title"><h3>Rédaction de la campagne</h3><small>Cible, recherche et séquence complète</small></div>
-          <label className="target-field target-wide-field">
-            <span>Population ciblée</span>
-            <textarea rows={5} value={draft.targetDescription} onChange={(event) => setDraft((current) => ({ ...current, targetDescription: event.target.value }))} />
-            <small className="target-hint">Les agents relisent cette consigne depuis Neon au début de chaque exécution.</small>
-          </label>
-          <div className="target-writing-grid">
-            <label className="target-field"><span>Consignes de recherche et de rédaction</span><textarea rows={6} value={draft.aiInstructions} onChange={(event) => setDraft((current) => ({ ...current, aiInstructions: event.target.value }))} /></label>
-            <label className="target-field"><span>Consignes de réponse</span><textarea rows={6} value={draft.replyInstructions} onChange={(event) => setDraft((current) => ({ ...current, replyInstructions: event.target.value }))} /></label>
+        <section className="v37-testnav" aria-labelledby="campaign-tests-title">
+          <div className="v37-testnav-top">
+            <div className="v37-testnav-heading"><span className="v37-flask" aria-hidden="true">⚗</span><strong id="campaign-tests-title">Tests A/B</strong><span className="v37-test-count">{relatedExperiments.length} test{relatedExperiments.length > 1 ? "s" : ""}</span></div>
+            <div className="v37-testnav-select">
+              <label className="v37-test-count" htmlFor="campaign-experiment">Expérience</label>
+              <select id="campaign-experiment" value={selectedExperiment?.id || ""} onChange={(event) => setSelectedExperimentId(event.target.value)} disabled={!relatedExperiments.length}>
+                {!relatedExperiments.length ? <option value="">Aucun test</option> : null}
+                {relatedExperiments.map((experiment, index) => <option value={experiment.id} key={experiment.id}>Test {index + 1} · {experiment.variants.length > 1 ? experiment.variants.map((variant) => variant.label).join(" / ") : "À configurer"} · {experiment.status === "recruiting" ? "En cours" : experiment.status === "draft" ? "Préparé" : "Terminé"}</option>)}
+              </select>
+              <button type="button" disabled={experimentBusy} onClick={() => void createExperiment()}>+ Nouveau test</button>
+            </div>
           </div>
-          <label className="target-field target-subject-field"><span>Objet / consigne d’objet</span><input value={draft.sequence.subject} onChange={(event) => setDraft((current) => ({ ...current, sequence: { ...current.sequence, subject: event.target.value } }))} /></label>
-          <div className="target-sequences">
-            {draft.sequence.steps.map((step, index) => (
-              <label className="target-sequence-card" key={index}>
-                <span className="target-sequence-header"><strong>{index === 0 ? "Message initial" : `Relance R${index}`}</strong><small>{["J0", "J+3", "J+7", "J+7", "J+14", "J+14"][index]}</small></span>
-                <textarea value={step} onChange={(event) => {
-                  const steps = draft.sequence.steps.map((value, stepIndex) => stepIndex === index ? event.target.value : value) as SequenceContent["steps"];
-                  setDraft((current) => ({ ...current, sequence: { ...current.sequence, steps } }));
-                }} />
-              </label>
-            ))}
+          {selectedExperiment ? (
+            <>
+              <div className="v37-state-line">
+                <div className="v37-state-copy"><span className={`v37-state ${selectedExperiment.status === "recruiting" ? "active" : selectedExperiment.status === "draft" ? "" : "completed"}`}>{selectedExperiment.status === "recruiting" ? "En cours" : selectedExperiment.status === "draft" ? "Préparé" : "Terminé"}</span><span className="v37-test-count">{selectedExperiment.name} · {selectedExperiment.variants.map((variant) => variant.label).join(" / ") || "Référence A seule"}</span></div>
+                {selectedExperiment.status === "draft" ? <button type="button" disabled={experimentBusy || selectedExperiment.variants.length < 2} onClick={() => void startExperiment()}>Démarrer le test</button> : null}
+              </div>
+              <details className="v40-rules">
+                <summary>⚙ Règles du test <span className="v40-rules-overview">{selectedExperiment.thresholdContactsPerVariant} prospects / variante · 4 indicateurs</span></summary>
+                <div className="v40-rules-body"><div className="v40-rules-grid"><label className="v40-rule"><span>Prospects par variante</span><input value={selectedExperiment.thresholdContactsPerVariant} readOnly /></label><label className="v40-rule"><span>Réponses minimales</span><input value={selectedExperiment.thresholdReplies} readOnly /></label><div className="v40-rule"><span>Indicateurs</span><small>Réponse humaine, réponse positive, rendez-vous confirmé et suivi disponible.</small></div></div></div>
+              </details>
+            </>
+          ) : <p className="v37-testnav-note">Crée le premier test pour comparer une référence A à une autre version.</p>}
+          <div className="v48-ab-preferences">
+            <div className="v48-ab-policy"><label htmlFor="experiment-policy">À l’issue du test</label><select id="experiment-policy" value={draft.experimentPolicy} onChange={(event) => setDraft((current) => ({ ...current, experimentPolicy: event.target.value as Campaign["experimentPolicy"] }))}><option value="continue">Optimisation continue</option><option value="stabilize">Stabiliser sur la meilleure approche</option></select></div>
+            {draft.experimentPolicy === "continue" ? <details className="v48-roadmap"><summary>Instructions pour les prochains tests <span>{draft.nextTestInstructions.trim() ? "Renseignées" : "Facultatif"}</span></summary><div className="v48-roadmap-body"><textarea rows={4} value={draft.nextTestInstructions} onChange={(event) => setDraft((current) => ({ ...current, nextTestInstructions: event.target.value }))} /><small>Consignes pour cette campagne, adaptées aux résultats par ChatGPT.</small></div></details> : null}
+          </div>
+        </section>
+
+        {selectedExperiment ? <section className="v35-variant-panel"><div className="v35-topline"><div><strong>Versions du test · {selectedExperiment.name}</strong><small>{selectedExperiment.variants.length > 1 ? selectedExperiment.variants.map((variant) => variant.label).join(" / ") : "Référence A"}</small></div><div className="v35-tabs v43-tabs">{selectedExperiment.variants.map((variant, index) => <button type="button" className={index === 0 ? "on" : ""} key={variant.id}>{variant.label}{relatedExperiments.indexOf(selectedExperiment) + 1}{index === 0 ? " · Référence" : ""}</button>)}<button type="button" disabled title="L’ajout de version sera disponible après la configuration du test">+ Version</button></div></div><div className="v35-options"><small>{selectedExperiment.variants.length === 1 ? "A est la référence. Ajoute une version pour préparer la comparaison." : "Chaque autre version reprend A, sauf les blocs personnalisés."}</small></div></section> : null}
+
+        <section className="target-section">
+          <div className="target-section-title"><h3>Critères et instructions de recherche des prospects</h3><small>Recherche de référence</small></div>
+          <div className="v35-base-group"><label className="target-field"><textarea rows={6} aria-label="Critères et instructions de recherche des prospects" value={draft.targetDescription} onChange={(event) => setDraft((current) => ({ ...current, targetDescription: event.target.value }))} /></label></div>
+        </section>
+
+        <section className="target-section">
+          <div className="target-section-title"><h3>Itérations de rédaction IA</h3><small>Configuration de référence</small></div>
+          <div className="v23-pass-config"><div className="v23-pass-head"><label>Nombre d’itérations <input type="number" value={1} min={1} max={1} readOnly /></label><span className="target-pill">1 itération successive</span></div><div className="v23-pass-list"><label className="v23-pass-step"><strong>Itération 1</strong><small>Prépare une première version de la séquence : objet, premier email et relances.</small><textarea value={draft.aiInstructions} onChange={(event) => setDraft((current) => ({ ...current, aiInstructions: event.target.value }))} /></label></div><p className="v23-pass-help">Les itérations concernent l’objet et les six emails de cette version. Le statut des prospects sera actualisé par ChatGPT via Neon.</p></div>
+        </section>
+
+        <section className="target-section">
+          <div className="target-section-title"><h3>Premier email</h3><small>Objet et modèle personnalisables séparément</small></div>
+          <label className="target-field target-subject-field"><span>Objet type à personnaliser</span><input value={draft.sequence.subject} onChange={(event) => setDraft((current) => ({ ...current, sequence: { ...current.sequence, subject: event.target.value } }))} /></label>
+          <details className="v25-instructions v25-subject-guidance"><summary>Instructions{draft.sequence.subjectInstructions.trim() ? " · renseignées" : ""}</summary><div className="v25-instructions-body"><label>Consignes pour personnaliser l’objet<textarea value={draft.sequence.subjectInstructions} onChange={(event) => setDraft((current) => ({ ...current, sequence: { ...current.sequence, subjectInstructions: event.target.value } }))} /></label></div></details>
+          <label className="target-field target-initial-field"><span>Modèle du premier email</span><textarea rows={8} value={draft.sequence.steps[0]} onChange={(event) => {
+            const steps = draft.sequence.steps.map((value, index) => index === 0 ? event.target.value : value) as SequenceContent["steps"];
+            setDraft((current) => ({ ...current, sequence: { ...current.sequence, steps } }));
+          }} /></label>
+          <details className="v25-instructions"><summary>Instructions{draft.sequence.stepInstructions[0].trim() ? " · renseignées" : ""}</summary><div className="v25-instructions-body"><label>Consignes pour le premier email<textarea value={draft.sequence.stepInstructions[0]} onChange={(event) => {
+            const stepInstructions = draft.sequence.stepInstructions.map((value, index) => index === 0 ? event.target.value : value) as SequenceContent["stepInstructions"];
+            setDraft((current) => ({ ...current, sequence: { ...current.sequence, stepInstructions } }));
+          }} /></label></div></details>
+        </section>
+
+        <section className="target-section">
+          <div className="target-section-title"><h3>Relances</h3><small>R1 à R5 · délais conservés</small></div>
+          <div className="target-sequences v35-followups">
+            {draft.sequence.steps.slice(1).map((step, followupIndex) => {
+              const index = followupIndex + 1;
+              return <article className="target-sequence-card" key={index}><span className="target-sequence-header"><strong>R{index}</strong><small>{["J+3", "J+7", "J+7", "J+14", "J+14"][followupIndex]}</small></span><textarea value={step} onChange={(event) => {
+                const steps = draft.sequence.steps.map((value, stepIndex) => stepIndex === index ? event.target.value : value) as SequenceContent["steps"];
+                setDraft((current) => ({ ...current, sequence: { ...current.sequence, steps } }));
+              }} /><details className="v25-instructions"><summary>Instructions{draft.sequence.stepInstructions[index].trim() ? " · renseignées" : ""}</summary><div className="v25-instructions-body"><label>Consignes pour la relance R{index}<textarea value={draft.sequence.stepInstructions[index]} onChange={(event) => {
+                const stepInstructions = draft.sequence.stepInstructions.map((value, stepIndex) => stepIndex === index ? event.target.value : value) as SequenceContent["stepInstructions"];
+                setDraft((current) => ({ ...current, sequence: { ...current.sequence, stepInstructions } }));
+              }} /></label></div></details></article>;
+            })}
           </div>
         </section>
 
         <section className="target-section">
-          <div className="target-section-title"><h3>Tests A/B</h3><small>Expériences rattachées à cette campagne</small></div>
-          <div className="v21-approval-options">
-            <label className="v21-choice"><input type="radio" name="experiment-policy" checked={draft.experimentPolicy === "continue"} onChange={() => setDraft((current) => ({ ...current, experimentPolicy: "continue" }))} /><span><strong>Optimisation continue</strong><small>Préparer un nouveau test après chaque lecture des résultats.</small></span></label>
-            <label className="v21-choice"><input type="radio" name="experiment-policy" checked={draft.experimentPolicy === "stabilize"} onChange={() => setDraft((current) => ({ ...current, experimentPolicy: "stabilize" }))} /><span><strong>Stabiliser la variante retenue</strong><small>Conserver la version choisie sans relancer automatiquement un test.</small></span></label>
-          </div>
-          <label className="target-field"><span>Instructions pour les prochains tests</span><textarea rows={4} value={draft.nextTestInstructions} onChange={(event) => setDraft((current) => ({ ...current, nextTestInstructions: event.target.value }))} /></label>
-          <div className="v53-experiment-list">
-            {relatedExperiments.map((experiment) => <article className="experiment-card" key={experiment.id}><header><div><strong>{experiment.name}</strong><span>{experiment.status}</span></div><small>{experiment.variants.length} variante(s) · seuil {experiment.thresholdContactsPerVariant}/variante</small></header></article>)}
-            {!relatedExperiments.length ? <div className="v53-empty-experiment">Aucun test A/B pour cette campagne.</div> : null}
-          </div>
+          <div className="target-section-title"><h3>Instructions pour les réponses</h3></div>
+          <label className="target-field target-reply"><span>Comment répondre aux prospects selon leur réaction ?</span><textarea rows={7} value={draft.replyInstructions} onChange={(event) => setDraft((current) => ({ ...current, replyInstructions: event.target.value }))} /></label>
         </section>
       </div>
 

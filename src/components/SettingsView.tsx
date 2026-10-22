@@ -90,9 +90,15 @@ function GmailPanel({ accounts, vaultConfigured, onMutated, onOpenDeliverability
     setBusyId(id);
     setMessage(null);
     try {
-      await api.testGmailAccount(id);
+      const result = await api.testGmailAccount(id);
       await onMutated();
-      setMessage("Test terminé. Les indicateurs affichés proviennent du serveur.");
+      if (result.imap) {
+        setMessage("Connexion Gmail vérifiée. Aucun email n’a été envoyé : les envois restent désactivés côté serveur.");
+      } else if (["gmail_auth_failed", "gmail_app_password_required", "authenticationfailed"].includes(result.errorCode || "")) {
+        setMessage("Google a refusé la connexion. Vérifie que l’adresse saisie est celle qui a créé ce mot de passe d’application Gmail.");
+      } else {
+        setMessage(`Connexion Gmail non vérifiée${result.errorCode ? ` (${result.errorCode})` : ""}.`);
+      }
     } catch (error) {
       setMessage(error instanceof Error ? error.message : "Test impossible");
     } finally {

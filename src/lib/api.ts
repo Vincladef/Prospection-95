@@ -1,5 +1,5 @@
 import { getAccessToken } from "./auth";
-import type { ApiErrorPayload, Campaign, DashboardData, ImportPreview } from "../types";
+import type { ApiErrorPayload, Campaign, DashboardData, GmailVerificationResult, ImportPreview } from "../types";
 
 export class ApiError extends Error {
   readonly status: number;
@@ -53,6 +53,16 @@ export const api = {
     }),
   deleteCampaign: (id: string) =>
     request(`/campaigns/${encodeURIComponent(id)}`, { method: "DELETE" }),
+  createExperiment: (payload: Record<string, unknown>) =>
+    request<{ experiment: { id: string } }>("/experiments", {
+      method: "POST",
+      body: JSON.stringify(payload),
+    }),
+  updateExperiment: (id: string, payload: Record<string, unknown>) =>
+    request<{ experiment: { id: string } }>(`/experiments/${encodeURIComponent(id)}`, {
+      method: "PATCH",
+      body: JSON.stringify(payload),
+    }),
   createCampaignFolder: (payload: { name: string; position?: number }) =>
     request("/campaign-folders", { method: "POST", body: JSON.stringify(payload) }),
   updateCampaignFolder: (id: string, payload: { name?: string; position?: number }) =>
@@ -79,7 +89,7 @@ export const api = {
       body: JSON.stringify(payload),
     }),
   testGmailAccount: (id: string) =>
-    request(`/gmail-accounts/${encodeURIComponent(id)}/test`, { method: "POST" }),
+    request<GmailVerificationResult>(`/gmail-accounts/${encodeURIComponent(id)}/test`, { method: "POST" }),
   deleteGmailAccount: (id: string) =>
     request(`/gmail-accounts/${encodeURIComponent(id)}`, { method: "DELETE" }),
   saveProvider: (payload: Record<string, unknown>, id?: string) =>

@@ -44,7 +44,7 @@ export async function loadDashboard(): Promise<Record<string, unknown>> {
     `),
     sqlQuery(`
       select distinct on (campaign_id, step)
-        campaign_id::text, step::text, subject, body
+        campaign_id::text, step::text, subject, body, instructions
       from app.message_templates
       order by campaign_id, step, version desc, created_at desc
     `),
@@ -140,11 +140,12 @@ export async function loadDashboard(): Promise<Record<string, unknown>> {
   ]);
 
   const settingsRow = settingsRows[0] ?? {};
-  const templates = new Map<string, { subject: string; body: string }>();
+  const templates = new Map<string, { subject: string; body: string; instructions: string }>();
   for (const row of templateRows) {
     templates.set(`${row.campaign_id}:${row.step}`, {
       subject: textValue(row.subject),
       body: textValue(row.body),
+      instructions: textValue(row.instructions),
     });
   }
   const messages = new Map<string, { subject: string; body: string }>();
@@ -155,31 +156,46 @@ export async function loadDashboard(): Promise<Record<string, unknown>> {
     });
   }
 
-  const campaigns = campaignRows.map((row) => ({
-    id: textValue(row.id),
-    folderId: nullableText(row.folder_id),
-    name: textValue(row.name),
-    status: textValue(row.status),
-    targetDescription: textValue(row.target_description),
-    dailyNewContactGoal: numberValue(row.daily_new_contact_goal),
-    validationPolicy: textValue(row.validation_policy),
-    senderStrategy: textValue(row.sender_strategy),
-    fixedSenderAccountId: nullableText(row.fixed_sender_account_id),
-    senderAccountIds: Array.isArray(row.sender_account_ids) ? row.sender_account_ids.map((value) => textValue(value)) : [],
-    aiInstructions: textValue(row.ai_instructions),
-    replyInstructions: textValue(row.reply_instructions),
-    trackingOpensEnabled: Boolean(row.tracking_opens_enabled),
-    trackingClicksEnabled: Boolean(row.tracking_clicks_enabled),
-    experimentPolicy: textValue(row.experiment_policy),
-    nextTestInstructions: textValue(row.next_test_instructions),
-    importedDisabled: Boolean(row.imported_disabled),
-    version: numberValue(row.version),
-    sequence: {
-      subject: templates.get(`${row.id}:J0`)?.subject ?? "",
-      steps: STEPS.map((step) => templates.get(`${row.id}:${step}`)?.body ?? ""),
-    },
-    updatedAt: isoValue(row.updated_at),
-  }));
+  const campaigns = campaignRows.map((row) => {
+    const initialInstructions = (() => {
+      const raw = templates.get(`${row.id}:J0`)?.instructions ?? "";
+      try {
+        const parsed = JSON.parse(raw) as { subject?: unknown; body?: unknown };
+        return { subject: textValue(parsed.subject), body: textValue(parsed.body) };
+      } catch {
+        return { subject: "", body: raw };
+      }
+    })();
+    return {
+      id: textValue(row.id),
+      folderId: nullableText(row.folder_id),
+      name: textValue(row.name),
+      status: textValue(row.status),
+      targetDescription: textValue(row.target_description),
+      dailyNewContactGoal: numberValue(row.daily_new_contact_goal),
+      validationPolicy: textValue(row.validation_policy),
+      senderStrategy: textValue(row.sender_strategy),
+      fixedSenderAccountId: nullableText(row.fixed_sender_account_id),
+      senderAccountIds: Array.isArray(row.sender_account_ids) ? row.sender_account_ids.map((value) => textValue(value)) : [],
+      aiInstructions: textValue(row.ai_instructions),
+      replyInstructions: textValue(row.reply_instructions),
+      trackingOpensEnabled: Boolean(row.tracking_opens_enabled),
+      trackingClicksEnabled: Boolean(row.tracking_clicks_enabled),
+      experimentPolicy: textValue(row.experiment_policy),
+      nextTestInstructions: textValue(row.next_test_instructions),
+      importedDisabled: Boolean(row.imported_disabled),
+      version: numberValue(row.version),
+      sequence: {
+        subject: templates.get(`${row.id}:J0`)?.subject ?? "",
+        subjectInstructions: initialInstructions.subject,
+        steps: STEPS.map((step) => templates.get(`${row.id}:${step}`)?.body ?? ""),
+        stepInstructions: STEPS.map((step, index) => index === 0
+          ? initialInstructions.body
+          : templates.get(`${row.id}:${step}`)?.instructions ?? ""),
+      },
+      updatedAt: isoValue(row.updated_at),
+    };
+  });
 
   const prospects = prospectRows.map((row) => {
     const campaignId = nullableText(row.campaign_id);

@@ -17,7 +17,9 @@ export type CampaignStatus = "inactive" | "active" | "archived";
 
 export interface SequenceContent {
   subject: string;
+  subjectInstructions: string;
   steps: [string, string, string, string, string, string];
+  stepInstructions: [string, string, string, string, string, string];
 }
 
 export interface Campaign {
@@ -95,6 +97,13 @@ export interface GmailAccount {
   lastSyncAt: string | null;
   lastErrorCode: string | null;
   version: number;
+}
+
+export interface GmailVerificationResult {
+  smtp: boolean;
+  imap: boolean;
+  checkedAt: string;
+  errorCode?: string;
 }
 
 export interface DeliverabilityProvider {
