@@ -1,5 +1,5 @@
 import { getAccessToken } from "./auth";
-import type { ApiErrorPayload, DashboardData, ImportPreview } from "../types";
+import type { ApiErrorPayload, Campaign, DashboardData, ImportPreview } from "../types";
 
 export class ApiError extends Error {
   readonly status: number;
@@ -45,7 +45,7 @@ export const api = {
       body: JSON.stringify({ enabled, reason }),
     }),
   createCampaign: (payload: Record<string, unknown>) =>
-    request("/campaigns", { method: "POST", body: JSON.stringify(payload) }),
+    request<{ campaign: Pick<Campaign, "id" | "version"> }>("/campaigns", { method: "POST", body: JSON.stringify(payload) }),
   updateCampaign: (id: string, payload: Record<string, unknown>) =>
     request(`/campaigns/${encodeURIComponent(id)}`, {
       method: "PATCH",

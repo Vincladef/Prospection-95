@@ -63,7 +63,7 @@ export default function App() {
     >
       {error ? <div className="floating-error" role="alert">⚠ {error} <button onClick={() => void refresh()}>Réessayer</button></div> : null}
       {page === "messages" ? <MessagesView campaigns={data.campaigns} prospects={data.prospects} totals={data.totals} onMutated={refresh} /> : null}
-      {page === "campaigns" ? <CampaignsView campaigns={data.campaigns} folders={data.folders} accounts={data.gmailAccounts} experiments={data.experiments} onMutated={refresh} /> : null}
+      {page === "campaigns" ? <CampaignsView campaigns={data.campaigns} folders={data.folders} accounts={data.gmailAccounts} experiments={data.experiments} prospects={data.prospects} totals={data.totals} onOpenSettings={() => setPage("settings")} onMutated={refresh} /> : null}
       {page === "settings" ? <SettingsView settings={data.settings} accounts={data.gmailAccounts} providers={data.providers} prospects={data.prospects} onMutated={refresh} /> : null}
     </Shell>
   );

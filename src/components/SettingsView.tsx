@@ -56,7 +56,7 @@ function InstructionsPanel({ settings, onMutated }: { settings: AppSettings; onM
   );
 }
 
-function GmailPanel({ accounts, vaultConfigured, onMutated }: { accounts: GmailAccount[]; vaultConfigured: boolean; onMutated: () => Promise<void> }) {
+function GmailPanel({ accounts, vaultConfigured, onMutated, onOpenDeliverability }: { accounts: GmailAccount[]; vaultConfigured: boolean; onMutated: () => Promise<void>; onOpenDeliverability: () => void }) {
   const [open, setOpen] = useState(false);
   const [message, setMessage] = useState<string | null>(null);
   const [busyId, setBusyId] = useState<string | null>(null);
@@ -102,7 +102,7 @@ function GmailPanel({ accounts, vaultConfigured, onMutated }: { accounts: GmailA
 
   return (
     <div className="settings-panel">
-      <div className="panel-heading"><div><h2>Comptes Gmail</h2><p>Expéditeurs, Gmail principal et boîtes de test. Les mots de passe d’application restent dans le coffre chiffré.</p></div><button className="win-button primary" disabled={!vaultConfigured} onClick={() => setOpen((value) => !value)}>+ Ajouter un compte</button></div>
+      <div className="panel-heading"><div><h2>Comptes Gmail</h2><p>Connecte tes adresses une fois, puis consulte leur délivrabilité.</p></div><button className="win-button primary" disabled={!vaultConfigured} onClick={() => setOpen((value) => !value)}>+ Ajouter un compte</button></div>
       {!vaultConfigured ? <div className="win-alert warning" role="alert">Le coffre privé Netlify n’est pas encore disponible. Rechargez la page pour relancer son initialisation automatique.</div> : null}
       {message ? <div className="win-alert info" role="status">{message}</div> : null}
       {open ? (
@@ -134,8 +134,9 @@ function GmailPanel({ accounts, vaultConfigured, onMutated }: { accounts: GmailA
             <footer><button className="win-button" disabled={busyId === account.id || !account.hasCredential} onClick={() => void test(account.id)}>{busyId === account.id ? "Test…" : "Tester SMTP / IMAP"}</button><button className="win-button danger" onClick={async () => { if (!window.confirm(`Supprimer ${account.email} ?`)) return; await api.deleteGmailAccount(account.id); await onMutated(); }}>Supprimer</button></footer>
           </article>
         ))}
-        {!accounts.length ? <div className="empty-state"><strong>Aucun compte Gmail</strong><span>Ajoutez d’abord le Gmail principal et un expéditeur de test autorisé.</span></div> : null}
+        {!accounts.length ? <div className="v53-sender-empty">Aucune adresse. Ajoute un compte pour commencer.</div> : null}
       </div>
+      <div className="v53-settings-crosslink"><span>Les boîtes réceptrices et les vérificateurs sont gérés pour toute l’application.</span><button className="win-button" onClick={onOpenDeliverability}>Ouvrir Tests &amp; réception ↗</button></div>
     </div>
   );
 }
@@ -301,24 +302,23 @@ function ProspectsPanel({ prospects, onMutated }: { prospects: Prospect[]; onMut
   );
 }
 
-const tabs: Array<{ id: SettingsTab; label: string; icon: string }> = [
-  { id: "instructions", label: "Instructions", icon: "📝" },
-  { id: "accounts", label: "Comptes Gmail", icon: "✉" },
-  { id: "deliverability", label: "Tests & réception", icon: "✓" },
-  { id: "prospects", label: "Prospects", icon: "👥" },
+const tabs: Array<{ id: SettingsTab; label: string }> = [
+  { id: "instructions", label: "Instructions générales" },
+  { id: "accounts", label: "Comptes Gmail" },
+  { id: "deliverability", label: "Tests & réception" },
+  { id: "prospects", label: "Prospects" },
 ];
 
 export function SettingsView({ settings, accounts, providers, prospects, onMutated }: SettingsViewProps) {
-  const [tab, setTab] = useState<SettingsTab>("instructions");
+  const [tab, setTab] = useState<SettingsTab>("accounts");
   return (
     <section className="view-stack" aria-labelledby="settings-title">
-      <div className="view-heading intro"><div><h1 id="settings-title">Paramètres</h1><p>Rédaction, Gmail, délivrabilité et répertoire des prospects.</p></div></div>
       <div className="settings-window settings-layout">
-        <header className="win-titlebar settings-top"><strong>⚙ Panneau de configuration</strong></header>
-        <nav className="settings-tabs" aria-label="Sections des paramètres">{tabs.map((item) => <button key={item.id} className={`settings-tab ${tab === item.id ? "active" : ""}`} onClick={() => setTab(item.id)}><span>{item.icon}</span>{item.label}</button>)}</nav>
+        <header className="win-titlebar settings-top"><strong id="settings-title">⚙ Panneau de configuration</strong></header>
+        <nav className="settings-tabs" aria-label="Sections des paramètres">{tabs.map((item) => <button key={item.id} className={`settings-tab ${tab === item.id ? "active" : ""}`} onClick={() => setTab(item.id)}>{item.label}</button>)}</nav>
         <div className="settings-body">
           {tab === "instructions" ? <InstructionsPanel settings={settings} onMutated={onMutated} /> : null}
-          {tab === "accounts" ? <GmailPanel accounts={accounts} vaultConfigured={settings.vaultConfigured} onMutated={onMutated} /> : null}
+          {tab === "accounts" ? <GmailPanel accounts={accounts} vaultConfigured={settings.vaultConfigured} onMutated={onMutated} onOpenDeliverability={() => setTab("deliverability")} /> : null}
           {tab === "deliverability" ? <DeliverabilityPanel providers={providers} accounts={accounts} vaultConfigured={settings.vaultConfigured} onMutated={onMutated} /> : null}
           {tab === "prospects" ? <ProspectsPanel prospects={prospects} onMutated={onMutated} /> : null}
         </div>

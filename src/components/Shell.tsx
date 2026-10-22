@@ -86,7 +86,7 @@ export function Shell({
             aria-current={page === item.id ? "page" : undefined}
             onClick={() => onPageChange(item.id)}
           >
-            <span aria-hidden="true">{item.icon}</span> {item.label}
+            {item.id === "settings" ? "⚙ " : ""}{item.label}
           </button>
         ))}
       </nav>
