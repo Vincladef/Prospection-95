@@ -78,8 +78,8 @@ function CampaignEditor({
   const relatedExperiments = experiments.filter((experiment) => experiment.campaignId === campaign.id);
 
   return (
-    <form className="campaign-editor" onSubmit={save}>
-      <div className="campaign-editor-head">
+    <form className="campaign-editor target-editor" onSubmit={save}>
+      <div className="campaign-editor-head target-editor-head">
         <div>
           <input
             className="campaign-name-input"
@@ -106,14 +106,14 @@ function CampaignEditor({
         </div>
       </div>
 
-      <div className="subtabs" role="tablist" aria-label="Configuration de la campagne">
+      <div className="subtabs target-view-switch" role="tablist" aria-label="Configuration de la campagne">
         <button type="button" role="tab" aria-selected={tab === "target"} className={tab === "target" ? "active" : ""} onClick={() => setTab("target")}>Cible & envoi</button>
         <button type="button" role="tab" aria-selected={tab === "writing"} className={tab === "writing" ? "active" : ""} onClick={() => setTab("writing")}>Rédaction J0–R5</button>
         <button type="button" role="tab" aria-selected={tab === "experiments"} className={tab === "experiments" ? "active" : ""} onClick={() => setTab("experiments")}>Tests A/B</button>
       </div>
 
       {tab === "target" ? (
-        <div className="campaign-panel two-column-form">
+        <div className="campaign-panel target-form two-column-form">
           <label className="field wide-field">
             <span>Population ciblée</span>
             <textarea rows={8} value={draft.targetDescription} onChange={(event) => setDraft((current) => ({ ...current, targetDescription: event.target.value }))} />
@@ -191,7 +191,7 @@ function CampaignEditor({
       ) : null}
 
       {tab === "writing" ? (
-        <div className="campaign-panel">
+        <div className="campaign-panel target-form">
           <label className="field full-field">
             <span>Objet / consigne d’objet</span>
             <input value={draft.sequence.subject} onChange={(event) => setDraft((current) => ({ ...current, sequence: { ...current.sequence, subject: event.target.value } }))} />
@@ -216,7 +216,7 @@ function CampaignEditor({
       ) : null}
 
       {tab === "experiments" ? (
-        <div className="campaign-panel experiments-panel">
+        <div className="campaign-panel target-form experiments-panel">
           <fieldset className="win-group experiment-policy">
             <legend>Politique après chaque test</legend>
             <label className="radio-field"><input type="radio" name="policy" checked={draft.experimentPolicy === "continue"} onChange={() => setDraft((current) => ({ ...current, experimentPolicy: "continue" }))} /> Optimisation continue</label>
@@ -285,10 +285,10 @@ export function CampaignsView({ campaigns, folders, accounts, experiments, onMut
 
   return (
     <section className="view-stack" aria-labelledby="campaigns-title">
-      <div className="view-heading"><div><h1 id="campaigns-title">Campagnes</h1><p>Cibles, validation, comptes expéditeurs, séquences et expériences adaptatives.</p></div></div>
-      <div className="campaign-layout win-window">
-        <aside className="campaign-sidebar">
-          <header className="win-titlebar"><strong>📁 Campagnes</strong></header>
+      <div className="view-heading intro"><div><h1 id="campaigns-title">Campagnes</h1><p>Ciblage, validation, tests A/B et séquences d’emails.</p></div></div>
+      <div className="campaign-layout target-layout">
+        <aside className="campaign-sidebar target-side">
+          <header className="win-titlebar target-side-head"><strong>📁 Campagnes</strong></header>
           <div className="campaign-sidebar-tools">
             <button className="win-button primary" onClick={() => setCreating(true)}>+ Ajouter</button>
             <button className="win-button" onClick={() => void createFolder()}>+ Dossier</button>
@@ -300,7 +300,7 @@ export function CampaignsView({ campaigns, folders, accounts, experiments, onMut
               <div><button className="win-button primary">Créer</button><button type="button" className="win-button" onClick={() => setCreating(false)}>Annuler</button></div>
             </form>
           ) : null}
-          <div className="campaign-list">
+          <div className="campaign-list target-list">
             {[...folders, { id: "", name: "Sans dossier", position: Number.MAX_SAFE_INTEGER }].map((folder) => {
               const children = displayed.filter((campaign) => (campaign.folderId || "") === folder.id);
               if (!children.length && !folder.id) return null;
@@ -317,7 +317,7 @@ export function CampaignsView({ campaigns, folders, accounts, experiments, onMut
           </div>
           {!displayed.length ? <p className="sidebar-empty">Aucune campagne dans cette vue.</p> : null}
         </aside>
-        <main className="campaign-main">
+        <main className="campaign-main target-editor">
           {selected ? <CampaignEditor campaign={selected} folders={folders} accounts={accounts} experiments={experiments} onSaved={onMutated} /> : <div className="empty-state"><strong>Aucune campagne</strong><span>Créez une campagne ou importez le CRM historique.</span></div>}
         </main>
       </div>

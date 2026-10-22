@@ -54,6 +54,9 @@ export default function App() {
       page={page}
       onPageChange={setPage}
       userEmail={session.data.user.email}
+      hasActiveSender={data.gmailAccounts.some((account) =>
+        account.role === "sender" && account.hasCredential && account.status === "active"
+      )}
       emergencyStop={data.settings.emergencyStop}
       emergencyReason={data.settings.emergencyStopReason}
       onEmergencyToggle={() => void toggleEmergencyStop()}

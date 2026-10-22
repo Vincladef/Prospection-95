@@ -309,17 +309,19 @@ const tabs: Array<{ id: SettingsTab; label: string; icon: string }> = [
 ];
 
 export function SettingsView({ settings, accounts, providers, prospects, onMutated }: SettingsViewProps) {
-  const [tab, setTab] = useState<SettingsTab>("accounts");
+  const [tab, setTab] = useState<SettingsTab>("instructions");
   return (
     <section className="view-stack" aria-labelledby="settings-title">
-      <div className="view-heading"><div><h1 id="settings-title">Paramètres</h1><p>Rédaction, coffre Gmail, délivrabilité, import et sécurité.</p></div></div>
-      <div className="settings-window win-window">
-        <header className="win-titlebar"><strong>⚙ Panneau de configuration</strong></header>
-        <nav className="settings-tabs" aria-label="Sections des paramètres">{tabs.map((item) => <button key={item.id} className={tab === item.id ? "active" : ""} onClick={() => setTab(item.id)}><span>{item.icon}</span>{item.label}</button>)}</nav>
-        {tab === "instructions" ? <InstructionsPanel settings={settings} onMutated={onMutated} /> : null}
-        {tab === "accounts" ? <GmailPanel accounts={accounts} vaultConfigured={settings.vaultConfigured} onMutated={onMutated} /> : null}
-        {tab === "deliverability" ? <DeliverabilityPanel providers={providers} accounts={accounts} vaultConfigured={settings.vaultConfigured} onMutated={onMutated} /> : null}
-        {tab === "prospects" ? <ProspectsPanel prospects={prospects} onMutated={onMutated} /> : null}
+      <div className="view-heading intro"><div><h1 id="settings-title">Paramètres</h1><p>Rédaction, Gmail, délivrabilité et répertoire des prospects.</p></div></div>
+      <div className="settings-window settings-layout">
+        <header className="win-titlebar settings-top"><strong>⚙ Panneau de configuration</strong></header>
+        <nav className="settings-tabs" aria-label="Sections des paramètres">{tabs.map((item) => <button key={item.id} className={`settings-tab ${tab === item.id ? "active" : ""}`} onClick={() => setTab(item.id)}><span>{item.icon}</span>{item.label}</button>)}</nav>
+        <div className="settings-body">
+          {tab === "instructions" ? <InstructionsPanel settings={settings} onMutated={onMutated} /> : null}
+          {tab === "accounts" ? <GmailPanel accounts={accounts} vaultConfigured={settings.vaultConfigured} onMutated={onMutated} /> : null}
+          {tab === "deliverability" ? <DeliverabilityPanel providers={providers} accounts={accounts} vaultConfigured={settings.vaultConfigured} onMutated={onMutated} /> : null}
+          {tab === "prospects" ? <ProspectsPanel prospects={prospects} onMutated={onMutated} /> : null}
+        </div>
       </div>
     </section>
   );
