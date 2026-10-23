@@ -43,6 +43,19 @@ export interface Campaign {
   version: number;
   sequence: SequenceContent;
   updatedAt: string;
+  stats: CampaignStats;
+}
+
+export interface CampaignStats {
+  sent: number;
+  contacted: number;
+  opened: number;
+  clicked: number;
+  replied: number;
+  openRate: number;
+  clickRate: number;
+  firstSentAt: string | null;
+  lastSentAt: string | null;
 }
 
 export interface CampaignFolder {
@@ -113,7 +126,30 @@ export interface GmailAccount {
   bobworkReadyForOutbound: boolean | null;
   bobworkHealthScore: number | null;
   bobworkSpamRate7d: number | null;
+  verifierResults: DeliverabilityResult[];
+  verifierObservedAt: string | null;
   version: number;
+}
+
+export interface DeliverabilityResult {
+  provider: string;
+  overallState: string;
+  dimension: string | null;
+  status: string | null;
+  value: string | null;
+  observedAt: string;
+}
+
+export interface InstructionAttachment {
+  id: string;
+  scope: "global" | "campaign";
+  campaignId: string | null;
+  fieldKey: string;
+  filename: string;
+  contentType: string;
+  sizeBytes: number;
+  hasExtractedText: boolean;
+  createdAt: string;
 }
 
 export interface GmailVerificationResult {
@@ -190,6 +226,7 @@ export interface DashboardData {
   gmailAccounts: GmailAccount[];
   providers: DeliverabilityProvider[];
   experiments: Experiment[];
+  attachments: InstructionAttachment[];
   totals: {
     prospects: number;
     pendingApproval: number;

@@ -215,6 +215,12 @@ input[type="radio"] {
   background: #fff2f2;
 }
 
+.win-alert.success {
+  color: #105c2c;
+  background: #e8f7ed;
+  border-color: #4f9367;
+}
+
 .dialog-actions,
 .settings-actions,
 .drawer-actions {
@@ -468,6 +474,12 @@ input[type="radio"] {
 
 .emergency-banner span {
   margin-left: 8px;
+}
+
+.emergency-banner.campaign-pause-banner {
+  color: #584400;
+  background: #fff3c9;
+  border-bottom-color: #b7951b;
 }
 
 .app-content {
@@ -1724,6 +1736,96 @@ input[type="radio"] {
   display: grid;
   gap: 12px;
   background: #ddd;
+}
+
+.send-days {
+  grid-column: 1 / -1;
+  display: flex;
+  align-items: center;
+  gap: 7px 14px;
+  flex-wrap: wrap;
+  padding: 10px;
+  background: #f2f2f2;
+  border: 1px solid #aaa;
+}
+
+.send-days legend {
+  font-size: 11px;
+  font-weight: 700;
+}
+
+.send-days label,
+.account-form .check-field {
+  font-size: 11px;
+}
+
+.v19-account-entry.verification-success {
+  animation: verified-account 1s ease-out 2;
+  box-shadow: inset 5px 0 #159348;
+}
+
+@keyframes verified-account {
+  50% { background: #e2f7e8; }
+}
+
+.verified-value {
+  color: #13753a !important;
+  font-weight: 800;
+}
+
+.v19-details-body > .verifier-results {
+  grid-column: 1 / -1;
+  display: block;
+  padding: 11px;
+  background: #f9f9f9;
+  border: 1px solid #aaa;
+}
+
+.verifier-results > strong,
+.verifier-results > p {
+  display: block;
+  margin: 0 0 8px;
+}
+
+.verifier-results > p {
+  color: #626262;
+  font-size: 10px;
+  font-weight: 400;
+}
+
+.verifier-results > div {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(180px, 1fr));
+  gap: 7px;
+}
+
+.verifier-result {
+  display: grid;
+  gap: 2px;
+  padding: 8px;
+  background: #fff;
+  border: 1px solid #bbb;
+  border-left: 4px solid #777;
+}
+
+.verifier-result.pass,
+.verifier-result.favorable,
+.verifier-result.normal { border-left-color: #168743; }
+.verifier-result.warn,
+.verifier-result.watch { border-left-color: #be8610; }
+.verifier-result.fail,
+.verifier-result.confirmed_problem { border-left-color: #b12a2a; }
+
+.verifier-result em,
+.verifier-result small {
+  color: #5d5d5d;
+  font-size: 10px;
+  font-style: normal;
+}
+
+.v19-details-body > .gmail-connection-test {
+  grid-column: 1 / -1;
+  justify-self: start;
 }
 
 .form-grid {
@@ -3649,6 +3751,167 @@ input[type="radio"] {
   min-height: 150px;
 }
 
+.instruction-attachments {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  flex-wrap: wrap;
+  margin-top: 7px;
+}
+
+.instruction-attachments > input[type="file"] {
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  overflow: hidden;
+  clip: rect(0 0 0 0);
+  clip-path: inset(50%);
+  white-space: nowrap;
+}
+
+.attachment-add {
+  padding: 4px 7px;
+  color: #333;
+  background: #e4e4e4;
+  border: 1px solid #929292;
+  font-size: 10px;
+  font-weight: 700;
+}
+
+.attachment-chip {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  max-width: 100%;
+  padding: 3px 5px;
+  background: #edf1ff;
+  border: 1px solid #9ba7c9;
+  font-size: 10px;
+}
+
+.attachment-chip > button:first-child {
+  max-width: 250px;
+  padding: 0;
+  overflow: hidden;
+  color: #000080;
+  background: transparent;
+  border: 0;
+  text-decoration: underline;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.attachment-chip small,
+.attachment-hint,
+.attachment-message {
+  color: #666;
+  font-size: 9px;
+}
+
+.attachment-remove {
+  padding: 0 2px;
+  color: #8a1111;
+  background: transparent;
+  border: 0;
+  font-weight: 800;
+}
+
+.campaign-stats-backdrop {
+  position: fixed;
+  inset: 0;
+  z-index: 500;
+  display: grid;
+  place-items: center;
+  padding: 20px;
+  background: rgb(0 0 0 / 38%);
+}
+
+.campaign-stats-dialog {
+  width: min(720px, 100%);
+  max-height: 90vh;
+  overflow: auto;
+  color: #202020;
+  background: #ececec;
+  border: 2px solid;
+  border-color: #fff #555 #555 #fff;
+  box-shadow: 5px 6px 0 rgb(0 0 0 / 28%);
+}
+
+.campaign-stats-dialog > header {
+  display: flex;
+  justify-content: space-between;
+  gap: 12px;
+  padding: 9px 11px;
+  color: #fff;
+  background: linear-gradient(90deg, #000080, #2167aa);
+}
+
+.campaign-stats-dialog h3,
+.campaign-stats-dialog header small {
+  display: block;
+  margin: 0;
+}
+
+.campaign-stats-dialog > header > button {
+  width: 27px;
+  height: 25px;
+  padding: 0;
+  color: #111;
+  background: #c0c0c0;
+  border: 2px outset #eee;
+  font-weight: 900;
+}
+
+.campaign-stats-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(115px, 1fr));
+  gap: 8px;
+  padding: 16px;
+}
+
+.campaign-stats-grid > div {
+  display: grid;
+  gap: 3px;
+  min-height: 92px;
+  align-content: center;
+  padding: 11px;
+  text-align: center;
+  background: #fff;
+  border: 2px inset #eee;
+}
+
+.campaign-stats-grid strong {
+  color: #000080;
+  font-size: 24px;
+}
+
+.campaign-stats-grid span {
+  font-size: 11px;
+  font-weight: 700;
+}
+
+.campaign-stats-grid small,
+.campaign-stats-dialog > p {
+  color: #5b5b5b;
+  font-size: 10px;
+}
+
+.campaign-stats-dialog > p {
+  margin: 0;
+  padding: 0 16px 14px;
+}
+
+.campaign-stats-dialog > footer {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 10px;
+  padding: 10px 13px;
+  background: #d5d5d5;
+  border-top: 1px solid #999;
+  font-size: 10px;
+}
+
 .target-footer.campaign-footer {
   display: flex;
   align-items: center;
@@ -3901,8 +4164,8 @@ body {
 }
 
 .server-state.offline.stopped {
-  color: #791b1b;
-  background: #ffe2e2;
+  color: #5b4600;
+  background: #fff1be;
 }
 
 .stop-button.stop-btn,
@@ -3910,7 +4173,7 @@ body {
   min-height: 28px;
   height: 28px;
   padding: 4px 10px;
-  color: #8e2222;
+  color: #303030;
   background: #d4d4d4;
   border: 2px solid;
   border-color: #fff #626262 #626262 #fff;

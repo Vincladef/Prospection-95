@@ -43,8 +43,8 @@ export default function App() {
 
   async function toggleEmergencyStop() {
     const enable = !data!.settings.emergencyStop;
-    if (!enable && !window.confirm("Préparer la reprise ? OUTBOUND_ENABLED restera désactivé tant que la production n’est pas explicitement autorisée.")) return;
-    const reason = window.prompt(enable ? "Motif de l’arrêt d’urgence" : "Motif de la reprise contrôlée", enable ? "Arrêt manuel depuis l’interface" : "Reprise manuelle après vérification") || "Action manuelle";
+    if (!enable && !window.confirm("Autoriser les campagnes dans l’application ? Le verrou serveur OUTBOUND_ENABLED reste inchangé.")) return;
+    const reason = window.prompt(enable ? "Motif de la mise en pause" : "Motif de l’autorisation", enable ? "Mise en pause manuelle" : "Campagnes autorisées par le propriétaire") || "Action manuelle";
     await api.setEmergencyStop(enable, reason);
     await refresh();
   }
@@ -63,8 +63,8 @@ export default function App() {
     >
       {error ? <div className="floating-error" role="alert">⚠ {error} <button onClick={() => void refresh()}>Réessayer</button></div> : null}
       {page === "messages" ? <MessagesView campaigns={data.campaigns} prospects={data.prospects} totals={data.totals} onMutated={refresh} /> : null}
-      {page === "campaigns" ? <CampaignsView campaigns={data.campaigns} folders={data.folders} accounts={data.gmailAccounts} experiments={data.experiments} prospects={data.prospects} totals={data.totals} onOpenSettings={() => setPage("settings")} onMutated={refresh} /> : null}
-      {page === "settings" ? <SettingsView settings={data.settings} accounts={data.gmailAccounts} providers={data.providers} prospects={data.prospects} onMutated={refresh} /> : null}
+      {page === "campaigns" ? <CampaignsView campaigns={data.campaigns} folders={data.folders} accounts={data.gmailAccounts} experiments={data.experiments} attachments={data.attachments} prospects={data.prospects} totals={data.totals} onOpenSettings={() => setPage("settings")} onMutated={refresh} /> : null}
+      {page === "settings" ? <SettingsView settings={data.settings} accounts={data.gmailAccounts} providers={data.providers} attachments={data.attachments} prospects={data.prospects} onMutated={refresh} /> : null}
     </Shell>
   );
 }

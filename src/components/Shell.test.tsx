@@ -29,16 +29,16 @@ describe("Shell outbound status", () => {
     const { onPageChange } = renderShell(false);
 
     expect(screen.getByText("○ AUCUN EXPÉDITEUR ACTIF")).toBeInTheDocument();
-    expect(screen.queryByText("Arrêt serveur actif.")).not.toBeInTheDocument();
+    expect(screen.queryByText("Campagnes en pause.")).not.toBeInTheDocument();
 
     fireEvent.click(screen.getByRole("button", { name: "⚙ Configurer Gmail" }));
     expect(onPageChange).toHaveBeenCalledWith("settings");
   });
 
-  it("keeps the stop warning when an active sender could send mail", () => {
+  it("shows the neutral campaign pause state when an active sender exists", () => {
     renderShell(true);
 
-    expect(screen.getByText("■ ENVOIS ARRÊTÉS")).toBeInTheDocument();
-    expect(screen.getByText("Arrêt serveur actif.")).toBeInTheDocument();
+    expect(screen.getByText("Ⅱ CAMPAGNES EN PAUSE")).toBeInTheDocument();
+    expect(screen.getByText("Campagnes en pause.")).toBeInTheDocument();
   });
 });

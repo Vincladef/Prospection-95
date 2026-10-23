@@ -137,7 +137,7 @@ Le backend IMAP positionne les en-têtes RFC mais ne peut pas garantir à lui se
 
 La clé BobWork est la variable Netlify secrète `BOBWORK_API`, limitée aux Functions. Aucun champ BobWork n’est affiché dans **Tests & réception** et la clé n’est jamais envoyée au navigateur ni stockée dans Neon.
 
-L’adaptateur utilise uniquement le contrat officiel en lecture : `GET https://app-emailwarmup.bobwork.ai/api/v1/mailboxes`, avec authentification Bearer. Le worker `sync-bobwork` s’exécute toutes les six heures ; **Comptes Gmail → Détails de délivrabilité → Actualiser les mesures BobWork** déclenche la même lecture immédiatement.
+L’adaptateur utilise uniquement le contrat officiel disponible en lecture : `GET /mailboxes`, `GET /stats` et `GET /domains`, avec authentification Bearer. Les boîtes sont rapprochées des comptes Gmail ; les statistiques et domaines assainis sont exposés aux agents par `agent_api.bobwork_latest_resources`. Le worker `sync-bobwork` s’exécute toutes les six heures ; **Comptes Gmail → Détails de délivrabilité → Actualiser les mesures BobWork** déclenche la même lecture immédiatement.
 
 Après configuration ou rotation de la variable :
 

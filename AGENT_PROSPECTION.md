@@ -72,7 +72,15 @@ Définitions immuables, variantes, seuils et mesures confirmées. `smtp_accepted
 
 ### `agent_api.account_restrictions`
 
-Disponibilité, quotas, pauses, état BobWork observé et incidents ouverts. Une donnée absente signifie « inconnue ».
+Disponibilité, quotas, pauses, état et métriques BobWork observés, et incidents ouverts. Une donnée absente signifie « inconnue ».
+
+### `agent_api.instruction_attachments`
+
+Pièces jointes associées aux consignes globales, aux campagnes et aux variantes. Lire `extracted_text` lorsqu'il est disponible et toujours conserver le nom/type du fichier comme provenance. Pour un format binaire non extrait, ne pas inventer son contenu.
+
+### `agent_api.bobwork_latest_resources`
+
+Dernières réponses officielles BobWork pour les ressources `stats` et `domains`, assainies côté backend. Cette vue est en lecture seule et complète les métriques par compte.
 
 ### `agent_api.pending_operations`
 

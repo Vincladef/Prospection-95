@@ -66,14 +66,14 @@ export function Shell({
             {!hasActiveSender
               ? "○ AUCUN EXPÉDITEUR ACTIF"
               : emergencyStop
-                ? "■ ENVOIS ARRÊTÉS"
-                : "● SYSTÈME SOUS CONTRÔLE"}
+                ? "Ⅱ CAMPAGNES EN PAUSE"
+                : "● CAMPAGNES DISPONIBLES"}
           </span>
           <button
             className={`win-button stop-button stop-btn ${!hasActiveSender || emergencyStop ? "resume pause" : "stop"}`}
             onClick={hasActiveSender ? onEmergencyToggle : () => onPageChange("settings")}
           >
-            {!hasActiveSender ? "⚙ Configurer Gmail" : emergencyStop ? "▶ Préparer la reprise" : "■ Arrêt d’urgence"}
+            {!hasActiveSender ? "⚙ Configurer Gmail" : emergencyStop ? "▶ Autoriser les campagnes" : "Ⅱ Mettre en pause"}
           </button>
         </div>
       </header>
@@ -92,8 +92,8 @@ export function Shell({
       </nav>
 
       {hasActiveSender && emergencyStop ? (
-        <div className="emergency-banner" role="status">
-          <strong>Arrêt serveur actif.</strong> Aucun email de campagne ne peut partir. Seul un test explicite depuis les paramètres est autorisé.
+        <div className="emergency-banner campaign-pause-banner" role="status">
+          <strong>Campagnes en pause.</strong> Les envois commerciaux sont suspendus ; les tests Gmail restent disponibles.
           {emergencyReason ? <span> Motif : {emergencyReason}</span> : null}
         </div>
       ) : null}

@@ -6,7 +6,7 @@ SELECT to_regnamespace('app') IS NOT NULL
    AND to_regnamespace('agent_api') IS NOT NULL
    AND to_regnamespace('audit') IS NOT NULL AS all_schemas_exist;
 
-SELECT count(*) = 11 AS all_migrations_registered
+SELECT count(*) = 12 AS all_migrations_registered
 FROM app.schema_migrations
 WHERE version IN (
   '001_foundation',
@@ -19,7 +19,8 @@ WHERE version IN (
   '008_sent_mail_reconciliation',
   '009_campaign_sender_contract',
   '010_signed_interaction_tracking_and_v53_verifiers',
-  '011_v53_tracking_defaults'
+  '011_v53_tracking_defaults',
+  '012_product_flexibility_and_attachments'
 );
 
 SELECT NOT has_schema_privilege('prospection95_agent', 'vault', 'USAGE')
@@ -44,8 +45,15 @@ SELECT has_table_privilege('prospection95_agent', 'agent_api.campaign_parameters
      'EXECUTE'
    ) AS agent_contract_is_available;
 
-SELECT outbound_enabled = false AND emergency_stop = true AS outbound_is_safe_by_default
+SELECT outbound_enabled = false AS outbound_is_guarded_by_server_configuration
 FROM app.settings WHERE singleton;
+
+SELECT to_regclass('app.instruction_attachments') IS NOT NULL
+   AND to_regclass('app.bobwork_api_snapshots') IS NOT NULL
+   AND has_table_privilege('prospection95_agent', 'agent_api.instruction_attachments', 'SELECT')
+   AND has_table_privilege('prospection95_agent', 'agent_api.bobwork_latest_resources', 'SELECT')
+   AND NOT has_table_privilege('prospection95_agent', 'app.instruction_attachments', 'SELECT')
+   AS product_flexibility_contract_is_available;
 
 SELECT NOT EXISTS (
   SELECT 1

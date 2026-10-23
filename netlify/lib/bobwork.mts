@@ -19,32 +19,56 @@ function mailboxRecords(body: unknown): unknown[] {
   throw new HttpError(502, "bobwork_invalid_response", "BobWork a renvoyé une réponse JSON sans liste de boîtes.");
 }
 
+function apiKey(): string {
+  try {
+    return requireEnv("BOBWORK_API");
+  } catch {
+    throw new HttpError(503, "bobwork_key_missing", "La variable serveur BOBWORK_API n’est pas configurée.");
+  }
+}
+
+async function fetchResource(resource: "mailboxes" | "stats" | "domains"): Promise<{
+  body: unknown;
+  sourceUrl: string;
+  observedAt: string;
+}> {
+  const endpoint = new URL(`${BOBWORK_API_BASE_URL}/${resource}`);
+  const response = await fetch(endpoint, {
+    headers: { accept: "application/json", authorization: `Bearer ${apiKey()}` },
+    signal: AbortSignal.timeout(15_000),
+  });
+  if (!response.ok) {
+    throw new HttpError(502, "bobwork_upstream_error", `BobWork a répondu avec le statut ${response.status} pour ${resource}.`);
+  }
+  return { body: await response.json() as unknown, sourceUrl: endpoint.toString(), observedAt: new Date().toISOString() };
+}
+
 export async function fetchBobworkAccounts(): Promise<{
   records: unknown[];
   sourceUrl: string;
   documentationUrl: string;
   observedAt: string;
 }> {
-  let apiKey: string;
-  try {
-    apiKey = requireEnv("BOBWORK_API");
-  } catch {
-    throw new HttpError(503, "bobwork_key_missing", "La variable serveur BOBWORK_API n’est pas configurée.");
-  }
-  const endpoint = new URL(`${BOBWORK_API_BASE_URL}/mailboxes`);
-  const response = await fetch(endpoint, {
-    headers: { accept: "application/json", authorization: `Bearer ${apiKey}` },
-    signal: AbortSignal.timeout(15_000),
-  });
-  if (!response.ok) {
-    throw new HttpError(502, "bobwork_upstream_error", `BobWork a répondu avec le statut ${response.status}.`);
-  }
-  const body = (await response.json()) as unknown;
-  const records = mailboxRecords(body);
+  const result = await fetchResource("mailboxes");
+  const records = mailboxRecords(result.body);
   return {
     records,
-    sourceUrl: endpoint.toString(),
+    sourceUrl: result.sourceUrl,
     documentationUrl: BOBWORK_DOCUMENTATION_URL,
-    observedAt: new Date().toISOString(),
+    observedAt: result.observedAt,
   };
+}
+
+export async function fetchBobworkResources(): Promise<Array<{
+  resource: "stats" | "domains";
+  payload: unknown;
+  sourceUrl: string;
+  observedAt: string;
+}>> {
+  const resources = ["stats", "domains"] as const;
+  const results = await Promise.allSettled(resources.map(async (resource) => {
+    const result = await fetchResource(resource);
+    return { resource, payload: result.body, sourceUrl: result.sourceUrl, observedAt: result.observedAt };
+  }));
+  return results.flatMap((result) => result.status === "fulfilled" ? [result.value] : []);
 }

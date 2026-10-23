@@ -1,4 +1,4 @@
-import { fetchBobworkAccounts } from "./bobwork.mts";
+import { fetchBobworkAccounts, fetchBobworkResources } from "./bobwork.mts";
 import { sqlOne, sqlQuery } from "./db.mts";
 
 function safeRecord(value: unknown): Record<string, unknown> {
@@ -6,6 +6,16 @@ function safeRecord(value: unknown): Record<string, unknown> {
   return Object.fromEntries(Object.entries(value as Record<string, unknown>)
     .filter(([key]) => !/secret|password|token|api.?key|credential|authorization/i.test(key))
     .slice(0, 50));
+}
+
+function safeValue(value: unknown, depth = 0): unknown {
+  if (depth > 6) return "[profondeur limitée]";
+  if (Array.isArray(value)) return value.slice(0, 500).map((item) => safeValue(item, depth + 1));
+  if (!value || typeof value !== "object") return value;
+  return Object.fromEntries(Object.entries(value as Record<string, unknown>)
+    .filter(([key]) => !/secret|password|token|api.?key|credential|authorization/i.test(key))
+    .slice(0, 250)
+    .map(([key, item]) => [key, safeValue(item, depth + 1)]));
 }
 
 function scalarField(record: Record<string, unknown>, ...keys: string[]): string | null {
@@ -26,6 +36,7 @@ export interface BobworkSyncResult {
   records: number;
   observedAt: string | null;
   sourceUrl: string | null;
+  resources: string[];
 }
 
 export async function syncBobworkAccounts(force = false): Promise<BobworkSyncResult> {
@@ -38,10 +49,10 @@ export async function syncBobworkAccounts(force = false): Promise<BobworkSyncRes
         and ($1::boolean or last_sync_at is null or last_sync_at < clock_timestamp() - interval '5 hours')
       returning singleton
     `, [force]);
-    if (!connection) return { claimed: false, records: 0, observedAt: null, sourceUrl: null };
+    if (!connection) return { claimed: false, records: 0, observedAt: null, sourceUrl: null, resources: [] };
     claimed = true;
 
-    const result = await fetchBobworkAccounts();
+    const [result, extraResources] = await Promise.all([fetchBobworkAccounts(), fetchBobworkResources()]);
     const records = result.records.slice(0, 100);
     for (const raw of records) {
       const record = safeRecord(raw);
@@ -64,12 +75,19 @@ export async function syncBobworkAccounts(force = false): Promise<BobworkSyncRes
       `, [account?.id ?? null, scalarField(record, "id", "accountId", "account_id", "mailboxId", "mailbox_id", "email"),
         connected, warmupState, JSON.stringify(record), result.observedAt]);
     }
+    for (const resource of extraResources) {
+      await sqlQuery(`
+        insert into app.bobwork_api_snapshots (resource, payload, source_url, observed_at)
+        values ($1, $2::jsonb, $3, $4::timestamptz)
+        on conflict (resource, observed_at) do nothing
+      `, [resource.resource, JSON.stringify(safeValue(resource.payload)), resource.sourceUrl, resource.observedAt]);
+    }
     await sqlQuery(`
       update app.bobwork_connections
       set status = 'connected', last_sync_at = $1::timestamptz, last_error_code = null, updated_at = clock_timestamp()
       where singleton
     `, [result.observedAt]);
-    return { claimed: true, records: records.length, observedAt: result.observedAt, sourceUrl: result.sourceUrl };
+    return { claimed: true, records: records.length, observedAt: result.observedAt, sourceUrl: result.sourceUrl, resources: ["mailboxes", ...extraResources.map((item) => item.resource)] };
   } catch (error) {
     if (claimed) {
       const code = String((error as { code?: unknown }).code ?? (error as Error).name ?? "bobwork_sync_failed").slice(0, 120);

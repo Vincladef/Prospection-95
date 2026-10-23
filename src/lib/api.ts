@@ -17,12 +17,13 @@ export class ApiError extends Error {
 
 async function request<T>(path: string, init: RequestInit = {}): Promise<T> {
   const token = await getAccessToken();
+  const jsonBody = init.body !== undefined && !(init.body instanceof FormData);
   const response = await fetch(`/api${path}`, {
     ...init,
     headers: {
       Accept: "application/json",
       Authorization: `Bearer ${token}`,
-      ...(init.body ? { "Content-Type": "application/json" } : {}),
+      ...(jsonBody ? { "Content-Type": "application/json" } : {}),
       ...init.headers,
     },
   });
@@ -115,7 +116,33 @@ export const api = {
   deleteProvider: (id: string) =>
     request(`/providers/${encodeURIComponent(id)}`, { method: "DELETE" }),
   syncBobwork: () =>
-    request<{ ok: true; records: number; observedAt: string | null }>("/bobwork/sync", { method: "POST" }),
+    request<{ ok: true; records: number; resources: string[]; observedAt: string | null }>("/bobwork/sync", { method: "POST" }),
+  uploadInstructionAttachment: (input: { file: File; scope: "global" | "campaign"; campaignId?: string | null; fieldKey: string }) => {
+    const form = new FormData();
+    form.set("file", input.file);
+    form.set("scope", input.scope);
+    form.set("fieldKey", input.fieldKey);
+    if (input.campaignId) form.set("campaignId", input.campaignId);
+    return request<{ attachment: { id: string } }>("/instruction-attachments", { method: "POST", body: form });
+  },
+  deleteInstructionAttachment: (id: string) =>
+    request(`/instruction-attachments/${encodeURIComponent(id)}`, { method: "DELETE" }),
+  downloadInstructionAttachment: async (id: string, filename: string) => {
+    const token = await getAccessToken();
+    const response = await fetch(`/api/instruction-attachments/${encodeURIComponent(id)}/download`, {
+      headers: { Authorization: `Bearer ${token}` },
+    });
+    if (!response.ok) {
+      const body = await response.json().catch(() => ({})) as ApiErrorPayload;
+      throw new ApiError(response.status, body);
+    }
+    const url = URL.createObjectURL(await response.blob());
+    const link = document.createElement("a");
+    link.href = url;
+    link.download = filename;
+    link.click();
+    URL.revokeObjectURL(url);
+  },
   initializeVault: () =>
     request<{ configured: true; created: boolean; source: "environment" | "netlify_blobs" }>("/vault/initialize", {
       method: "POST",

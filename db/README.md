@@ -1,6 +1,6 @@
 # Schéma Lakebase Postgres
 
-Le dossier contient neuf migrations additives, rejouables et sans données métier embarquées. Elles doivent être appliquées dans l’ordre lexical.
+Le dossier contient douze migrations additives, rejouables et sans données métier embarquées. Elles doivent être appliquées dans l’ordre lexical.
 
 1. `001_foundation.sql` : rôles, schémas, paramètres, campagnes, comptes publics, prospects, anti-recontact et coffre chiffré.
 2. `002_messaging.sql` : versions de messages, conversations, SMTP/IMAP, file d’envoi, baux et brouillons.
@@ -11,13 +11,16 @@ Le dossier contient neuf migrations additives, rejouables et sans données méti
 7. `007_sequence_scheduler.sql` : création idempotente des travaux J0–R5 arrivés à échéance.
 8. `008_sent_mail_reconciliation.sql` : rapprochement des messages Gmail envoyés manuellement.
 9. `009_campaign_sender_contract.sql` : comptes autorisés par campagne et attribution durable des conversations.
+10. `010_signed_interaction_tracking_and_v53_verifiers.sql` : suivi signé des ouvertures/clics et catalogue V53 des vérificateurs.
+11. `011_v53_tracking_defaults.sql` : activation par défaut du suivi des interactions sur les campagnes.
+12. `012_product_flexibility_and_attachments.sql` : pièces jointes privées d’instructions et ressources BobWork étendues pour les agents.
 
 ## Principes de sécurité
 
 - `prospection95_app` et `prospection95_agent` sont des rôles de groupe `NOLOGIN`. Un identifiant de connexion distinct doit être créé pour chaque consommateur puis recevoir uniquement le rôle nécessaire.
 - Le rôle agent ne possède aucun privilège sur `vault`, les tables `app`, les confirmations SMTP ou les journaux bruts.
 - `vault.credentials` ne contient que le ciphertext AES-256-GCM, le nonce, le tag et la version de clé. La clé maître reste exclusivement dans Netlify.
-- Le moteur démarre avec `outbound_enabled=false` et `emergency_stop=true`.
+- Le verrou serveur démarre avec `outbound_enabled=false`. La pause métier reste pilotée par le propriétaire et n’est jamais réactivée automatiquement lors d’un déploiement.
 - Un import ne crée aucun job d’envoi et force toutes les campagnes créées à l’état `inactive` avec `imported_disabled=true`.
 - Un statut CSV « Envoyé » est conservé comme déclaration historique non confirmée ; seule `app.confirm_smtp_acceptance` ou une réconciliation Gmail peut créer une confirmation technique.
 

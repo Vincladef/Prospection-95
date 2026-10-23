@@ -1,6 +1,7 @@
 import { FormEvent, useMemo, useRef, useState } from "react";
 import { api } from "../lib/api";
-import type { AppSettings, DeliverabilityProvider, GmailAccount, ImportPreview, Prospect } from "../types";
+import type { AppSettings, DeliverabilityProvider, GmailAccount, ImportPreview, InstructionAttachment, Prospect } from "../types";
+import { InstructionAttachments } from "./InstructionAttachments";
 
 type SettingsTab = "instructions" | "accounts" | "deliverability" | "prospects";
 
@@ -8,6 +9,7 @@ interface SettingsViewProps {
   settings: AppSettings;
   accounts: GmailAccount[];
   providers: DeliverabilityProvider[];
+  attachments: InstructionAttachment[];
   prospects: Prospect[];
   onMutated: () => Promise<void>;
 }
@@ -27,7 +29,7 @@ const storageKeys = [
   "prospection95-v23-prospect-drafts",
 ];
 
-function InstructionsPanel({ settings, onMutated }: { settings: AppSettings; onMutated: () => Promise<void> }) {
+function InstructionsPanel({ settings, attachments, onMutated }: { settings: AppSettings; attachments: InstructionAttachment[]; onMutated: () => Promise<void> }) {
   const [text, setText] = useState(settings.generalWritingInstructions);
   const [message, setMessage] = useState<string | null>(null);
   const [saving, setSaving] = useState(false);
@@ -51,37 +53,52 @@ function InstructionsPanel({ settings, onMutated }: { settings: AppSettings; onM
       <div className="panel-heading"><div><h2>Instructions générales de rédaction</h2><p>Règles communes, appliquées avant les consignes propres aux campagnes et variantes.</p></div><span className="panel-stamp">COMMUN À TOUTES LES CAMPAGNES</span></div>
       <div className="win-alert info">Les agents ChatGPT lisent ces instructions dans Neon. Le backend n’appelle aucune API OpenAI.</div>
       <label className="field full-field"><span>Consignes globales</span><textarea rows={18} value={text} onChange={(event) => setText(event.target.value)} placeholder="Ton, longueur, signature, informations à ne jamais inventer…" /></label>
+      <InstructionAttachments attachments={attachments} scope="global" fieldKey="general" />
       <div className="settings-actions"><span>{message || `Version ${settings.version}`}</span><div><button type="button" className="win-button" onClick={() => setText(settings.generalWritingInstructions)}>Annuler</button><button className="win-button primary" disabled={saving || text === settings.generalWritingInstructions}>{saving ? "Enregistrement…" : "Enregistrer"}</button></div></div>
     </form>
   );
 }
 
 function GmailPanel({ accounts, vaultConfigured, onMutated, onOpenDeliverability }: { accounts: GmailAccount[]; vaultConfigured: boolean; onMutated: () => Promise<void>; onOpenDeliverability: () => void }) {
-  const [open, setOpen] = useState(false);
+  const [editorId, setEditorId] = useState<string | null>(null);
   const [message, setMessage] = useState<string | null>(null);
+  const [messageTone, setMessageTone] = useState<"info" | "success" | "error">("info");
   const [busyId, setBusyId] = useState<string | null>(null);
+  const [verifiedFlashId, setVerifiedFlashId] = useState<string | null>(null);
+  const editing = editorId && editorId !== "new" ? accounts.find((account) => account.id === editorId) ?? null : null;
 
   async function save(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
     const form = event.currentTarget;
     const data = new FormData(form);
     setMessage(null);
+    if (!data.getAll("sendDays").length) {
+      setMessageTone("error");
+      setMessage("Sélectionne au moins un jour d’envoi.");
+      return;
+    }
     try {
       await api.saveGmailAccount({
         email: String(data.get("email") || ""),
         displayName: String(data.get("displayName") || ""),
         role: String(data.get("role") || "sender"),
-        appPassword: String(data.get("appPassword") || ""),
+        ...(data.get("appPassword") ? { appPassword: String(data.get("appPassword")) } : {}),
         dailyLimit: Number(data.get("dailyLimit") || 20),
+        warmupDailyLimit: data.get("warmupDailyLimit") === "" ? null : Number(data.get("warmupDailyLimit")),
+        sendDays: data.getAll("sendDays").map(Number),
         sendStart: String(data.get("sendStart") || "08:00"),
         sendEnd: String(data.get("sendEnd") || "18:00"),
-        timezone: "Europe/Paris",
-      });
-      form.reset();
-      setOpen(false);
+        timezone: String(data.get("timezone") || "Europe/Paris"),
+        randomizeSendTimes: data.get("randomizeSendTimes") === "on",
+        progressiveRampEnabled: data.get("progressiveRampEnabled") === "on",
+        ...(editing ? { version: editing.version } : {}),
+      }, editing?.id);
+      setEditorId(null);
       await onMutated();
-      setMessage("Compte enregistré. Le mot de passe n’est plus accessible au navigateur.");
+      setMessageTone("success");
+      setMessage(editing ? "✓ Configuration du compte mise à jour." : "✓ Compte enregistré. Le mot de passe n’est plus accessible au navigateur.");
     } catch (error) {
+      setMessageTone("error");
       setMessage(error instanceof Error ? error.message : "Compte non enregistré");
     }
   }
@@ -92,14 +109,25 @@ function GmailPanel({ accounts, vaultConfigured, onMutated, onOpenDeliverability
     try {
       const result = await api.testGmailAccount(id);
       await onMutated();
-      if (result.imap) {
-        setMessage("Connexion Gmail vérifiée. Aucun email n’a été envoyé : les envois restent désactivés côté serveur.");
+      if (result.imap && result.smtp) {
+        setMessageTone("success");
+        setMessage("✓ SMTP et IMAP vérifiés. Le compte Gmail est opérationnel.");
+        setVerifiedFlashId(id);
+        window.setTimeout(() => setVerifiedFlashId((current) => current === id ? null : current), 5000);
+      } else if (result.imap) {
+        setMessageTone("success");
+        setMessage("✓ IMAP vérifié. SMTP reste indisponible tant que le verrou serveur bloque les envois.");
+        setVerifiedFlashId(id);
+        window.setTimeout(() => setVerifiedFlashId((current) => current === id ? null : current), 5000);
       } else if (["gmail_auth_failed", "gmail_app_password_required", "authenticationfailed"].includes(result.errorCode || "")) {
+        setMessageTone("error");
         setMessage("Google a refusé la connexion. Vérifie que l’adresse saisie est celle qui a créé ce mot de passe d’application Gmail.");
       } else {
+        setMessageTone("error");
         setMessage(`Connexion Gmail non vérifiée${result.errorCode ? ` (${result.errorCode})` : ""}.`);
       }
     } catch (error) {
+      setMessageTone("error");
       setMessage(error instanceof Error ? error.message : "Test impossible");
     } finally {
       setBusyId(null);
@@ -117,16 +145,21 @@ function GmailPanel({ accounts, vaultConfigured, onMutated, onOpenDeliverability
       const result = await api.sendGmailTestEmail(account.id, recipient);
       await onMutated();
       if (result.state === "accepted") {
+        setMessageTone("success");
         setMessage(`Email test accepté par Gmail et envoyé à ${recipient}. Aucun prospect ni aucune campagne n’a été déclenché.`);
         form.reset();
       } else if (result.state === "uncertain") {
+        setMessageTone("error");
         setMessage("Gmail n’a pas confirmé clairement l’envoi. Vérifie la boîte destinataire avant de recommencer pour éviter un doublon.");
       } else if (["gmail_auth_failed", "gmail_app_password_required", "eauth"].includes(result.errorCode || "")) {
+        setMessageTone("error");
         setMessage("Google a refusé l’envoi SMTP. Vérifie que le mot de passe d’application appartient exactement à cette adresse Gmail.");
       } else {
+        setMessageTone("error");
         setMessage(`Email test non envoyé${result.errorCode ? ` (${result.errorCode})` : ""}.`);
       }
     } catch (error) {
+      setMessageTone("error");
       setMessage(error instanceof Error ? error.message : "Envoi du test impossible");
     } finally {
       setBusyId(null);
@@ -139,8 +172,10 @@ function GmailPanel({ accounts, vaultConfigured, onMutated, onOpenDeliverability
     try {
       const result = await api.syncBobwork();
       await onMutated();
-      setMessage(`BobWork connecté : ${result.records} boîte(s) lue(s) depuis l’API officielle.`);
+      setMessageTone("success");
+      setMessage(`✓ BobWork connecté : ${result.records} boîte(s) et ${result.resources.filter((item) => item !== "mailboxes").length} ressource(s) complémentaire(s) lues.`);
     } catch (error) {
+      setMessageTone("error");
       setMessage(error instanceof Error ? error.message : "Synchronisation BobWork impossible");
     } finally {
       setBusyId(null);
@@ -170,23 +205,35 @@ function GmailPanel({ accounts, vaultConfigured, onMutated, onOpenDeliverability
     return `${labels[account.bobworkWarmupState] || account.bobworkWarmupState}${ready}`;
   }
 
+  function scheduleLabel(account: GmailAccount): string {
+    const days = ["", "Lun", "Mar", "Mer", "Jeu", "Ven", "Sam", "Dim"];
+    const selected = account.sendDays.map((day) => days[day]).filter(Boolean);
+    const dayLabel = account.sendDays.join(",") === "1,2,3,4,5" ? "Lun–ven" : selected.join(", ") || "Aucun jour";
+    return `${dayLabel} · ${account.sendStart}–${account.sendEnd}`;
+  }
+
   return (
     <div className="settings-panel">
-      <div className="panel-heading"><div><h2>Comptes Gmail</h2><p>Connecte tes adresses une fois, puis consulte leur délivrabilité.</p></div><button className="win-button primary" disabled={!vaultConfigured} onClick={() => setOpen((value) => !value)}>+ Ajouter un compte</button></div>
+      <div className="panel-heading"><div><h2>Comptes Gmail</h2><p>Connecte tes adresses une fois, puis consulte leur délivrabilité.</p></div><button className="win-button primary" disabled={!vaultConfigured} onClick={() => setEditorId((value) => value === "new" ? null : "new")}>+ Ajouter un compte</button></div>
       {!vaultConfigured ? <div className="win-alert warning" role="alert">Le coffre privé Netlify n’est pas encore disponible. Rechargez la page pour relancer son initialisation automatique.</div> : null}
-      {message ? <div className="win-alert info" role="status">{message}</div> : null}
-      {open ? (
-        <form className="account-form win-group" onSubmit={(event) => void save(event)}>
-          <legend>Nouveau compte</legend>
+      {message ? <div className={`win-alert ${messageTone}`} role="status">{message}</div> : null}
+      {editorId ? (
+        <form className="account-form win-group" key={editorId} onSubmit={(event) => void save(event)}>
+          <legend>{editing ? `Modifier ${editing.email}` : "Nouveau compte"}</legend>
           <div className="form-grid">
-            <label className="field"><span>Adresse Gmail</span><input name="email" type="email" required autoComplete="off" /></label>
-            <label className="field"><span>Nom d’expéditeur</span><input name="displayName" autoComplete="off" /></label>
-            <label className="field"><span>Rôle</span><select name="role"><option value="sender">Expéditeur</option><option value="primary">Gmail principal</option><option value="test_inbox">Boîte réceptrice de test</option></select></label>
-            <label className="field"><span>Mot de passe d’application</span><input name="appPassword" type="password" required minLength={8} autoComplete="new-password" /></label>
-            <label className="field"><span>Limite quotidienne</span><input name="dailyLimit" type="number" min={0} max={2000} defaultValue={20} /></label>
-            <label className="field"><span>Plage autorisée</span><span className="inline-fields"><input name="sendStart" type="time" defaultValue="08:00" /><span>à</span><input name="sendEnd" type="time" defaultValue="18:00" /></span></label>
+            <label className="field"><span>Adresse Gmail</span><input name="email" type="email" required autoComplete="off" defaultValue={editing?.email || ""} /></label>
+            <label className="field"><span>Nom d’expéditeur</span><input name="displayName" autoComplete="off" defaultValue={editing?.displayName || ""} /></label>
+            <label className="field"><span>Rôle</span><select name="role" defaultValue={editing?.role || "sender"}><option value="sender">Expéditeur</option><option value="primary">Gmail principal</option><option value="test_inbox">Boîte réceptrice de test</option></select></label>
+            <label className="field"><span>Mot de passe d’application {editing ? "(laisser vide pour conserver)" : ""}</span><input name="appPassword" type="password" required={!editing} minLength={8} autoComplete="new-password" /></label>
+            <label className="field"><span>Limite quotidienne</span><input name="dailyLimit" type="number" min={0} max={2000} defaultValue={editing?.dailyLimit ?? 20} /></label>
+            <label className="field"><span>Limite pendant le warm-up (facultatif)</span><input name="warmupDailyLimit" type="number" min={0} max={2000} defaultValue={editing?.warmupDailyLimit ?? ""} /></label>
+            <label className="field"><span>Plage autorisée</span><span className="inline-fields"><input name="sendStart" type="time" defaultValue={editing?.sendStart || "08:00"} /><span>à</span><input name="sendEnd" type="time" defaultValue={editing?.sendEnd || "18:00"} /></span></label>
+            <label className="field"><span>Fuseau horaire</span><input name="timezone" defaultValue={editing?.timezone || "Europe/Paris"} /></label>
+            <fieldset className="send-days"><legend>Jours d’envoi autorisés</legend>{[[1,"Lun"],[2,"Mar"],[3,"Mer"],[4,"Jeu"],[5,"Ven"],[6,"Sam"],[7,"Dim"]].map(([day, label]) => <label key={day}><input name="sendDays" type="checkbox" value={day} defaultChecked={editing ? editing.sendDays.includes(Number(day)) : Number(day) <= 5} /> {label}</label>)}</fieldset>
+            <label className="check-field"><input name="randomizeSendTimes" type="checkbox" defaultChecked={editing?.randomizeSendTimes ?? true} /> Répartir les heures d’envoi dans la plage</label>
+            <label className="check-field"><input name="progressiveRampEnabled" type="checkbox" defaultChecked={editing?.progressiveRampEnabled ?? true} /> Augmentation progressive du volume</label>
           </div>
-          <div className="settings-actions"><span>Transmission HTTPS → chiffrement AES-256-GCM côté serveur.</span><div><button type="button" className="win-button" onClick={() => setOpen(false)}>Annuler</button><button className="win-button primary">Chiffrer et enregistrer</button></div></div>
+          <div className="settings-actions"><span>Le mot de passe est chiffré côté serveur. Les autres réglages restent modifiables.</span><div><button type="button" className="win-button" onClick={() => setEditorId(null)}>Annuler</button><button className="win-button primary">{editing ? "Enregistrer les modifications" : "Chiffrer et enregistrer"}</button></div></div>
         </form>
       ) : null}
       <div className="account-list v16-account-list">
@@ -194,13 +241,13 @@ function GmailPanel({ accounts, vaultConfigured, onMutated, onOpenDeliverability
           const state = accountState(account);
           const score = account.bobworkHealthScore;
           return (
-            <article className="v19-account-entry" key={account.id}>
+            <article className={`v19-account-entry ${verifiedFlashId === account.id ? "verification-success" : ""}`} key={account.id}>
               <div className="v16-account-row">
                 <div className="sender-avatar">✉</div>
                 <div className="sender-identity">
                   <strong>{account.email}</strong>
                   <div className="v14-account-summary"><span className={`v14-tag ${state.className}`}>{state.label}</span><small>{roleLabel(account)}</small></div>
-                  <div className="v42-account-quota"><strong>{account.dailyLimit} emails/jour max.</strong><small>Lun–ven · {account.sendStart}–{account.sendEnd}</small></div>
+                  <div className="v42-account-quota"><strong>{account.dailyLimit} emails/jour max.</strong><small>{scheduleLabel(account)}</small></div>
                 </div>
                 <div className="v19-overview">
                   <div className="v19-score-label">Indice de délivrabilité</div>
@@ -208,19 +255,21 @@ function GmailPanel({ accounts, vaultConfigured, onMutated, onOpenDeliverability
                   <small>{score === null ? "En attente de mesures réelles" : "Source : BobWork"}</small>
                 </div>
                 <div className="v16-account-actions">
-                  <button className="win-button primary" type="button" disabled={busyId === account.id || !account.hasCredential} onClick={() => void test(account.id)}>{busyId === account.id ? "Test…" : "Tester SMTP / IMAP"}</button>
-                  <details className="v16-more"><summary title="Autres actions" aria-label="Autres actions">⋯</summary><div><button className="win-button danger" type="button" onClick={async () => { if (!window.confirm(`Supprimer ${account.email} ?`)) return; await api.deleteGmailAccount(account.id); await onMutated(); }}>Supprimer</button></div></details>
+                  <button className="win-button primary" type="button" onClick={() => setEditorId(account.id)}>Modifier la configuration</button>
+                  <details className="v16-more"><summary title="Autres actions" aria-label="Autres actions">⋯</summary><div><button className="win-button" type="button" onClick={() => setEditorId(account.id)}>Modifier</button><button className="win-button danger" type="button" onClick={async () => { if (!window.confirm(`Supprimer ${account.email} ?`)) return; await api.deleteGmailAccount(account.id); await onMutated(); }}>Supprimer</button></div></details>
                 </div>
               </div>
               <details className="v19-account-details">
                 <summary>Détails de délivrabilité <span>({account.bobworkObservedAt ? "mesures BobWork disponibles" : "aucune mesure enregistrée"})</span></summary>
                 <div className="v19-details-body v20-details-body">
                   <div><b>Coffre privé</b><span>{account.hasCredential ? "Clé enregistrée" : "À configurer"}</span></div>
-                  <div><b>SMTP</b><span>{account.smtpVerifiedAt ? `Vérifié ${new Date(account.smtpVerifiedAt).toLocaleDateString("fr-FR")}` : "Non vérifié"}</span></div>
-                  <div><b>IMAP</b><span>{account.imapVerifiedAt ? `Vérifié ${new Date(account.imapVerifiedAt).toLocaleDateString("fr-FR")}` : "Non vérifié"}</span></div>
+                  <div><b>SMTP</b><span className={account.smtpVerifiedAt ? "verified-value" : ""}>{account.smtpVerifiedAt ? `✓ Vérifié ${new Date(account.smtpVerifiedAt).toLocaleDateString("fr-FR")}` : "Non vérifié"}</span></div>
+                  <div><b>IMAP</b><span className={account.imapVerifiedAt ? "verified-value" : ""}>{account.imapVerifiedAt ? `✓ Vérifié ${new Date(account.imapVerifiedAt).toLocaleDateString("fr-FR")}` : "Non vérifié"}</span></div>
                   <div><b>Warm-up BobWork</b><span>{warmupLabel(account)}</span></div>
                   <div><b>Taux spam sur 7 jours</b><span>{account.bobworkSpamRate7d === null ? "Non mesuré" : `${account.bobworkSpamRate7d}%`}</span></div>
                   <div><b>Dernier contrôle</b><span>{account.bobworkObservedAt ? new Date(account.bobworkObservedAt).toLocaleString("fr-FR") : account.lastSyncAt ? new Date(account.lastSyncAt).toLocaleString("fr-FR") : "Aucune date enregistrée"}</span></div>
+                  <section className="verifier-results"><strong>Résultats des vérificateurs</strong>{account.verifierResults.length ? <div>{account.verifierResults.map((result, index) => <span className={`verifier-result ${result.status || result.overallState}`} key={`${result.provider}-${result.dimension}-${index}`}><b>{result.provider}</b><em>{result.dimension || result.overallState}</em><small>{result.status || result.overallState}{result.value ? ` · ${result.value}` : ""}</small></span>)}</div> : <p>Aucun résultat réel enregistré pour cette adresse. Les prochains diagnostics apparaîtront ici.</p>}</section>
+                  <button className="win-button gmail-connection-test" type="button" disabled={busyId === account.id || !account.hasCredential} onClick={() => void test(account.id)}>{busyId === account.id ? "Vérification…" : "Tester maintenant SMTP / IMAP"}</button>
                   <form className="gmail-test-send" onSubmit={(event) => void sendTestEmail(event, account)}>
                     <label><span>Envoyer un email test à</span><input name="recipient" type="email" required placeholder="adresse@exemple.com" autoComplete="email" /></label>
                     <button className="win-button primary" disabled={busyId === account.id || !account.hasCredential}>{busyId === account.id ? "Envoi…" : "Envoyer le test"}</button>
@@ -396,7 +445,7 @@ const tabs: Array<{ id: SettingsTab; label: string }> = [
   { id: "prospects", label: "Prospects" },
 ];
 
-export function SettingsView({ settings, accounts, providers, prospects, onMutated }: SettingsViewProps) {
+export function SettingsView({ settings, accounts, providers, attachments, prospects, onMutated }: SettingsViewProps) {
   const [tab, setTab] = useState<SettingsTab>("accounts");
   return (
     <section className="view-stack" aria-labelledby="settings-title">
@@ -404,7 +453,7 @@ export function SettingsView({ settings, accounts, providers, prospects, onMutat
         <header className="win-titlebar settings-top"><strong id="settings-title">⚙ Panneau de configuration</strong></header>
         <nav className="settings-tabs" aria-label="Sections des paramètres">{tabs.map((item) => <button key={item.id} className={`settings-tab ${tab === item.id ? "active" : ""}`} onClick={() => setTab(item.id)}>{item.label}</button>)}</nav>
         <div className="settings-body">
-          {tab === "instructions" ? <InstructionsPanel settings={settings} onMutated={onMutated} /> : null}
+          {tab === "instructions" ? <InstructionsPanel settings={settings} attachments={attachments} onMutated={onMutated} /> : null}
           {tab === "accounts" ? <GmailPanel accounts={accounts} vaultConfigured={settings.vaultConfigured} onMutated={onMutated} onOpenDeliverability={() => setTab("deliverability")} /> : null}
           {tab === "deliverability" ? <DeliverabilityPanel providers={providers} accounts={accounts} onMutated={onMutated} /> : null}
           {tab === "prospects" ? <ProspectsPanel prospects={prospects} onMutated={onMutated} /> : null}

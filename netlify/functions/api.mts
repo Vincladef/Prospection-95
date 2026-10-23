@@ -12,6 +12,7 @@ import { sendGmailDiagnostic, verifyGmail } from "../lib/gmail.mts";
 import { handleError, HttpError, json, noContent, parseJson } from "../lib/http.mts";
 import { commitStagedImport, stageImport } from "../lib/import-store.mts";
 import { importPayloadSchema } from "../lib/importer.mts";
+import { readInstructionAttachment, removeInstructionAttachment, saveInstructionAttachment } from "../lib/instruction-attachments.mts";
 
 const uuid = z.string().uuid();
 const version = z.number().int().positive();
@@ -533,7 +534,8 @@ async function updateGmailAccount(request: Request, id: string, identity: AdminI
       `update app.gmail_accounts set
          email = coalesce($2, email), display_name = coalesce($3, display_name),
          role = coalesce($4, role), credential_id = coalesce($5::uuid, credential_id),
-         daily_limit = coalesce($6, daily_limit), warmup_daily_limit = coalesce($7, warmup_daily_limit),
+         daily_limit = coalesce($6, daily_limit),
+         warmup_daily_limit = case when $15::boolean then $7 else warmup_daily_limit end,
          send_days = coalesce($8::smallint[], send_days), send_start = coalesce($9::time, send_start),
          send_end = coalesce($10::time, send_end), timezone = coalesce($11, timezone),
          randomize_send_times = coalesce($12, randomize_send_times),
@@ -543,7 +545,8 @@ async function updateGmailAccount(request: Request, id: string, identity: AdminI
       [id, value.email ?? null, value.displayName ?? null, value.role ?? null, credentialId,
         value.dailyLimit ?? null, value.warmupDailyLimit ?? null, value.sendDays ?? null,
         value.sendStart ?? null, value.sendEnd ?? null, value.timezone ?? null,
-        value.randomizeSendTimes ?? null, value.progressiveRampEnabled ?? null, value.version ?? null],
+        value.randomizeSendTimes ?? null, value.progressiveRampEnabled ?? null, value.version ?? null,
+        Object.hasOwn(value, "warmupDailyLimit")],
     );
     if (!row) throw new HttpError(409, "version_conflict", "Le compte Gmail a été modifié ailleurs.");
     if (credentialId && before.credential_id) await retireCredential(before.credential_id);
@@ -696,9 +699,56 @@ async function syncBobwork(identity: AdminIdentity, requestId: string): Promise<
     action: "bobwork_synced",
     entityType: "bobwork_connection",
     entityId: "global",
-    metadata: { records: result.records, observedAt: result.observedAt },
+    metadata: { records: result.records, resources: result.resources, observedAt: result.observedAt },
   });
-  return json({ ok: true, records: result.records, observedAt: result.observedAt });
+  return json({ ok: true, records: result.records, resources: result.resources, observedAt: result.observedAt });
+}
+
+async function createInstructionAttachment(request: Request, identity: AdminIdentity, requestId: string): Promise<Response> {
+  const form = await request.formData();
+  const file = form.get("file");
+  if (!(file instanceof File)) throw new HttpError(422, "attachment_required", "Choisis un fichier à joindre.");
+  const value = z.object({
+    scope: z.enum(["global", "campaign"]),
+    campaignId: z.string().uuid().nullable(),
+    fieldKey: z.string().min(1).max(180),
+  }).parse({
+    scope: form.get("scope"),
+    campaignId: form.get("campaignId") ? String(form.get("campaignId")) : null,
+    fieldKey: form.get("fieldKey"),
+  });
+  const row = await saveInstructionAttachment({ file, ...value, actor: identity.email });
+  await logMutation(identity, requestId, {
+    action: "instruction_attachment_created",
+    entityType: "instruction_attachment",
+    entityId: row.id,
+    metadata: { filename: file.name, size: file.size, scope: value.scope, fieldKey: value.fieldKey },
+  });
+  return json({ attachment: row }, 201);
+}
+
+async function downloadInstructionAttachment(id: string): Promise<Response> {
+  const attachment = await readInstructionAttachment(id);
+  const asciiName = attachment.filename.replace(/[^\x20-\x7e]/g, "_").replace(/["\\]/g, "_");
+  return new Response(attachment.bytes, {
+    headers: {
+      "Content-Type": attachment.contentType,
+      "Content-Length": String(attachment.bytes.byteLength),
+      "Content-Disposition": `attachment; filename="${asciiName}"; filename*=UTF-8''${encodeURIComponent(attachment.filename)}`,
+      "Cache-Control": "private, no-store",
+    },
+  });
+}
+
+async function deleteInstructionAttachment(id: string, identity: AdminIdentity, requestId: string): Promise<Response> {
+  const row = await removeInstructionAttachment(id);
+  await logMutation(identity, requestId, {
+    action: "instruction_attachment_deleted",
+    entityType: "instruction_attachment",
+    entityId: id,
+    metadata: { filename: row.filename },
+  });
+  return noContent();
 }
 
 async function initializeVault(identity: AdminIdentity, requestId: string): Promise<Response> {
@@ -926,6 +976,9 @@ async function privateRoute(request: Request, parts: string[], identity: AdminId
     requireMethod(request, "PATCH", "DELETE");
   }
   if (parts[0] === "bobwork" && parts[1] === "sync" && parts.length === 2) { requireMethod(request, "POST"); return syncBobwork(identity, requestId); }
+  if (parts[0] === "instruction-attachments" && parts.length === 1) { requireMethod(request, "POST"); return createInstructionAttachment(request, identity, requestId); }
+  if (parts[0] === "instruction-attachments" && parts.length === 3 && parts[2] === "download") { requireMethod(request, "GET"); return downloadInstructionAttachment(routeUuid(parts[1])); }
+  if (parts[0] === "instruction-attachments" && parts.length === 2) { requireMethod(request, "DELETE"); return deleteInstructionAttachment(routeUuid(parts[1]), identity, requestId); }
   if (parts[0] === "vault" && parts[1] === "initialize" && parts.length === 2) { requireMethod(request, "POST"); return initializeVault(identity, requestId); }
   if (parts[0] === "import" && parts[1] === "preview" && parts.length === 2) { requireMethod(request, "POST"); return importPreview(request, identity, requestId); }
   if (parts[0] === "import" && parts[1] === "commit" && parts.length === 2) { requireMethod(request, "POST"); return importCommit(request, identity, requestId); }

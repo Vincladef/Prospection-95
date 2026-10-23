@@ -1,12 +1,14 @@
 import { type FormEvent, type ReactNode, useEffect, useMemo, useState } from "react";
 import { api } from "../lib/api";
-import type { Campaign, CampaignFolder, Experiment, GmailAccount, Prospect, SequenceContent } from "../types";
+import type { Campaign, CampaignFolder, Experiment, GmailAccount, InstructionAttachment, Prospect, SequenceContent } from "../types";
+import { InstructionAttachments } from "./InstructionAttachments";
 
 interface CampaignsViewProps {
   campaigns: Campaign[];
   folders: CampaignFolder[];
   accounts: GmailAccount[];
   experiments: Experiment[];
+  attachments: InstructionAttachment[];
   prospects: Prospect[];
   totals: { pendingApproval: number };
   onOpenSettings: () => void;
@@ -61,6 +63,7 @@ function CampaignEditor({
   accounts,
   folders,
   experiments,
+  attachments,
   onOpenSettings,
   onSaved,
 }: {
@@ -70,6 +73,7 @@ function CampaignEditor({
   accounts: GmailAccount[];
   folders: CampaignFolder[];
   experiments: Experiment[];
+  attachments: InstructionAttachment[];
   onOpenSettings: () => void;
   onSaved: () => Promise<void>;
 }) {
@@ -80,6 +84,7 @@ function CampaignEditor({
   const [selectedVariantId, setSelectedVariantId] = useState<string | null>(null);
   const [variantDrafts, setVariantDrafts] = useState<Record<string, VariantOverrides>>({});
   const [message, setMessage] = useState<string | null>(null);
+  const [showStats, setShowStats] = useState(false);
 
   useEffect(() => {
     setDraft(campaign);
@@ -111,6 +116,7 @@ function CampaignEditor({
     ?? null;
   const selectedOverrides = selectedVariant ? (variantDrafts[selectedVariant.id] ?? {}) : {};
   const isReferenceVariant = !selectedVariant || selectedVariant.label === "A";
+  const attachmentField = (base: string) => isReferenceVariant ? base : `variant:${selectedVariant?.id}:${base}`;
   const campaignDirty = JSON.stringify(campaignPayload(draft)) !== JSON.stringify(campaignPayload(campaign));
   const dirtyVariants = relatedExperiments.flatMap((experiment) => experiment.variants).filter((variant) =>
     variant.label !== "A" && JSON.stringify(variantDrafts[variant.id] ?? {}) !== JSON.stringify(cloneOverrides(variant.overrides)),
@@ -139,7 +145,7 @@ function CampaignEditor({
   async function archiveOrRestore() {
     const restoring = campaign.status === "archived";
     const question = restoring
-      ? `Restaurer « ${campaign.name} » dans les campagnes actives ?`
+      ? `Restaurer « ${campaign.name} » dans les campagnes courantes ?`
       : `Archiver « ${campaign.name} » ? Son historique sera conservé.`;
     if (!window.confirm(question)) return;
     setSaving(true);
@@ -249,20 +255,6 @@ function CampaignEditor({
   const initialGroup = variantGroup(selectedOverrides, "initial", { body: draft.sequence.steps[0], bodyInstructions: draft.sequence.stepInstructions[0] });
   const replyGroup = variantGroup(selectedOverrides, "reply", { replyInstructions: draft.replyInstructions });
 
-  async function startExperiment() {
-    if (!selectedExperiment || selectedExperiment.variants.length < 2) return;
-    setExperimentBusy(true);
-    setMessage(null);
-    try {
-      await api.updateExperiment(selectedExperiment.id, { status: "recruiting" });
-      await onSaved();
-    } catch (error) {
-      setMessage(error instanceof Error ? error.message : "Démarrage du test impossible");
-    } finally {
-      setExperimentBusy(false);
-    }
-  }
-
   return (
     <form className="campaign-editor target-editor" onSubmit={(event) => void save(event)}>
       <header className="campaign-editor-head target-editor-head">
@@ -272,6 +264,7 @@ function CampaignEditor({
         </div>
         <div className="target-actions">
           <span className={`target-notice ${dirty ? "dirty" : ""}`}>{saving ? "Enregistrement…" : message || (dirty ? "Modifications non enregistrées" : "Aucune modification")}</span>
+          <button className="secondary campaign-stats-button" type="button" onClick={() => setShowStats(true)}>▥ Voir les statistiques</button>
           <button className="secondary" type="button" disabled={!dirty || saving} onClick={() => setDraft(campaign)}>Annuler</button>
           <button className="target-save" type="submit" disabled={!dirty || saving || !draft.name.trim()}>Enregistrer</button>
           <details className="v16-more v16-target-more">
@@ -281,10 +274,12 @@ function CampaignEditor({
         </div>
       </header>
 
+      {showStats ? <div className="campaign-stats-backdrop" role="presentation" onMouseDown={(event) => { if (event.currentTarget === event.target) setShowStats(false); }}><section className="campaign-stats-dialog" role="dialog" aria-modal="true" aria-labelledby="campaign-stats-title"><header><div><h3 id="campaign-stats-title">Statistiques · {campaign.name}</h3><small>Données réelles enregistrées dans Neon</small></div><button type="button" aria-label="Fermer" onClick={() => setShowStats(false)}>×</button></header><div className="campaign-stats-grid"><div><strong>{campaign.stats.sent}</strong><span>emails envoyés</span></div><div><strong>{campaign.stats.contacted}</strong><span>prospects contactés</span></div><div><strong>{campaign.stats.opened}</strong><span>emails ouverts</span><small>{campaign.stats.openRate}% d’ouverture</small></div><div><strong>{campaign.stats.clicked}</strong><span>emails cliqués</span><small>{campaign.stats.clickRate}% de clic</small></div><div><strong>{campaign.stats.replied}</strong><span>prospects ayant répondu</span></div></div><p>Les ouvertures et clics sont comptés par email au moins une fois. Les ouvertures peuvent inclure les proxys d’images des messageries.</p><footer><span>{campaign.stats.lastSentAt ? `Dernier envoi : ${new Date(campaign.stats.lastSentAt).toLocaleString("fr-FR")}` : "Aucun envoi confirmé"}</span><button className="win-button primary" type="button" onClick={() => setShowStats(false)}>Fermer</button></footer></section></div> : null}
+
       <div className="target-form">
         <div className="target-help-note">
           <strong>{campaign.status === "archived" ? "Campagne archivée." : "Configuration de la campagne."}</strong>{" "}
-          {campaign.status === "archived" ? "Elle est retirée des campagnes actives ; son historique reste disponible." : "Ces modèles servent à préparer les emails et les réponses de cette campagne."}{" "}
+          {campaign.status === "archived" ? "Elle est retirée des campagnes courantes ; son historique reste disponible." : "Ces modèles servent à préparer les emails et les réponses de cette campagne."}{" "}
           <button className="inline-hyperlink" type="button" onClick={onOpenSettings}>Voir les instructions générales de rédaction ↗</button>
           <br />Les instructions générales sont communes à toutes les campagnes ; celles-ci les complètent.
         </div>
@@ -392,7 +387,6 @@ function CampaignEditor({
             <>
               <div className="v37-state-line">
                 <div className="v37-state-copy"><span className={`v37-state ${selectedExperiment.status === "recruiting" ? "active" : selectedExperiment.status === "draft" ? "" : "completed"}`}>{selectedExperiment.status === "recruiting" ? "En cours" : selectedExperiment.status === "draft" ? "Préparé" : "Terminé"}</span><span className="v37-test-count">{selectedExperiment.name} · {selectedExperiment.variants.map((variant) => variant.label).join(" / ") || "Référence A seule"}</span></div>
-                {selectedExperiment.status === "draft" ? <button type="button" disabled={experimentBusy || selectedExperiment.variants.length < 2} onClick={() => void startExperiment()}>Démarrer le test</button> : null}
               </div>
               <details className="v40-rules">
                 <summary>⚙ Règles du test <span className="v40-rules-overview">{selectedExperiment.thresholdContactsPerVariant} prospects / variante · 4 indicateurs</span></summary>
@@ -402,7 +396,7 @@ function CampaignEditor({
           ) : <p className="v37-testnav-note">Crée le premier test pour comparer une référence A à une autre version.</p>}
           <div className="v48-ab-preferences">
             <div className="v48-ab-policy"><label htmlFor="experiment-policy">À l’issue du test</label><select id="experiment-policy" value={draft.experimentPolicy} onChange={(event) => setDraft((current) => ({ ...current, experimentPolicy: event.target.value as Campaign["experimentPolicy"] }))}><option value="continue">Optimisation continue</option><option value="stabilize">Stabiliser sur la meilleure approche</option></select></div>
-            {draft.experimentPolicy === "continue" ? <details className="v48-roadmap"><summary>Instructions pour les prochains tests <span>{draft.nextTestInstructions.trim() ? "Renseignées" : "Facultatif"}</span></summary><div className="v48-roadmap-body"><textarea rows={4} value={draft.nextTestInstructions} onChange={(event) => setDraft((current) => ({ ...current, nextTestInstructions: event.target.value }))} /><small>Consignes pour cette campagne, adaptées aux résultats par ChatGPT.</small></div></details> : null}
+            {draft.experimentPolicy === "continue" ? <details className="v48-roadmap"><summary>Instructions pour les prochains tests <span>{draft.nextTestInstructions.trim() ? "Renseignées" : "Facultatif"}</span></summary><div className="v48-roadmap-body"><textarea rows={4} value={draft.nextTestInstructions} onChange={(event) => setDraft((current) => ({ ...current, nextTestInstructions: event.target.value }))} /><small>Consignes pour cette campagne, adaptées aux résultats par ChatGPT.</small><InstructionAttachments attachments={attachments} scope="campaign" campaignId={campaign.id} fieldKey="next-tests" /></div></details> : null}
           </div>
         </section>
 
@@ -425,10 +419,10 @@ function CampaignEditor({
 
         <section className="target-section">
           <div className="target-section-title"><h3>Critères et instructions de recherche des prospects</h3><small>{isReferenceVariant ? "Recherche de référence" : `Recherche · version ${selectedVariant?.label}`}</small></div>
-          {variantBlock("search", "Recherche de prospects", <label className="target-field"><textarea rows={6} aria-label="Critères et instructions de recherche des prospects" value={searchGroup.criteria} onChange={(event) => {
+          {variantBlock("search", "Recherche de prospects", <div className="target-field"><textarea rows={6} aria-label="Critères et instructions de recherche des prospects" value={searchGroup.criteria} onChange={(event) => {
             if (isReferenceVariant) setDraft((current) => ({ ...current, targetDescription: event.target.value }));
             else updateVariantGroup("search", { ...searchGroup, criteria: event.target.value });
-          }} /></label>)}
+          }} /><InstructionAttachments attachments={attachments} scope="campaign" campaignId={campaign.id} fieldKey={attachmentField("search")} /></div>)}
         </section>
 
         <section className="target-section">
@@ -436,7 +430,7 @@ function CampaignEditor({
           {variantBlock("iterations", "Itérations", <div className="v23-pass-config"><div className="v23-pass-head"><label>Nombre d’itérations <input type="number" value={1} min={1} max={1} readOnly /></label><span className="target-pill">1 itération successive</span></div><div className="v23-pass-list"><label className="v23-pass-step"><strong>Itération 1</strong><small>Prépare une première version de la séquence : objet, premier email et relances.</small><textarea value={iterationsGroup.draftPasses[0] || ""} onChange={(event) => {
             if (isReferenceVariant) setDraft((current) => ({ ...current, aiInstructions: event.target.value }));
             else updateVariantGroup("iterations", { ...iterationsGroup, draftPasses: [event.target.value] });
-          }} /></label></div><p className="v23-pass-help">Les itérations concernent l’objet et les six emails de cette version. Le statut des prospects sera actualisé par ChatGPT via Neon.</p></div>)}
+          }} /></label><InstructionAttachments attachments={attachments} scope="campaign" campaignId={campaign.id} fieldKey={attachmentField("iterations")} /></div><p className="v23-pass-help">Les itérations concernent l’objet et les six emails de cette version. Le statut des prospects sera actualisé par ChatGPT via Neon.</p></div>)}
         </section>
 
         <section className="target-section">
@@ -447,18 +441,18 @@ function CampaignEditor({
           }} /></label><details className="v25-instructions v25-subject-guidance"><summary>Instructions{subjectGroup.subjectInstructions.trim() ? " · renseignées" : ""}</summary><div className="v25-instructions-body"><label>Consignes pour personnaliser l’objet<textarea value={subjectGroup.subjectInstructions} onChange={(event) => {
             if (isReferenceVariant) setDraft((current) => ({ ...current, sequence: { ...current.sequence, subjectInstructions: event.target.value } }));
             else updateVariantGroup("subject", { ...subjectGroup, subjectInstructions: event.target.value });
-          }} /></label></div></details></div>)}
+          }} /></label><InstructionAttachments attachments={attachments} scope="campaign" campaignId={campaign.id} fieldKey={attachmentField("subject-instructions")} /></div></details></div>)}
           {variantBlock("initial", "Premier message", <div className="target-field"><label className="target-field target-initial-field"><span>Modèle du premier email</span><textarea rows={8} value={initialGroup.body} onChange={(event) => {
             if (isReferenceVariant) {
               const steps = draft.sequence.steps.map((value, index) => index === 0 ? event.target.value : value) as SequenceContent["steps"];
               setDraft((current) => ({ ...current, sequence: { ...current.sequence, steps } }));
             } else updateVariantGroup("initial", { ...initialGroup, body: event.target.value });
-          }} /></label><details className="v25-instructions"><summary>Instructions{initialGroup.bodyInstructions.trim() ? " · renseignées" : ""}</summary><div className="v25-instructions-body"><label>Consignes pour le premier email<textarea value={initialGroup.bodyInstructions} onChange={(event) => {
+          }} /></label><InstructionAttachments attachments={attachments} scope="campaign" campaignId={campaign.id} fieldKey={attachmentField("initial-model")} /><details className="v25-instructions"><summary>Instructions{initialGroup.bodyInstructions.trim() ? " · renseignées" : ""}</summary><div className="v25-instructions-body"><label>Consignes pour le premier email<textarea value={initialGroup.bodyInstructions} onChange={(event) => {
             if (isReferenceVariant) {
               const stepInstructions = draft.sequence.stepInstructions.map((value, index) => index === 0 ? event.target.value : value) as SequenceContent["stepInstructions"];
               setDraft((current) => ({ ...current, sequence: { ...current.sequence, stepInstructions } }));
             } else updateVariantGroup("initial", { ...initialGroup, bodyInstructions: event.target.value });
-          }} /></label></div></details></div>)}
+          }} /></label><InstructionAttachments attachments={attachments} scope="campaign" campaignId={campaign.id} fieldKey={attachmentField("initial-instructions")} /></div></details></div>)}
         </section>
 
         <section className="target-section">
@@ -473,22 +467,22 @@ function CampaignEditor({
                   const steps = draft.sequence.steps.map((value, stepIndex) => stepIndex === index ? event.target.value : value) as SequenceContent["steps"];
                   setDraft((current) => ({ ...current, sequence: { ...current.sequence, steps } }));
                 } else updateVariantGroup(key, { ...followupGroup, body: event.target.value });
-              }} /><details className="v25-instructions"><summary>Instructions{followupGroup.instructions.trim() ? " · renseignées" : ""}</summary><div className="v25-instructions-body"><label>Consignes pour la relance R{index}<textarea value={followupGroup.instructions} onChange={(event) => {
+              }} /><InstructionAttachments attachments={attachments} scope="campaign" campaignId={campaign.id} fieldKey={attachmentField(`r${index}-model`)} /><details className="v25-instructions"><summary>Instructions{followupGroup.instructions.trim() ? " · renseignées" : ""}</summary><div className="v25-instructions-body"><label>Consignes pour la relance R{index}<textarea value={followupGroup.instructions} onChange={(event) => {
                 if (isReferenceVariant) {
                   const stepInstructions = draft.sequence.stepInstructions.map((value, stepIndex) => stepIndex === index ? event.target.value : value) as SequenceContent["stepInstructions"];
                   setDraft((current) => ({ ...current, sequence: { ...current.sequence, stepInstructions } }));
                 } else updateVariantGroup(key, { ...followupGroup, instructions: event.target.value });
-              }} /></label></div></details></article>)}</div>;
+              }} /></label><InstructionAttachments attachments={attachments} scope="campaign" campaignId={campaign.id} fieldKey={attachmentField(`r${index}-instructions`)} /></div></details></article>)}</div>;
             })}
           </div>
         </section>
 
         <section className="target-section">
           <div className="target-section-title"><h3>Instructions pour les réponses</h3></div>
-          {variantBlock("reply", "Instructions de réponse", <label className="target-field target-reply"><span>Comment répondre aux prospects selon leur réaction ?</span><textarea rows={7} value={replyGroup.replyInstructions} onChange={(event) => {
+          {variantBlock("reply", "Instructions de réponse", <div className="target-field target-reply"><span>Comment répondre aux prospects selon leur réaction ?</span><textarea rows={7} value={replyGroup.replyInstructions} onChange={(event) => {
             if (isReferenceVariant) setDraft((current) => ({ ...current, replyInstructions: event.target.value }));
             else updateVariantGroup("reply", { ...replyGroup, replyInstructions: event.target.value });
-          }} /></label>)}
+          }} /><InstructionAttachments attachments={attachments} scope="campaign" campaignId={campaign.id} fieldKey={attachmentField("reply")} /></div>)}
         </section>
       </div>
 
@@ -500,7 +494,7 @@ function CampaignEditor({
   );
 }
 
-export function CampaignsView({ campaigns, folders, accounts, experiments, prospects, totals, onOpenSettings, onMutated }: CampaignsViewProps) {
+export function CampaignsView({ campaigns, folders, accounts, experiments, attachments, prospects, totals, onOpenSettings, onMutated }: CampaignsViewProps) {
   const [selectedId, setSelectedId] = useState<string | null>(campaigns[0]?.id || null);
   const [showArchived, setShowArchived] = useState(false);
   const [creating, setCreating] = useState(false);
@@ -510,8 +504,8 @@ export function CampaignsView({ campaigns, folders, accounts, experiments, prosp
     [campaigns, showArchived],
   );
   const selected = displayed.find((campaign) => campaign.id === selectedId) || displayed[0] || null;
-  const activeCount = campaigns.filter((campaign) => campaign.status !== "archived").length;
-  const archivedCount = campaigns.length - activeCount;
+  const currentCount = campaigns.filter((campaign) => campaign.status !== "archived").length;
+  const archivedCount = campaigns.length - currentCount;
   const approvedCount = prospects.filter((prospect) => prospect.messageStatus === "approved").length;
   const prospectCounts = useMemo(() => {
     const counts = new Map<string, number>();
@@ -569,11 +563,11 @@ export function CampaignsView({ campaigns, folders, accounts, experiments, prosp
       <div className="campaign-layout target-layout">
         <aside className="campaign-sidebar target-side">
           <header className="target-side-head">
-            <div><strong>📁 Campagnes</strong><small>{activeCount} actives · {archivedCount} archivées</small></div>
+            <div><strong>📁 Campagnes</strong><small>{currentCount} courantes · {archivedCount} archivées</small></div>
             <button className="target-add" disabled={creating} onClick={() => void createCampaign()}>+ Ajouter</button>
           </header>
-          <div className="target-view-switch" role="group" aria-label="Afficher les campagnes actives ou archivées">
-            <button className={`target-view-btn ${!showArchived ? "on" : ""}`} aria-pressed={!showArchived} onClick={() => setShowArchived(false)}>📁 Actives <span>{activeCount}</span></button>
+          <div className="target-view-switch" role="group" aria-label="Afficher les campagnes courantes ou archivées">
+            <button className={`target-view-btn ${!showArchived ? "on" : ""}`} aria-pressed={!showArchived} onClick={() => setShowArchived(false)}>📁 Courantes <span>{currentCount}</span></button>
             <button className={`target-view-btn ${showArchived ? "on" : ""}`} aria-pressed={showArchived} onClick={() => setShowArchived(true)}>▤ Archives <span>{archivedCount}</span></button>
           </div>
           <div className="target-folders-head"><strong>Dossiers</strong><button className="target-add" onClick={() => void createFolder()}>+ Dossier</button></div>
@@ -610,7 +604,7 @@ export function CampaignsView({ campaigns, folders, accounts, experiments, prosp
               );
             })}
           </div>
-          {!displayed.length ? <p className="sidebar-empty">{showArchived ? "Aucune campagne archivée." : "Aucune campagne active. Créez une campagne."}</p> : null}
+          {!displayed.length ? <p className="sidebar-empty">{showArchived ? "Aucune campagne archivée." : "Aucune campagne courante. Créez une campagne."}</p> : null}
           <footer className="target-side-foot">Les dossiers classent les campagnes sans modifier leurs prospects.</footer>
         </aside>
         <div className="campaign-main target-editor">
@@ -622,10 +616,11 @@ export function CampaignsView({ campaigns, folders, accounts, experiments, prosp
               folders={folders}
               accounts={accounts}
               experiments={experiments}
+              attachments={attachments}
               onOpenSettings={onOpenSettings}
               onSaved={onMutated}
             />
-          ) : <div className="empty-state"><strong>{showArchived ? "Aucune archive" : "Aucune campagne active"}</strong><span>{showArchived ? "Les campagnes archivées apparaîtront ici." : "Créez une campagne ou consultez les archives."}</span></div>}
+          ) : <div className="empty-state"><strong>{showArchived ? "Aucune archive" : "Aucune campagne courante"}</strong><span>{showArchived ? "Les campagnes archivées apparaîtront ici." : "Créez une campagne ou consultez les archives."}</span></div>}
         </div>
       </div>
     </section>

@@ -36,6 +36,7 @@ const campaign: Campaign = {
     stepInstructions: ["", "", "", "", "", ""],
   },
   updatedAt: "2026-10-22T00:00:00.000Z",
+  stats: { sent: 0, contacted: 0, opened: 0, clicked: 0, replied: 0, openRate: 0, clickRate: 0, firstSentAt: null, lastSentAt: null },
 };
 
 const experiment: Experiment = {
@@ -59,6 +60,7 @@ function renderCampaigns(experiments: Experiment[] = []) {
       folders={[]}
       accounts={[]}
       experiments={experiments}
+      attachments={[]}
       prospects={[]}
       totals={{ pendingApproval: 0 }}
       onOpenSettings={vi.fn()}

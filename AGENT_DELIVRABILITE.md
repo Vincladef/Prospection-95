@@ -38,7 +38,15 @@ SELECT agent_api.begin_run(
 
 ### `agent_api.account_restrictions`
 
-État des comptes Gmail, limites, horaires, pause, vérifications SMTP/IMAP, dernier état BobWork observé et incident ouvert. Distinguer « compte configuré », « BobWork connecté », « préchauffage actif » et « délivrabilité mesurée ».
+État des comptes Gmail, limites, horaires, pause, vérifications SMTP/IMAP, dernier état et métriques BobWork observés, et incident ouvert. Distinguer « compte configuré », « BobWork connecté », « préchauffage actif » et « délivrabilité mesurée ».
+
+### `agent_api.bobwork_latest_resources`
+
+Dernières réponses officielles et assainies des ressources BobWork `stats` et `domains`. Les exploiter en lecture seule pour compléter l'analyse par compte ; une ressource absente reste inconnue.
+
+### `agent_api.instruction_attachments`
+
+Pièces jointes aux instructions globales et de campagne. `extracted_text` contient uniquement le texte que le backend a réellement pu décoder. Un fichier binaire non extrait ne constitue pas une observation.
 
 ### `agent_api.deliverability_catalog`
 
@@ -152,7 +160,7 @@ Sévérités : `normal`, `watch`, `serious`. `apply_protective_pause=true` n'est
 
 ## BobWork
 
-Lire seulement les instantanés exposés par `account_restrictions`. L'adaptateur backend doit d'abord avoir réussi une synchronisation réelle. En l'absence d'instantané frais, écrire « inconnu », pas « inactif ». Ne modifier aucun réglage BobWork.
+Lire seulement les instantanés exposés par `account_restrictions` et `bobwork_latest_resources`. L'adaptateur backend doit d'abord avoir réussi une synchronisation réelle. En l'absence d'instantané frais, écrire « inconnu », pas « inactif ». Ne modifier aucun réglage BobWork : le contrat officiel configuré ici ne publie que des lectures.
 
 ## Fin de run et protocole d'erreurs
 

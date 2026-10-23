@@ -7,7 +7,7 @@ Application privée de prospection B2B : React/Vite sur Netlify, fonctions Netli
 ## Invariants non négociables
 
 - Ne jamais envoyer d'email commercial sans accord explicite du propriétaire.
-- Conserver `OUTBOUND_ENABLED=false`, `app.settings.outbound_enabled=false` et l'arrêt d'urgence actif pendant la recette.
+- Conserver `OUTBOUND_ENABLED=false` et `app.settings.outbound_enabled=false` pendant la recette. Le statut de pause métier est piloté par le propriétaire dans l'interface et ne doit jamais être réactivé automatiquement lors d'un déploiement.
 - Ne jamais ajouter à Git un export CRM, un secret, un mot de passe d'application ou une donnée personnelle réelle.
 - Une ligne importée « Envoyé » n'est pas une confirmation technique.
 - Seul le backend peut appeler `app.confirm_smtp_acceptance` et créer un véritable brouillon Gmail.

@@ -53,7 +53,7 @@ function nullableBoolean(value: unknown): boolean | null {
 }
 
 export async function loadDashboard(): Promise<Record<string, unknown>> {
-  const [vaultConfigured, settingsRows, folderRows, campaignRows, templateRows, prospectRows, messageRows, accountRows, providerRows, experimentRows, variantRows] = await Promise.all([
+  const [vaultConfigured, settingsRows, folderRows, campaignRows, templateRows, prospectRows, messageRows, accountRows, providerRows, experimentRows, variantRows, campaignStatsRows, attachmentRows] = await Promise.all([
     credentialVaultConfigured(),
     sqlQuery(`select * from app.settings where singleton`),
     sqlQuery(`select id::text, name, position from app.campaign_folders order by position, name`),
@@ -159,7 +159,9 @@ export async function loadDashboard(): Promise<Record<string, unknown>> {
              bw.observed_at as bobwork_observed_at,
              bc.status as bobwork_connection_status,
              bc.last_sync_at as bobwork_last_sync_at,
-             bc.last_error_code as bobwork_last_error_code
+             bc.last_error_code as bobwork_last_error_code,
+             diagnostics.results as verifier_results,
+             diagnostics.observed_at as verifier_observed_at
       from app.gmail_accounts ga
       left join lateral (
         select b.connected, b.warmup_state, b.metrics, b.observed_at
@@ -169,6 +171,29 @@ export async function loadDashboard(): Promise<Record<string, unknown>> {
         limit 1
       ) bw on true
       left join app.bobwork_connections bc on bc.singleton
+      left join lateral (
+        select
+          coalesce(jsonb_agg(jsonb_build_object(
+            'provider', latest.provider_name,
+            'overallState', latest.overall_state,
+            'dimension', result.dimension,
+            'status', result.status,
+            'value', coalesce(result.value_text, case when result.value_numeric is not null then result.value_numeric::text || coalesce(' ' || result.unit, '') end),
+            'observedAt', latest.observed_at
+          ) order by latest.provider_name, result.dimension) filter (where latest.report_id is not null), '[]'::jsonb) as results,
+          max(latest.observed_at) as observed_at
+        from (
+          select distinct on (request.provider_id)
+            report.id as report_id, provider.name as provider_name,
+            report.overall_state, report.observed_at
+          from app.diagnostic_requests request
+          join app.deliverability_providers provider on provider.id = request.provider_id
+          join app.diagnostic_reports report on report.request_id = request.id
+          where request.sender_account_id = ga.id
+          order by request.provider_id, report.observed_at desc
+        ) latest
+        left join app.diagnostic_results result on result.report_id = latest.report_id
+      ) diagnostics on true
       where ga.deleted_at is null
       order by ga.created_at
     `),
@@ -205,6 +230,49 @@ export async function loadDashboard(): Promise<Record<string, unknown>> {
       group by v.id
       order by v.experiment_id, v.code
     `),
+    sqlQuery(`
+      select c.id::text as campaign_id,
+             coalesce(outbound.sent, 0)::int as sent,
+             coalesce(outbound.contacted, 0)::int as contacted,
+             coalesce(outbound.opened, 0)::int as opened,
+             coalesce(outbound.clicked, 0)::int as clicked,
+             coalesce(inbound.replied, 0)::int as replied,
+             outbound.first_sent_at,
+             outbound.last_sent_at
+      from app.campaigns c
+      left join lateral (
+        select
+          count(*) filter (where m.technical_confirmation and m.status in ('smtp_accepted','sent_manually')) as sent,
+          count(distinct conversation.prospect_id) filter (where m.technical_confirmation and m.status in ('smtp_accepted','sent_manually')) as contacted,
+          count(*) filter (where m.technical_confirmation and m.status in ('smtp_accepted','sent_manually') and exists (
+            select 1 from app.tracking_events event where event.message_id = m.id and event.event_type = 'open'
+          )) as opened,
+          count(*) filter (where m.technical_confirmation and m.status in ('smtp_accepted','sent_manually') and exists (
+            select 1 from app.tracking_events event where event.message_id = m.id and event.event_type = 'click'
+          )) as clicked,
+          min(coalesce(m.smtp_accepted_at, m.sent_at)) filter (where m.technical_confirmation) as first_sent_at,
+          max(coalesce(m.smtp_accepted_at, m.sent_at)) filter (where m.technical_confirmation) as last_sent_at
+        from app.conversations conversation
+        join app.email_messages m on m.conversation_id = conversation.id and m.direction = 'outbound'
+        where conversation.campaign_id = c.id
+      ) outbound on true
+      left join lateral (
+        select count(distinct conversation.prospect_id) as replied
+        from app.conversations conversation
+        where conversation.campaign_id = c.id and exists (
+          select 1 from app.email_messages reply
+          where reply.conversation_id = conversation.id and reply.direction = 'inbound'
+            and reply.status = 'received'
+        )
+      ) inbound on true
+    `),
+    sqlQuery(`
+      select id::text, scope_type, campaign_id::text, field_key, filename,
+             content_type, size_bytes, (extracted_text is not null) as has_extracted_text, created_at
+      from app.instruction_attachments
+      where deleted_at is null
+      order by created_at
+    `),
   ]);
 
   const settingsRow = settingsRows[0] ?? {};
@@ -224,6 +292,7 @@ export async function loadDashboard(): Promise<Record<string, unknown>> {
     });
   }
 
+  const statsByCampaign = new Map(campaignStatsRows.map((row) => [textValue(row.campaign_id), row]));
   const campaigns = campaignRows.map((row) => {
     const initialInstructions = (() => {
       const raw = templates.get(`${row.id}:J0`)?.instructions ?? "";
@@ -234,6 +303,8 @@ export async function loadDashboard(): Promise<Record<string, unknown>> {
         return { subject: "", body: raw };
       }
     })();
+    const stats = statsByCampaign.get(textValue(row.id)) ?? {};
+    const sent = numberValue(stats.sent);
     return {
       id: textValue(row.id),
       folderId: nullableText(row.folder_id),
@@ -262,6 +333,17 @@ export async function loadDashboard(): Promise<Record<string, unknown>> {
           : templates.get(`${row.id}:${step}`)?.instructions ?? ""),
       },
       updatedAt: isoValue(row.updated_at),
+      stats: {
+        sent,
+        contacted: numberValue(stats.contacted),
+        opened: numberValue(stats.opened),
+        clicked: numberValue(stats.clicked),
+        replied: numberValue(stats.replied),
+        openRate: sent ? Math.round(numberValue(stats.opened) * 10_000 / sent) / 100 : 0,
+        clickRate: sent ? Math.round(numberValue(stats.clicked) * 10_000 / sent) / 100 : 0,
+        firstSentAt: isoValue(stats.first_sent_at),
+        lastSentAt: isoValue(stats.last_sent_at),
+      },
     };
   });
 
@@ -337,6 +419,18 @@ export async function loadDashboard(): Promise<Record<string, unknown>> {
         "health_score", "healthScore", "deliverability_score", "deliverabilityScore", "score")),
       bobworkSpamRate7d: nullableNumber(firstMetric(bobworkMetrics,
         "spam_rate_7d_pct", "spam_rate_7d", "spamRate7d", "seven_day_spam_rate", "sevenDaySpamRate")),
+      verifierResults: Array.isArray(row.verifier_results) ? row.verifier_results.map((result) => {
+        const value = jsonObject(result);
+        return {
+          provider: textValue(value.provider),
+          overallState: textValue(value.overallState, "insufficient_data"),
+          dimension: nullableText(value.dimension),
+          status: nullableText(value.status),
+          value: nullableText(value.value),
+          observedAt: isoValue(value.observedAt),
+        };
+      }) : [],
+      verifierObservedAt: isoValue(row.verifier_observed_at),
       version: numberValue(row.version),
     };
   });
@@ -409,6 +503,17 @@ export async function loadDashboard(): Promise<Record<string, unknown>> {
     gmailAccounts,
     providers,
     experiments,
+    attachments: attachmentRows.map((row) => ({
+      id: textValue(row.id),
+      scope: textValue(row.scope_type),
+      campaignId: nullableText(row.campaign_id),
+      fieldKey: textValue(row.field_key),
+      filename: textValue(row.filename),
+      contentType: textValue(row.content_type, "application/octet-stream"),
+      sizeBytes: numberValue(row.size_bytes),
+      hasExtractedText: Boolean(row.has_extracted_text),
+      createdAt: isoValue(row.created_at),
+    })),
     totals: {
       prospects: prospects.length,
       pendingApproval: prospects.filter((row) => ["draft", "prepared", "pending_approval"].includes(row.messageStatus ?? "")).length,

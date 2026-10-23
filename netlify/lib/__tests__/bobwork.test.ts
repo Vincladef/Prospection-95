@@ -1,5 +1,5 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
-import { BOBWORK_API_BASE_URL, fetchBobworkAccounts } from "../bobwork.mts";
+import { BOBWORK_API_BASE_URL, fetchBobworkAccounts, fetchBobworkResources } from "../bobwork.mts";
 
 describe("BobWork read-only API adapter", () => {
   const originalKey = process.env.BOBWORK_API;
@@ -51,5 +51,17 @@ describe("BobWork read-only API adapter", () => {
   it("rejects a successful response that contains no mailbox list", async () => {
     vi.stubGlobal("fetch", vi.fn(async () => new Response(JSON.stringify({ ok: true }), { status: 200 })));
     await expect(fetchBobworkAccounts()).rejects.toMatchObject({ code: "bobwork_invalid_response", status: 502 });
+  });
+
+  it("reads the documented stats and domains resources without turning them into write commands", async () => {
+    vi.stubGlobal("fetch", vi.fn(async (input: URL | RequestInfo) => {
+      const url = String(input);
+      return new Response(JSON.stringify(url.endsWith("/stats") ? { sent: 12 } : { domains: ["example.com"] }), { status: 200 });
+    }));
+
+    const result = await fetchBobworkResources();
+
+    expect(result.map((item) => item.resource)).toEqual(["stats", "domains"]);
+    expect(fetch).toHaveBeenCalledTimes(2);
   });
 });
