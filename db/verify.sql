@@ -6,7 +6,7 @@ SELECT to_regnamespace('app') IS NOT NULL
    AND to_regnamespace('agent_api') IS NOT NULL
    AND to_regnamespace('audit') IS NOT NULL AS all_schemas_exist;
 
-SELECT count(*) = 12 AS all_migrations_registered
+SELECT count(*) = 13 AS all_migrations_registered
 FROM app.schema_migrations
 WHERE version IN (
   '001_foundation',
@@ -20,7 +20,8 @@ WHERE version IN (
   '009_campaign_sender_contract',
   '010_signed_interaction_tracking_and_v53_verifiers',
   '011_v53_tracking_defaults',
-  '012_product_flexibility_and_attachments'
+  '012_product_flexibility_and_attachments',
+  '013_application_role_new_resources'
 );
 
 SELECT NOT has_schema_privilege('prospection95_agent', 'vault', 'USAGE')
