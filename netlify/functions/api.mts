@@ -146,9 +146,6 @@ async function emergencyStop(request: Request, identity: AdminIdentity, requestI
 
 async function createCampaign(request: Request, identity: AdminIdentity, requestId: string): Promise<Response> {
   const value = await parseJson(request, createCampaignSchema);
-  if (value.trackingOpensEnabled || value.trackingClicksEnabled) {
-    throw new HttpError(409, "tracking_not_configured", "Le tracking signé n’est pas encore configuré.");
-  }
   const row = await sqlOne<{ id: string; version: number }>(
     `with created as (
        insert into app.campaigns
@@ -194,9 +191,6 @@ async function createCampaign(request: Request, identity: AdminIdentity, request
 
 async function updateCampaign(request: Request, id: string, identity: AdminIdentity, requestId: string): Promise<Response> {
   const value = await parseJson(request, updateCampaignSchema);
-  if (value.trackingOpensEnabled || value.trackingClicksEnabled) {
-    throw new HttpError(409, "tracking_not_configured", "Le tracking signé n’est pas encore configuré.");
-  }
   const before = await sqlOne(`select * from app.campaigns where id = $1::uuid`, [id]);
   if (!before) throw new HttpError(404, "campaign_not_found", "Campagne introuvable.");
   const row = await sqlOne<{ id: string; version: number }>(

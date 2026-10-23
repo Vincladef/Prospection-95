@@ -56,6 +56,11 @@ export async function loadDashboard(): Promise<Record<string, unknown>> {
              latest.status::text as message_status,
              coalesce(latest.smtp_accepted_at, latest.sent_at) as last_sent_at,
              ga.email as sender_email,
+             coalesce(interactions.open_observed, false) as open_observed,
+             coalesce(interactions.click_observed, false) as click_observed,
+             interactions.first_open_at, interactions.last_open_at,
+             interactions.first_click_at, interactions.last_click_at,
+             interactions.open_observation_count, interactions.click_observation_count,
              exists(select 1 from app.contact_history h where h.normalized_email = p.normalized_email) as already_contacted,
              coalesce(app.is_excluded(p.email), false) as excluded,
              exclusion.reason as exclusion_reason,
@@ -87,6 +92,20 @@ export async function loadDashboard(): Promise<Record<string, unknown>> {
           coalesce(m.smtp_accepted_at, m.sent_at, m.updated_at) desc
         limit 1
       ) latest on true
+      left join lateral (
+        select
+          bool_or(observation.event_type = 'open') as open_observed,
+          bool_or(observation.event_type = 'click') as click_observed,
+          min(observation.observed_at) filter (where observation.event_type = 'open') as first_open_at,
+          max(observation.last_observed_at) filter (where observation.event_type = 'open') as last_open_at,
+          min(observation.observed_at) filter (where observation.event_type = 'click') as first_click_at,
+          max(observation.last_observed_at) filter (where observation.event_type = 'click') as last_click_at,
+          sum(observation.observation_count) filter (where observation.event_type = 'open')::int as open_observation_count,
+          sum(observation.observation_count) filter (where observation.event_type = 'click')::int as click_observation_count
+        from app.email_messages tracked_message
+        join app.tracking_events observation on observation.message_id = tracked_message.id
+        where tracked_message.conversation_id = conv.id
+      ) interactions on true
       left join lateral (
         select e.reason
         from app.exclusions e
@@ -121,7 +140,10 @@ export async function loadDashboard(): Promise<Record<string, unknown>> {
         from app.provider_limits l where l.provider_id = p.id
         order by l.observed_at desc limit 1
       ) limit_row on true
-      order by p.name
+      order by
+        case when p.capabilities ->> 'catalogOrder' ~ '^\\d+$'
+          then (p.capabilities ->> 'catalogOrder')::int else 100000 end,
+        p.name
     `),
     sqlQuery(`select * from app.experiments order by created_at desc`),
     sqlQuery(`
@@ -130,7 +152,9 @@ export async function loadDashboard(): Promise<Record<string, unknown>> {
         count(distinct e.id) filter (where e.event_type = 'smtp_accepted')::int as sent_count,
         count(distinct e.id) filter (where e.event_type = 'human_reply')::int as human_reply_count,
         count(distinct e.id) filter (where e.event_type = 'positive_reply')::int as positive_reply_count,
-        count(distinct e.id) filter (where e.event_type = 'confirmed_meeting')::int as confirmed_meeting_count
+        count(distinct e.id) filter (where e.event_type = 'confirmed_meeting')::int as confirmed_meeting_count,
+        count(distinct e.id) filter (where e.event_type = 'open')::int as open_count,
+        count(distinct e.id) filter (where e.event_type = 'click')::int as click_count
       from app.experiment_variants v
       left join app.experiment_assignments a on a.variant_id = v.id
       left join app.experiment_events e on e.variant_id = v.id and e.measured
@@ -215,6 +239,14 @@ export async function loadDashboard(): Promise<Record<string, unknown>> {
       step: nullableText(row.current_step),
       lastSentAt: isoValue(row.last_sent_at),
       senderEmail: nullableText(row.sender_email),
+      openObserved: Boolean(row.open_observed),
+      clickObserved: Boolean(row.click_observed),
+      firstOpenAt: isoValue(row.first_open_at),
+      lastOpenAt: isoValue(row.last_open_at),
+      firstClickAt: isoValue(row.first_click_at),
+      lastClickAt: isoValue(row.last_click_at),
+      openObservationCount: numberValue(row.open_observation_count),
+      clickObservationCount: numberValue(row.click_observation_count),
       alreadyContacted: Boolean(row.already_contacted),
       excluded: Boolean(row.excluded),
       exclusionReason: nullableText(row.exclusion_reason),
@@ -257,6 +289,7 @@ export async function loadDashboard(): Promise<Record<string, unknown>> {
     enabled: Boolean(row.enabled),
     needsTestEmail: Boolean(row.requires_test_email),
     capability: textValue((row.capabilities as DbRow | null)?.uiCapability, textValue(row.test_type)),
+    builtIn: Boolean((row.capabilities as DbRow | null)?.builtIn),
     quotaScope: textValue(row.quota_scope, "unknown"),
     quotaConfidence: textValue(row.quota_confidence, "unknown"),
     nextEligibleAt: isoValue(row.next_eligible_at),
@@ -277,6 +310,8 @@ export async function loadDashboard(): Promise<Record<string, unknown>> {
       humanReplyCount: numberValue(row.human_reply_count),
       positiveReplyCount: numberValue(row.positive_reply_count),
       confirmedMeetingCount: numberValue(row.confirmed_meeting_count),
+      openCount: numberValue(row.open_count),
+      clickCount: numberValue(row.click_count),
     });
     variantsByExperiment.set(textValue(row.experiment_id), list);
   }

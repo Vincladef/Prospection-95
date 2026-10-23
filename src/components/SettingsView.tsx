@@ -182,6 +182,27 @@ function GmailPanel({ accounts, vaultConfigured, onMutated, onOpenDeliverability
 function DeliverabilityPanel({ providers, accounts, vaultConfigured, onMutated }: { providers: DeliverabilityProvider[]; accounts: GmailAccount[]; vaultConfigured: boolean; onMutated: () => Promise<void> }) {
   const [providerForm, setProviderForm] = useState(false);
   const [message, setMessage] = useState<string | null>(null);
+  const [providerBusyId, setProviderBusyId] = useState<string | null>(null);
+
+  function providerUsageLabel(lastUsedAt: string | null): string {
+    if (!lastUsedAt) return "Pas encore utilisé par l’agent";
+    const date = new Date(lastUsedAt);
+    if (!Number.isFinite(date.getTime())) return "Date inconnue";
+    return `Dernière utilisation : ${date.toLocaleString("fr-FR")}`;
+  }
+
+  async function toggleProvider(provider: DeliverabilityProvider, enabled: boolean) {
+    setProviderBusyId(provider.id);
+    setMessage(null);
+    try {
+      await api.saveProvider({ enabled }, provider.id);
+      await onMutated();
+    } catch (error) {
+      setMessage(error instanceof Error ? error.message : "État du vérificateur non enregistré");
+    } finally {
+      setProviderBusyId(null);
+    }
+  }
 
   async function saveProvider(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
@@ -227,7 +248,7 @@ function DeliverabilityPanel({ providers, accounts, vaultConfigured, onMutated }
 
   return (
     <div className="settings-panel">
-      <div className="panel-heading"><div><h2>Tests & réception</h2><p>Catalogue dynamique des vérificateurs, boîtes de test et préchauffage BobWork.</p></div><button className="win-button primary" onClick={() => setProviderForm((value) => !value)}>+ Vérificateur</button></div>
+      <div className="panel-heading"><div><h2>Tests de délivrabilité &amp; boîtes réceptrices</h2><p>Infrastructure commune à tous les comptes Gmail expéditeurs. Les résultats restent individuels pour chaque adresse d’envoi.</p></div><span className="panel-stamp">PARAMÈTRES GLOBAUX</span></div>
       {message ? <div className="win-alert info" role="status">{message}</div> : null}
       <div className="deliverability-grid">
         <fieldset className="win-group">
@@ -256,13 +277,29 @@ function DeliverabilityPanel({ providers, accounts, vaultConfigured, onMutated }
           {!accounts.some((account) => account.role === "test_inbox") ? <p>Aucune boîte de test configurée.</p> : null}
         </fieldset>
       </div>
-      {providerForm ? (
+      <section className="verifier-section">
+        <div className="verifier-section-heading"><div><h3>Vérificateurs de délivrabilité</h3><p>L’IA utilisera les prestataires sélectionnés. Tous ceux de la maquette V53 sont activés par défaut ; la dernière utilisation vient uniquement de résultats réels.</p></div></div>
+        <div className="provider-list v19-provider-list">
+          {providers.map((provider) => (
+            <article className="v19-provider-item" key={provider.id}>
+              <label className="v19-provider-select">
+                <input type="checkbox" checked={provider.enabled} disabled={providerBusyId === provider.id} onChange={(event) => void toggleProvider(provider, event.target.checked)} />
+                <span><strong>{provider.name}</strong><small>{providerUsageLabel(provider.lastUsedAt)}</small></span>
+              </label>
+              <span className="v19-provider-description">{provider.capability}</span>
+              <a className="v19-provider-link" href={provider.url} target="_blank" rel="noopener noreferrer" aria-label={`Site de ${provider.name}`}>↗</a>
+              {!provider.builtIn ? <button className="v19-remove-provider" type="button" title={`Retirer ${provider.name}`} onClick={async () => { if (!window.confirm(`Supprimer ${provider.name} ?`)) return; await api.deleteProvider(provider.id); await onMutated(); }}>×</button> : null}
+            </article>
+          ))}
+          {!providers.length ? <div className="empty-state"><strong>Aucun vérificateur</strong><span>Le catalogue V53 doit être initialisé dans Neon.</span></div> : null}
+        </div>
+        <details className="v19-add-provider" open={providerForm} onToggle={(event) => setProviderForm(event.currentTarget.open)}>
+          <summary>+ Ajouter un autre vérificateur</summary>
+          {providerForm ? (
         <form className="provider-form win-group" onSubmit={(event) => void saveProvider(event)}><legend>Nouveau vérificateur</legend><label className="field"><span>Nom</span><input name="name" required /></label><label className="field"><span>URL</span><input name="url" type="url" required /></label><label className="field"><span>Capacité</span><select name="capability"><option value="content">Contenu / antispam</option><option value="placement">Placement</option><option value="authentication">SPF / DKIM / DMARC</option><option value="reputation">Réputation</option></select></label><label className="check-field"><input name="needsTestEmail" type="checkbox" /> Nécessite un email de diagnostic</label><div className="dialog-actions"><button className="win-button" type="button" onClick={() => setProviderForm(false)}>Annuler</button><button className="win-button primary">Ajouter</button></div></form>
-      ) : null}
-      <div className="provider-list">
-        {providers.map((provider) => <article key={provider.id}><header><div><strong>{provider.name}</strong><small>{provider.capability}</small></div><span className={provider.enabled ? "enabled" : "disabled"}>{provider.enabled ? "Actif" : "Désactivé"}</span></header><p><a href={provider.url} target="_blank" rel="noreferrer">{provider.url}</a></p><dl><div><dt>Quota</dt><dd>{provider.quotaScope} · {provider.quotaConfidence}</dd></div><div><dt>Prochaine éligibilité</dt><dd>{provider.nextEligibleAt ? new Date(provider.nextEligibleAt).toLocaleString("fr-FR") : "Inconnue"}</dd></div></dl><footer><button className="win-button danger" onClick={async () => { if (!window.confirm(`Supprimer ${provider.name} ?`)) return; await api.deleteProvider(provider.id); await onMutated(); }}>Supprimer</button></footer></article>)}
-        {!providers.length ? <div className="empty-state"><strong>Aucun vérificateur</strong><span>Le catalogue n’est pas figé dans le code : ajoutez les services que l’agent devra consulter.</span></div> : null}
-      </div>
+          ) : null}
+        </details>
+      </section>
     </div>
   );
 }

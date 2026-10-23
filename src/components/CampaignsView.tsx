@@ -360,9 +360,9 @@ function CampaignEditor({
           <details className="v48-campaign-tracking">
             <summary>Suivi des interactions <span>{draft.trackingOpensEnabled || draft.trackingClicksEnabled ? "Configuré" : "Désactivé"}</span></summary>
             <div className="v48-tracking-body">
-              <label><input type="checkbox" disabled checked={draft.trackingOpensEnabled} /> Détecter les ouvertures</label>
-              <label><input type="checkbox" disabled checked={draft.trackingClicksEnabled} /> Mesurer les clics sur les liens</label>
-              <small>Le suivi signé n’est pas encore configuré : aucune métrique n’est présentée comme un zéro.</small>
+              <label><input type="checkbox" checked={draft.trackingOpensEnabled} onChange={(event) => setDraft((current) => ({ ...current, trackingOpensEnabled: event.target.checked }))} /> Détecter les ouvertures</label>
+              <label><input type="checkbox" checked={draft.trackingClicksEnabled} onChange={(event) => setDraft((current) => ({ ...current, trackingClicksEnabled: event.target.checked }))} /> Mesurer les clics sur les liens</label>
+              <small>Suivi signé appliqué aux prochains envois. Une ouverture est une observation technique : les proxys d’images comme Gmail peuvent la déclencher sans lecture humaine.</small>
             </div>
           </details>
         </section>

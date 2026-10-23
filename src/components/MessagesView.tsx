@@ -80,6 +80,10 @@ const MessageRow = memo(function MessageRow({
           <strong className="person-name">{prospect.name}</strong>
           <small className="person-contact">{prospect.email || prospect.contactRaw || "Contact non adressable"}</small>
           <em className="v28-prospect-campaign">{prospect.campaignName || "Sans campagne"}</em>
+          {prospect.openObserved || prospect.clickObserved ? <span className="interaction-observations">
+            {prospect.openObserved ? <i title="Au moins une observation technique d’ouverture reçue">◉ Ouverture observée</i> : null}
+            {prospect.clickObserved ? <i title="Au moins un lien suivi a été appelé">↗ Clic observé</i> : null}
+          </span> : null}
           <span className="tiny-link">Voir toute la séquence</span>
         </button>
       </td>

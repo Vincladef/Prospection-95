@@ -56,6 +56,12 @@ export function SequenceDrawer({ prospect, onClose, onSave }: SequenceDrawerProp
           {prospect.excluded ? (
             <div className="win-alert error">⚠ Cette adresse est exclue. Toute expédition est bloquée.</div>
           ) : null}
+          {prospect.openObserved || prospect.clickObserved ? (
+            <div className="interaction-summary" aria-label="Interactions observées">
+              {prospect.openObserved ? <span><strong>◉ Ouverture observée</strong><small>{prospect.lastOpenAt ? `Dernière observation ${new Date(prospect.lastOpenAt).toLocaleString("fr-FR")}` : "Horodatage indisponible"} · signal technique potentiellement bruité</small></span> : null}
+              {prospect.clickObserved ? <span><strong>↗ Clic observé</strong><small>{prospect.lastClickAt ? `Dernière observation ${new Date(prospect.lastClickAt).toLocaleString("fr-FR")}` : "Horodatage indisponible"}</small></span> : null}
+            </div>
+          ) : null}
           <label className="field full-field">
             <span>Objet</span>
             <input value={subject} onChange={(event) => setSubject(event.target.value)} />

@@ -8,7 +8,7 @@ Le système possède trois verrous indépendants :
 2. `app.settings.outbound_enabled=false` ;
 3. `app.settings.emergency_stop=true`.
 
-Un déploiement ou un import ne doit modifier aucun de ces verrous. Les diagnostics utilisent la même file SMTP et sont donc également bloqués tant que l'envoi serveur n'est pas activé.
+Un déploiement ou un import ne doit modifier aucun de ces verrous. Seul le test SMTP unitaire, déclenché explicitement depuis le compte Gmail vers une adresse saisie par l'administrateur, peut vérifier la connexion sans ouvrir les envois de campagne.
 
 ## Environnements distants
 
@@ -41,10 +41,10 @@ La clé AES de 32 octets est créée automatiquement après la première connexi
 
 ## Migrations Neon
 
-Les neuf migrations sont additives et s'appliquent dans l'ordre lexical. Procédure :
+Les dix migrations sont additives et s'appliquent dans l'ordre lexical. Procédure :
 
 1. créer une branche enfant de la branche principale ;
-2. appliquer `db/migrations/001_...` à `009_...` avec le propriétaire de cette branche ;
+2. appliquer `db/migrations/001_...` à `010_...` avec le propriétaire de cette branche ;
 3. exécuter toutes les assertions de `db/verify.sql` ;
 4. inspecter le diff de schéma ;
 5. obtenir l'accord explicite du propriétaire ;
@@ -148,6 +148,20 @@ Après saisie :
 
 L'adaptateur doit être validé contre la documentation et une clé réelles avant de considérer l'intégration opérationnelle. TinyFish reste dans la planification ChatGPT, jamais dans Netlify.
 
+## Suivi signé des ouvertures et des clics
+
+Les options se règlent campagne par campagne et ne modifient que les futurs envois. Le backend transforme les liens HTTP(S) en redirections signées et ajoute, si demandé, un pixel d'ouverture. La clé HMAC est créée atomiquement dans le store privé Netlify Blobs `prospection95-tracking-keys`, région `eu-central-1`, puis lue en cohérence forte. `TRACKING_SIGNING_KEY`, limitée aux Functions, permet uniquement un remplacement contrôlé.
+
+Les endpoints publics `/t/c/:token` et `/t/o/:token` n'acceptent que des jetons signés et expirables. La base conserve l'empreinte SHA-256 du jeton, le domaine du lien et une classe d'agent ; elle ne conserve ni adresse IP ni agent utilisateur brut. Une ouverture reste une observation technique potentiellement déclenchée par un proxy d'images comme Gmail. Ne jamais la présenter comme une lecture humaine certaine.
+
+Recette réelle minimale :
+
+1. conserver les trois verrous d'envoi actifs et utiliser uniquement le test SMTP explicitement déclenché vers une adresse autorisée ;
+2. pour la recette d'une campagne, obtenir d'abord l'autorisation commerciale explicite puis n'activer qu'un destinataire de test ;
+3. activer le suivi sur la campagne avant la génération de l'email ;
+4. vérifier que le clic redirige vers la destination et apparaît comme « Clic observé » ;
+5. vérifier l'ouverture sur un client qui charge les images, en conservant la qualification « signal technique ».
+
 ## Arrêt, reprise et activation SMTP
 
 ### Arrêt immédiat
@@ -210,13 +224,13 @@ Retour arrière applicatif : republier le dernier déploiement Netlify sain ou r
 
 - Aucun email Gmail, brouillon/alias, BobWork ou parcours TinyFish réel n'a encore été validé avec des identifiants utilisateur.
 - Le coffre dépend du store privé Netlify Blobs ; ne jamais supprimer `prospection95-vault-keys` tant que des identifiants existent dans Neon.
-- Le suivi d'ouverture/clic possède son modèle de données et ses options de campagne, mais les endpoints signés et l'instrumentation ne sont pas encore implémentés ; laisser ces options désactivées.
+- Le suivi d'ouverture/clic est instrumenté et signé, mais une recette réelle sur un futur email de campagne reste nécessaire ; les ouvertures peuvent être bruitées par les proxys et scanners.
 - Les métriques A/B reposent sur les événements présents ; aucune conclusion statistique automatique n'est fabriquée.
 - Le build et une branche Neon de validation ne prouvent pas le fonctionnement des services externes.
 
 ## Checklist de recette finale
 
-- [ ] neuf migrations et toutes les assertions `db/verify.sql` sur la branche principale ;
+- [ ] dix migrations et toutes les assertions `db/verify.sql` sur la branche principale ;
 - [ ] `DATABASE_URL` du rôle runtime restreint ;
 - [ ] aucun jeton d'administration dans le runtime Netlify ;
 - [ ] coffre Netlify Blobs initialisé et ajout Gmail/BobWork disponible ;

@@ -46,8 +46,8 @@ const experiment: Experiment = {
   thresholdContactsPerVariant: 40,
   thresholdReplies: 20,
   variants: [
-    { id: "aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa", label: "A", name: "Référence", allocationWeight: 1, overrides: {}, assignedCount: 0, sentCount: 0, humanReplyCount: 0, positiveReplyCount: 0, confirmedMeetingCount: 0 },
-    { id: "bbbbbbbb-bbbb-4bbb-8bbb-bbbbbbbbbbbb", label: "B", name: "Version B", allocationWeight: 1, overrides: { search: { criteria: "Recherche propre à la version B" } }, assignedCount: 0, sentCount: 0, humanReplyCount: 0, positiveReplyCount: 0, confirmedMeetingCount: 0 },
+    { id: "aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa", label: "A", name: "Référence", allocationWeight: 1, overrides: {}, assignedCount: 0, sentCount: 0, humanReplyCount: 0, positiveReplyCount: 0, confirmedMeetingCount: 0, openCount: 0, clickCount: 0 },
+    { id: "bbbbbbbb-bbbb-4bbb-8bbb-bbbbbbbbbbbb", label: "B", name: "Version B", allocationWeight: 1, overrides: { search: { criteria: "Recherche propre à la version B" } }, assignedCount: 0, sentCount: 0, humanReplyCount: 0, positiveReplyCount: 0, confirmedMeetingCount: 0, openCount: 0, clickCount: 0 },
   ],
 };
 

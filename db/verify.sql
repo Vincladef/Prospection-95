@@ -6,7 +6,7 @@ SELECT to_regnamespace('app') IS NOT NULL
    AND to_regnamespace('agent_api') IS NOT NULL
    AND to_regnamespace('audit') IS NOT NULL AS all_schemas_exist;
 
-SELECT count(*) = 9 AS all_migrations_registered
+SELECT count(*) = 10 AS all_migrations_registered
 FROM app.schema_migrations
 WHERE version IN (
   '001_foundation',
@@ -17,7 +17,8 @@ WHERE version IN (
   '006_agent_operations',
   '007_sequence_scheduler',
   '008_sent_mail_reconciliation',
-  '009_campaign_sender_contract'
+  '009_campaign_sender_contract',
+  '010_signed_interaction_tracking_and_v53_verifiers'
 );
 
 SELECT NOT has_schema_privilege('prospection95_agent', 'vault', 'USAGE')
@@ -68,6 +69,22 @@ SELECT NOT EXISTS (
   SELECT 1 FROM app.outbox_jobs
   WHERE status IN ('pending','scheduled','reserved','running')
 ) AS migration_created_no_outbound_work;
+
+SELECT to_regclass('app.tracking_events') IS NOT NULL
+   AND has_table_privilege('prospection95_app', 'app.tracking_events', 'INSERT')
+   AND NOT has_table_privilege('prospection95_agent', 'app.tracking_events', 'SELECT')
+   AND EXISTS (
+     SELECT 1 FROM information_schema.columns
+     WHERE table_schema = 'app' AND table_name = 'tracking_events'
+       AND column_name = 'observation_count' AND is_nullable = 'NO'
+   )
+   AS signed_tracking_storage_is_private;
+
+SELECT count(*) = 16
+   AND bool_and(enabled)
+   AS v53_deliverability_catalog_is_present
+FROM app.deliverability_providers
+WHERE coalesce((capabilities ->> 'builtIn')::boolean, false);
 
 SELECT NOT has_table_privilege(
          'prospection95_agent', 'app.agent_prospect_registrations', 'SELECT'

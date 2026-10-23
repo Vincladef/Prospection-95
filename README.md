@@ -100,4 +100,4 @@ Avant le premier déploiement fonctionnel : valider les migrations sur une branc
 - un résultat inconnu reste inconnu : l’interface ne fabrique ni connexion, ni délivrabilité, ni envoi ;
 - une acceptation SMTP incertaine passe en revue manuelle, sans nouvelle tentative automatique.
 
-Le tracking d’ouverture/clic reste désactivé : les options et tables sont présentes, mais l’instrumentation et les endpoints signés ne sont pas encore livrés. Gmail, l’alias des brouillons, BobWork et TinyFish exigent également une recette réelle avec les comptes autorisés avant d’être annoncés opérationnels.
+Le tracking d’ouverture/clic est disponible pour les futurs emails : liens et pixel signés, clé privée Netlify Blobs et observations en base sans IP ni agent utilisateur brut. Une ouverture reste un signal technique potentiellement bruité par les proxys d’images. Gmail, l’alias des brouillons, BobWork, TinyFish et le parcours réel d’un futur email suivi exigent toujours une recette avec les comptes autorisés avant d’être annoncés opérationnels.

@@ -7,9 +7,9 @@ const migrationsDirectory = join(process.cwd(), "db", "migrations");
 describe("database safety contract", () => {
   it("keeps a contiguous additive migration set", () => {
     const files = readdirSync(migrationsDirectory).filter((name) => name.endsWith(".sql")).sort();
-    expect(files).toHaveLength(9);
+    expect(files).toHaveLength(10);
     expect(files.map((name) => name.slice(0, 3))).toEqual([
-      "001", "002", "003", "004", "005", "006", "007", "008", "009",
+      "001", "002", "003", "004", "005", "006", "007", "008", "009", "010",
     ]);
   });
 
@@ -50,5 +50,13 @@ describe("database safety contract", () => {
     expect(api).toContain("updateExperimentVariant");
     expect(api).toContain('parts[0] === "experiment-variants"');
     expect(api).toContain("overrides = coalesce($4::jsonb, v.overrides)");
+  });
+
+  it("keeps interaction observations private and seeds the V53 verifier catalog", () => {
+    const sql = readFileSync(join(migrationsDirectory, "010_signed_interaction_tracking_and_v53_verifiers.sql"), "utf8");
+    expect(sql).toContain("ALTER TABLE app.tracking_events");
+    expect(sql).toContain("REVOKE ALL ON TABLE app.tracking_events FROM PUBLIC, prospection95_agent");
+    expect(sql).toContain("'Mail-Tester'");
+    expect(sql).toContain("'CaptainDNS'");
   });
 });

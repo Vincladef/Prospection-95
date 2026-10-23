@@ -3,6 +3,7 @@ import type { Config, Context } from "@netlify/functions";
 import { isProductionOutboundEnabled } from "../lib/auth.mts";
 import { sqlOne, sqlQuery } from "../lib/db.mts";
 import { sendGmailMessage } from "../lib/gmail.mts";
+import { prepareTrackedMessage, trackingBaseUrl } from "../lib/tracking.mts";
 import { workerFailure, workerResult } from "../lib/worker-response.mts";
 
 interface LeasedMessage {
@@ -21,6 +22,8 @@ interface LeasedMessage {
   references_header: string[];
   credential_id: string;
   display_name: string | null;
+  tracking_opens_enabled: boolean;
+  tracking_clicks_enabled: boolean;
 }
 
 function isEmail(value: string): boolean {
@@ -63,10 +66,12 @@ export default async function dispatchOutbox(_request: Request, _context: Contex
               leased.max_attempts, m.id::text as message_id, m.from_address,
               m.to_addresses, m.subject, m.body_text, m.body_html,
               m.internet_message_id, m.in_reply_to, m.references_header,
-              a.credential_id::text, a.display_name
+              a.credential_id::text, a.display_name,
+              c.tracking_opens_enabled, c.tracking_clicks_enabled
        from app.lease_outbox_jobs($1, 1, 40) leased
        join app.email_messages m on m.id = leased.message_id
-       join app.gmail_accounts a on a.id = leased.account_id`,
+       join app.gmail_accounts a on a.id = leased.account_id
+       join app.campaigns c on c.id = leased.campaign_id`,
       [worker],
     );
     if (!job) return workerResult(worker, { ok: true, scheduled: Number(scheduled?.count ?? 0), leased: 0 });
@@ -76,14 +81,22 @@ export default async function dispatchOutbox(_request: Request, _context: Contex
     }
     await sqlOne(`select (app.start_outbox_attempt($1::uuid, $2::uuid)).id::text as id`, [job.id, job.lease_token]);
     const messageId = job.internet_message_id || `<${job.message_id}@mail.prospection95.local>`;
+    const prepared = await prepareTrackedMessage({
+      messageId: job.message_id,
+      text: job.body_text,
+      html: job.body_html,
+      opensEnabled: job.tracking_opens_enabled,
+      clicksEnabled: job.tracking_clicks_enabled,
+      baseUrl: job.tracking_opens_enabled || job.tracking_clicks_enabled ? trackingBaseUrl() : "",
+    });
     const result = await sendGmailMessage({
       fromEmail: job.from_address,
       fromName: job.display_name,
       credentialId: job.credential_id,
       recipient: job.to_addresses[0],
       subject: job.subject,
-      text: job.body_text,
-      html: job.body_html,
+      text: prepared.text,
+      html: prepared.html,
       messageId,
       inReplyTo: job.in_reply_to,
       references: job.references_header,

@@ -65,6 +65,14 @@ export interface Prospect {
   step: string | null;
   lastSentAt: string | null;
   senderEmail: string | null;
+  openObserved: boolean;
+  clickObserved: boolean;
+  firstOpenAt: string | null;
+  lastOpenAt: string | null;
+  firstClickAt: string | null;
+  lastClickAt: string | null;
+  openObservationCount: number;
+  clickObservationCount: number;
   alreadyContacted: boolean;
   excluded: boolean;
   exclusionReason: string | null;
@@ -120,6 +128,7 @@ export interface DeliverabilityProvider {
   enabled: boolean;
   needsTestEmail: boolean;
   capability: string;
+  builtIn: boolean;
   quotaScope: string;
   quotaConfidence: "documented" | "observed" | "estimated" | "unknown";
   nextEligibleAt: string | null;
@@ -137,6 +146,8 @@ export interface ExperimentVariant {
   humanReplyCount: number;
   positiveReplyCount: number;
   confirmedMeetingCount: number;
+  openCount: number;
+  clickCount: number;
 }
 
 export interface Experiment {
