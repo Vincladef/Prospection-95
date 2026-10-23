@@ -72,13 +72,22 @@ export async function fetchMailboxDelta(input: {
       const resetRequired = !!input.cursor.uidValidity && input.cursor.uidValidity !== uidValidity;
       const startUid = resetRequired ? 1 : Math.max(1, input.cursor.lastUid + 1);
       const maxMessages = input.maxMessages ?? 25;
-      const found = await client.search({ uid: `${startUid}:*` }, { uid: true });
+      // Gmail interprets an open range whose start is already past the last UID
+      // as a reversed range. Besides re-reading the last message, that query can
+      // take longer than Netlify's scheduled-function request window. UIDNEXT is
+      // part of the selected mailbox state, so an empty delta can be returned
+      // immediately and non-empty searches can be bounded to a real UID.
+      const mailboxLastUid = Math.max(0, Number(client.mailbox.uidNext ?? 1) - 1);
+      let lastUid = resetRequired ? 0 : input.cursor.lastUid;
+      if (mailboxLastUid < startUid) {
+        return { uidValidity, lastUid, messages: [], resetRequired };
+      }
+      const found = await client.search({ uid: `${startUid}:${mailboxLastUid}` }, { uid: true });
       const candidateUids = (Array.isArray(found) ? found : [])
-        .filter((uid) => uid >= startUid)
+        .filter((uid) => uid >= startUid && uid <= mailboxLastUid)
         .sort((left, right) => left - right)
         .slice(0, maxMessages);
       const messages: SyncedMessage[] = [];
-      let lastUid = resetRequired ? 0 : input.cursor.lastUid;
       if (!candidateUids.length) return { uidValidity, lastUid, messages, resetRequired };
       for await (const item of client.fetch(
         candidateUids.join(","),

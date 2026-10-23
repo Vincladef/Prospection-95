@@ -39,6 +39,8 @@ describe("operational IMAP classification", () => {
     expect(implementation).toContain("candidateUids.join");
     expect(implementation).toContain("maxLength: 512_000");
     expect(implementation).toContain("connectionTimeout: 7_000");
+    expect(implementation).toContain("client.mailbox.uidNext");
+    expect(implementation).toContain("`${startUid}:${mailboxLastUid}`");
     expect(implementation).toContain("client.close()");
   });
 });
