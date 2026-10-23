@@ -1718,6 +1718,15 @@ input[type="radio"] {
     margin-left: 0;
   }
 
+  /* Le bouton d'actions des comptes est placé à gauche sur mobile :
+     le menu doit donc s'ouvrir vers la droite pour rester dans l'écran. */
+  .v16-account-actions .v16-more > div {
+    right: auto;
+    left: 0;
+    max-width: calc(100vw - 32px);
+    box-sizing: border-box;
+  }
+
   .v16-account-actions > .win-button {
     flex: 1;
   }
@@ -2223,6 +2232,23 @@ input[type="radio"] {
 }
 
 @media (max-width: 650px) {
+  .v15-top {
+    align-items: flex-start;
+    flex-direction: column;
+    gap: 7px;
+  }
+
+  .v15-top > div {
+    width: 100%;
+    min-width: 0;
+    flex: none;
+  }
+
+  .v15-top h2,
+  .v15-top p {
+    overflow-wrap: anywhere;
+  }
+
   .v15-main {
     min-height: 355px;
     padding: 15px;
