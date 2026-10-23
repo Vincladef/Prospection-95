@@ -6,7 +6,7 @@ SELECT to_regnamespace('app') IS NOT NULL
    AND to_regnamespace('agent_api') IS NOT NULL
    AND to_regnamespace('audit') IS NOT NULL AS all_schemas_exist;
 
-SELECT count(*) = 10 AS all_migrations_registered
+SELECT count(*) = 11 AS all_migrations_registered
 FROM app.schema_migrations
 WHERE version IN (
   '001_foundation',
@@ -18,7 +18,8 @@ WHERE version IN (
   '007_sequence_scheduler',
   '008_sent_mail_reconciliation',
   '009_campaign_sender_contract',
-  '010_signed_interaction_tracking_and_v53_verifiers'
+  '010_signed_interaction_tracking_and_v53_verifiers',
+  '011_v53_tracking_defaults'
 );
 
 SELECT NOT has_schema_privilege('prospection95_agent', 'vault', 'USAGE')
@@ -85,6 +86,21 @@ SELECT count(*) = 16
    AS v53_deliverability_catalog_is_present
 FROM app.deliverability_providers
 WHERE coalesce((capabilities ->> 'builtIn')::boolean, false);
+
+SELECT coalesce(bool_and(tracking_opens_enabled AND tracking_clicks_enabled), true)
+   AND (
+     SELECT column_default = 'true'
+     FROM information_schema.columns
+     WHERE table_schema = 'app' AND table_name = 'campaigns'
+       AND column_name = 'tracking_opens_enabled'
+   )
+   AND (
+     SELECT column_default = 'true'
+     FROM information_schema.columns
+     WHERE table_schema = 'app' AND table_name = 'campaigns'
+       AND column_name = 'tracking_clicks_enabled'
+   ) AS v53_tracking_defaults_are_enabled
+FROM app.campaigns;
 
 SELECT NOT has_table_privilege(
          'prospection95_agent', 'app.agent_prospect_registrations', 'SELECT'

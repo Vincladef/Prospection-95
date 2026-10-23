@@ -7,9 +7,9 @@ const migrationsDirectory = join(process.cwd(), "db", "migrations");
 describe("database safety contract", () => {
   it("keeps a contiguous additive migration set", () => {
     const files = readdirSync(migrationsDirectory).filter((name) => name.endsWith(".sql")).sort();
-    expect(files).toHaveLength(10);
+    expect(files).toHaveLength(11);
     expect(files.map((name) => name.slice(0, 3))).toEqual([
-      "001", "002", "003", "004", "005", "006", "007", "008", "009", "010",
+      "001", "002", "003", "004", "005", "006", "007", "008", "009", "010", "011",
     ]);
   });
 
@@ -58,5 +58,12 @@ describe("database safety contract", () => {
     expect(sql).toContain("REVOKE ALL ON TABLE app.tracking_events FROM PUBLIC, prospection95_agent");
     expect(sql).toContain("'Mail-Tester'");
     expect(sql).toContain("'CaptainDNS'");
+  });
+
+  it("matches the V53 interaction-tracking defaults", () => {
+    const sql = readFileSync(join(migrationsDirectory, "011_v53_tracking_defaults.sql"), "utf8");
+    expect(sql).toContain("tracking_opens_enabled SET DEFAULT true");
+    expect(sql).toContain("tracking_clicks_enabled SET DEFAULT true");
+    expect(sql).toContain("SET tracking_opens_enabled = true");
   });
 });

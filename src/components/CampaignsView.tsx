@@ -549,7 +549,7 @@ export function CampaignsView({ campaigns, folders, accounts, experiments, prosp
     if (creating) return;
     setCreating(true);
     try {
-      const result = await api.createCampaign({ name: "Nouvelle campagne", status: "inactive", folderId, validationPolicy: "manual", dailyNewContactGoal: 0, sequence: emptySequence });
+      const result = await api.createCampaign({ name: "Nouvelle campagne", status: "inactive", folderId, validationPolicy: "manual", dailyNewContactGoal: 0, trackingOpensEnabled: true, trackingClicksEnabled: true, sequence: emptySequence });
       setShowArchived(false);
       setSelectedId(result.campaign.id);
       await onMutated();
