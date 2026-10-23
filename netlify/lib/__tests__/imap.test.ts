@@ -36,12 +36,14 @@ describe("operational IMAP classification", () => {
 
   it("bounds mailbox synchronization to a small UID set and capped source", () => {
     const implementation = readFileSync(join(process.cwd(), "netlify", "lib", "imap.mts"), "utf8");
+    const worker = readFileSync(join(process.cwd(), "netlify", "functions", "sync-mailboxes.mts"), "utf8");
     expect(implementation).toContain("candidateUids.join");
     expect(implementation).toContain("maxLength: 512_000");
-    expect(implementation).toContain("connectionTimeout: 5_000");
+    expect(implementation).toContain("connectionTimeout: 20_000");
     expect(implementation).toContain("client.status(selectedMailbox");
     expect(implementation).toContain("operationDeadline");
     expect(implementation).toContain("`${startUid}:${mailboxLastUid}`");
     expect(implementation).toContain("client.close()");
+    expect(worker).toContain('background: true');
   });
 });

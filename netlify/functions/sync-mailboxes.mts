@@ -165,4 +165,4 @@ export default async function syncMailboxes(_request: Request, _context: Context
   }
 }
 
-export const config: Config = { schedule: "*/10 * * * *" };
+export const config: Config = { schedule: "*/10 * * * *", background: true };

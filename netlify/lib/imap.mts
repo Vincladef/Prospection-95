@@ -62,14 +62,14 @@ export async function fetchMailboxDelta(input: {
     auth: { user: input.email, pass: password },
     logger: false,
     disableAutoIdle: true,
-    connectionTimeout: 5_000,
-    greetingTimeout: 5_000,
-    socketTimeout: 7_000,
+    connectionTimeout: 20_000,
+    greetingTimeout: 15_000,
+    socketTimeout: 30_000,
   });
-  // Netlify's scheduler gives synchronous invocations a short response window.
-  // Closing the client rejects whichever IMAP operation is pending, leaving time
-  // for the worker to persist a useful failure instead of being cut off at 15 s.
-  const operationDeadline = setTimeout(() => client.close(), 10_000);
+  // This worker runs in the background because Gmail can spend more than ten
+  // seconds establishing TLS. Keep our own ceiling well below Netlify's
+  // background-function limit so a stalled IMAP command still releases its claim.
+  const operationDeadline = setTimeout(() => client.close(), 45_000);
   try {
     await client.connect();
     const selectedMailbox = await mailboxPath(client, input.cursor.mailbox);
