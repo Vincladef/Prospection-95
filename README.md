@@ -25,7 +25,7 @@ React + Vite
 Netlify Functions ─── Neon PostgreSQL
     │                 app / vault / agent_api / audit
     ├── SMTP/IMAP Gmail
-    └── BobWork / vérificateurs configurables
+    └── BobWork côté serveur / vérificateurs configurables
 ```
 
 - `src/` : interface React et client API ;
@@ -60,6 +60,7 @@ La variable `DATABASE_URL` doit viser une branche Neon de développement. N’ap
 | --- | --- | --- | --- |
 | `VITE_NEON_AUTH_URL` | Builds | non | URL publique de Neon Auth |
 | `DATABASE_URL` | Functions | oui | connexion PostgreSQL poolée |
+| `BOBWORK_API` | Functions | oui | clé de lecture de l’API officielle BobWork |
 | `NEON_AUTH_JWKS_URL` | Functions | non | validation locale des JWT |
 | `ADMIN_EMAIL` | Functions | non | unique administrateur autorisé |
 | `APP_BASE_URL` | Functions | non | URL canonique du site |
@@ -100,4 +101,4 @@ Avant le premier déploiement fonctionnel : valider les migrations sur une branc
 - un résultat inconnu reste inconnu : l’interface ne fabrique ni connexion, ni délivrabilité, ni envoi ;
 - une acceptation SMTP incertaine passe en revue manuelle, sans nouvelle tentative automatique.
 
-Le tracking d’ouverture/clic est disponible pour les futurs emails : liens et pixel signés, clé privée Netlify Blobs et observations en base sans IP ni agent utilisateur brut. Une ouverture reste un signal technique potentiellement bruité par les proxys d’images. Gmail, l’alias des brouillons, BobWork, TinyFish et le parcours réel d’un futur email suivi exigent toujours une recette avec les comptes autorisés avant d’être annoncés opérationnels.
+Le tracking d’ouverture/clic est disponible pour les futurs emails : liens et pixel signés, clé privée Netlify Blobs et observations en base sans IP ni agent utilisateur brut. Une ouverture reste un signal technique potentiellement bruité par les proxys d’images. L’alias des brouillons, BobWork, TinyFish et le parcours réel d’un futur email suivi exigent toujours une recette avec les comptes autorisés avant d’être annoncés opérationnels.

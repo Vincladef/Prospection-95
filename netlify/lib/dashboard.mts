@@ -28,6 +28,30 @@ function timeValue(value: unknown): string {
   return textValue(value, "08:00").slice(0, 5);
 }
 
+function jsonObject(value: unknown): DbRow {
+  return value && typeof value === "object" && !Array.isArray(value) ? value as DbRow : {};
+}
+
+function firstMetric(metrics: DbRow, ...keys: string[]): unknown {
+  const sources = [metrics, jsonObject(metrics.statistics), jsonObject(metrics.stats), jsonObject(metrics.metrics)];
+  for (const source of sources) {
+    for (const key of keys) if (source[key] !== undefined && source[key] !== null) return source[key];
+  }
+  return null;
+}
+
+function nullableNumber(value: unknown): number | null {
+  if (value === null || value === undefined || value === "") return null;
+  const parsed = Number(value);
+  return Number.isFinite(parsed) ? parsed : null;
+}
+
+function nullableBoolean(value: unknown): boolean | null {
+  if (typeof value === "boolean") return value;
+  if (typeof value === "string" && /^(?:true|false)$/i.test(value)) return value.toLowerCase() === "true";
+  return null;
+}
+
 export async function loadDashboard(): Promise<Record<string, unknown>> {
   const [vaultConfigured, settingsRows, folderRows, campaignRows, templateRows, prospectRows, messageRows, accountRows, providerRows, experimentRows, variantRows] = await Promise.all([
     credentialVaultConfigured(),
@@ -127,7 +151,27 @@ export async function loadDashboard(): Promise<Record<string, unknown>> {
       where m.direction = 'outbound' and m.step is not null
       order by conv.prospect_id, m.step, m.content_version desc, m.created_at desc
     `),
-    sqlQuery(`select * from app.gmail_accounts where deleted_at is null order by created_at`),
+    sqlQuery(`
+      select ga.*,
+             bw.connected as bobwork_connected,
+             bw.warmup_state as bobwork_warmup_state,
+             bw.metrics as bobwork_metrics,
+             bw.observed_at as bobwork_observed_at,
+             bc.status as bobwork_connection_status,
+             bc.last_sync_at as bobwork_last_sync_at,
+             bc.last_error_code as bobwork_last_error_code
+      from app.gmail_accounts ga
+      left join lateral (
+        select b.connected, b.warmup_state, b.metrics, b.observed_at
+        from app.bobwork_snapshots b
+        where b.account_id = ga.id
+        order by b.observed_at desc
+        limit 1
+      ) bw on true
+      left join app.bobwork_connections bc on bc.singleton
+      where ga.deleted_at is null
+      order by ga.created_at
+    `),
     sqlQuery(`
       select p.*,
              limit_row.scope_type as quota_scope,
@@ -257,30 +301,45 @@ export async function loadDashboard(): Promise<Record<string, unknown>> {
     };
   });
 
-  const gmailAccounts = accountRows.map((row) => ({
-    id: textValue(row.id),
-    email: textValue(row.email),
-    displayName: nullableText(row.display_name),
-    role: textValue(row.role),
-    status: textValue(row.status),
-    hasCredential: row.credential_id != null,
-    dailyLimit: numberValue(row.daily_limit),
-    warmupDailyLimit: row.warmup_daily_limit == null ? null : numberValue(row.warmup_daily_limit),
-    sendDays: Array.isArray(row.send_days) ? row.send_days.map(numberValue) : [],
-    sendStart: timeValue(row.send_start),
-    sendEnd: timeValue(row.send_end),
-    timezone: textValue(row.timezone, "Europe/Paris"),
-    randomizeSendTimes: Boolean(row.randomize_send_times),
-    progressiveRampEnabled: Boolean(row.progressive_ramp_enabled),
-    pausedAt: isoValue(row.paused_at),
-    pauseSource: nullableText(row.pause_source),
-    pauseReason: nullableText(row.pause_reason),
-    smtpVerifiedAt: isoValue(row.smtp_verified_at),
-    imapVerifiedAt: isoValue(row.imap_verified_at),
-    lastSyncAt: isoValue(row.last_sync_at),
-    lastErrorCode: nullableText(row.last_error_code),
-    version: numberValue(row.version),
-  }));
+  const gmailAccounts = accountRows.map((row) => {
+    const bobworkMetrics = jsonObject(row.bobwork_metrics);
+    return {
+      id: textValue(row.id),
+      email: textValue(row.email),
+      displayName: nullableText(row.display_name),
+      role: textValue(row.role),
+      status: textValue(row.status),
+      hasCredential: row.credential_id != null,
+      dailyLimit: numberValue(row.daily_limit),
+      warmupDailyLimit: row.warmup_daily_limit == null ? null : numberValue(row.warmup_daily_limit),
+      sendDays: Array.isArray(row.send_days) ? row.send_days.map(numberValue) : [],
+      sendStart: timeValue(row.send_start),
+      sendEnd: timeValue(row.send_end),
+      timezone: textValue(row.timezone, "Europe/Paris"),
+      randomizeSendTimes: Boolean(row.randomize_send_times),
+      progressiveRampEnabled: Boolean(row.progressive_ramp_enabled),
+      pausedAt: isoValue(row.paused_at),
+      pauseSource: nullableText(row.pause_source),
+      pauseReason: nullableText(row.pause_reason),
+      smtpVerifiedAt: isoValue(row.smtp_verified_at),
+      imapVerifiedAt: isoValue(row.imap_verified_at),
+      lastSyncAt: isoValue(row.last_sync_at),
+      lastErrorCode: nullableText(row.last_error_code),
+      bobworkConnected: row.bobwork_connected == null ? null : Boolean(row.bobwork_connected),
+      bobworkWarmupState: textValue(row.bobwork_warmup_state, "unknown"),
+      bobworkObservedAt: isoValue(row.bobwork_observed_at),
+      bobworkConnectionStatus: textValue(row.bobwork_connection_status, "unconfigured"),
+      bobworkLastSyncAt: isoValue(row.bobwork_last_sync_at),
+      bobworkLastErrorCode: nullableText(row.bobwork_last_error_code),
+      bobworkReadyForOutbound: nullableBoolean(firstMetric(bobworkMetrics,
+        "ready_for_outbound", "readyForOutbound", "is_ready_for_outbound", "isReadyForOutbound")),
+      bobworkHealthScore: nullableNumber(firstMetric(bobworkMetrics,
+        "health_score", "healthScore", "deliverability_score", "deliverabilityScore", "score")),
+      bobworkSpamRate7d: nullableNumber(firstMetric(bobworkMetrics,
+        "spam_rate_7d", "spamRate7d", "seven_day_spam_rate", "sevenDaySpamRate")),
+      version: numberValue(row.version),
+    };
+  });
 
   const providers = providerRows.map((row) => ({
     id: textValue(row.id),

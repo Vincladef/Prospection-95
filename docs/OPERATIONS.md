@@ -25,6 +25,7 @@ Une branche Neon temporaire doit toujours précéder une migration de la branche
 | --- | --- | --- | --- |
 | `VITE_NEON_AUTH_URL` | Builds | publique | configurée |
 | `DATABASE_URL` | Functions | secrète | configurée avec `prospection95_runtime`, rôle applicatif restreint |
+| `BOBWORK_API` | Functions | secrète | clé BobWork, jamais transmise au navigateur |
 | `NEON_AUTH_JWKS_URL` | Functions | publique | configurée |
 | `ADMIN_EMAIL` | Functions | non secrète | configurée |
 | `APP_BASE_URL` | Functions | publique | configurée |
@@ -134,19 +135,19 @@ Le backend IMAP positionne les en-têtes RFC mais ne peut pas garantir à lui se
 
 ## BobWork et vérificateurs
 
-La clé BobWork est saisie dans **Paramètres → Tests & réception** et stockée dans le coffre, jamais comme variable BobWork Netlify. L'état « configuré » ne prouve pas que l'API fonctionne.
+La clé BobWork est la variable Netlify secrète `BOBWORK_API`, limitée aux Functions. Aucun champ BobWork n’est affiché dans **Tests & réception** et la clé n’est jamais envoyée au navigateur ni stockée dans Neon.
 
-Si BobWork fournit une documentation d’API officielle, ouvrir **Contrat API avancé** et renseigner l’URL HTTPS, le chemin des comptes, l’URL de documentation et le schéma d’authentification exactement comme documentés. En l’absence de contrat officiel vérifiable, conserver uniquement la clé : le worker laisse alors l’état inconnu au lieu d’inventer un endpoint.
+L’adaptateur utilise uniquement le contrat officiel en lecture : `GET https://app-emailwarmup.bobwork.ai/api/v1/mailboxes`, avec authentification Bearer. Le worker `sync-bobwork` s’exécute toutes les six heures ; **Comptes Gmail → Détails de délivrabilité → Actualiser les mesures BobWork** déclenche la même lecture immédiatement.
 
-Après saisie :
+Après configuration ou rotation de la variable :
 
-1. attendre le worker `sync-bobwork` ;
-2. vérifier une réponse réelle et la date `observed_at` ;
-3. comparer les comptes renvoyés aux comptes Gmail ;
-4. conserver `unknown` pour toute propriété absente ;
-5. ne modifier aucun paramètre de préchauffage automatiquement.
+1. publier un nouveau déploiement Netlify, les variables étant figées par déploiement ;
+2. déclencher **Actualiser les mesures BobWork** ;
+3. vérifier une réponse réelle et la date `observed_at` ;
+4. comparer les boîtes renvoyées aux comptes Gmail ;
+5. conserver `unknown` pour toute propriété absente.
 
-L'adaptateur doit être validé contre la documentation et une clé réelles avant de considérer l'intégration opérationnelle. TinyFish reste dans la planification ChatGPT, jamais dans Netlify.
+L’intégration ne modifie jamais BobWork et ne change aucun paramètre de préchauffage automatiquement. TinyFish reste dans la planification ChatGPT, jamais dans Netlify.
 
 ## Suivi signé des ouvertures et des clics
 
@@ -222,7 +223,7 @@ Retour arrière applicatif : republier le dernier déploiement Netlify sain ou r
 
 ## Limites à ne pas masquer
 
-- Aucun email Gmail, brouillon/alias, BobWork ou parcours TinyFish réel n'a encore été validé avec des identifiants utilisateur.
+- Aucun brouillon/alias, BobWork ou parcours TinyFish réel ne doit être considéré comme validé sans recette avec les identifiants utilisateur.
 - Le coffre dépend du store privé Netlify Blobs ; ne jamais supprimer `prospection95-vault-keys` tant que des identifiants existent dans Neon.
 - Le suivi d'ouverture/clic est instrumenté et signé, mais une recette réelle sur un futur email de campagne reste nécessaire ; les ouvertures peuvent être bruitées par les proxys et scanners.
 - Les métriques A/B reposent sur les événements présents ; aucune conclusion statistique automatique n'est fabriquée.
@@ -233,7 +234,7 @@ Retour arrière applicatif : republier le dernier déploiement Netlify sain ou r
 - [ ] onze migrations et toutes les assertions `db/verify.sql` sur la branche principale ;
 - [ ] `DATABASE_URL` du rôle runtime restreint ;
 - [ ] aucun jeton d'administration dans le runtime Netlify ;
-- [ ] coffre Netlify Blobs initialisé et ajout Gmail/BobWork disponible ;
+- [ ] coffre Netlify Blobs initialisé et ajout Gmail disponible ;
 - [ ] compte Neon Auth administrateur et refus d'un autre compte ;
 - [ ] import contrôlé sans travail SMTP ;
 - [ ] Gmail principal + expéditeur de test, IMAP réel ;

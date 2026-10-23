@@ -104,6 +104,15 @@ export interface GmailAccount {
   imapVerifiedAt: string | null;
   lastSyncAt: string | null;
   lastErrorCode: string | null;
+  bobworkConnected: boolean | null;
+  bobworkWarmupState: string;
+  bobworkObservedAt: string | null;
+  bobworkConnectionStatus: string;
+  bobworkLastSyncAt: string | null;
+  bobworkLastErrorCode: string | null;
+  bobworkReadyForOutbound: boolean | null;
+  bobworkHealthScore: number | null;
+  bobworkSpamRate7d: number | null;
   version: number;
 }
 

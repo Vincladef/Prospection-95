@@ -133,6 +133,43 @@ function GmailPanel({ accounts, vaultConfigured, onMutated, onOpenDeliverability
     }
   }
 
+  async function syncBobwork() {
+    setBusyId("bobwork");
+    setMessage(null);
+    try {
+      const result = await api.syncBobwork();
+      await onMutated();
+      setMessage(`BobWork connecté : ${result.records} boîte(s) lue(s) depuis l’API officielle.`);
+    } catch (error) {
+      setMessage(error instanceof Error ? error.message : "Synchronisation BobWork impossible");
+    } finally {
+      setBusyId(null);
+    }
+  }
+
+  function accountState(account: GmailAccount): { label: string; className: string } {
+    if (account.pausedAt || account.status === "suspended") return { label: "En pause", className: "pause" };
+    if (account.status === "active" && account.smtpVerifiedAt && account.imapVerifiedAt) return { label: "Prêt", className: "ready" };
+    if (account.status === "error") return { label: "À vérifier", className: "pause" };
+    return { label: "Configuration", className: "setup" };
+  }
+
+  function roleLabel(account: GmailAccount): string {
+    if (account.role === "primary") return "Gmail principal";
+    if (account.role === "test_inbox") return "Boîte réceptrice de test";
+    return account.displayName || "Expéditeur";
+  }
+
+  function warmupLabel(account: GmailAccount): string {
+    if (!account.bobworkObservedAt) {
+      if (account.bobworkConnectionStatus === "error") return `Erreur de synchronisation${account.bobworkLastErrorCode ? ` (${account.bobworkLastErrorCode})` : ""}`;
+      return "Aucune mesure reçue";
+    }
+    const labels: Record<string, string> = { active: "Actif", paused: "En pause", interrupted: "Interrompu", inactive: "Inactif", unknown: "État non communiqué" };
+    const ready = account.bobworkReadyForOutbound === true ? " · prêt pour l’envoi" : account.bobworkReadyForOutbound === false ? " · pas encore prêt" : "";
+    return `${labels[account.bobworkWarmupState] || account.bobworkWarmupState}${ready}`;
+  }
+
   return (
     <div className="settings-panel">
       <div className="panel-heading"><div><h2>Comptes Gmail</h2><p>Connecte tes adresses une fois, puis consulte leur délivrabilité.</p></div><button className="win-button primary" disabled={!vaultConfigured} onClick={() => setOpen((value) => !value)}>+ Ajouter un compte</button></div>
@@ -152,26 +189,49 @@ function GmailPanel({ accounts, vaultConfigured, onMutated, onOpenDeliverability
           <div className="settings-actions"><span>Transmission HTTPS → chiffrement AES-256-GCM côté serveur.</span><div><button type="button" className="win-button" onClick={() => setOpen(false)}>Annuler</button><button className="win-button primary">Chiffrer et enregistrer</button></div></div>
         </form>
       ) : null}
-      <div className="account-list">
-        {accounts.map((account) => (
-          <article className="account-card" key={account.id}>
-            <header><div><span className="mail-glyph">✉</span><div><strong>{account.email}</strong><small>{account.role === "primary" ? "Gmail principal" : account.role === "sender" ? "Compte expéditeur" : "Boîte de test"}</small></div></div><span className={`account-state ${account.status}`}>{account.status}</span></header>
-            <dl>
-              <div><dt>Coffre</dt><dd>{account.hasCredential ? "Clé enregistrée" : "À configurer"}</dd></div>
-              <div><dt>SMTP</dt><dd>{account.smtpVerifiedAt ? `Vérifié ${new Date(account.smtpVerifiedAt).toLocaleDateString("fr-FR")}` : "Non vérifié"}</dd></div>
-              <div><dt>IMAP</dt><dd>{account.imapVerifiedAt ? `Vérifié ${new Date(account.imapVerifiedAt).toLocaleDateString("fr-FR")}` : "Non vérifié"}</dd></div>
-              <div><dt>Capacité</dt><dd>{account.dailyLimit}/jour · {account.sendStart}–{account.sendEnd}</dd></div>
-              <div><dt>Dernière synchro</dt><dd>{account.lastSyncAt ? new Date(account.lastSyncAt).toLocaleString("fr-FR") : "Jamais"}</dd></div>
-              <div><dt>État</dt><dd>{account.pausedAt ? `Suspendu (${account.pauseSource || "inconnu"})` : "Disponible selon garde-fous"}</dd></div>
-            </dl>
-            <form className="gmail-test-send" onSubmit={(event) => void sendTestEmail(event, account)}>
-              <label><span>Envoyer un email test à</span><input name="recipient" type="email" required placeholder="adresse@exemple.com" autoComplete="email" /></label>
-              <button className="win-button primary" disabled={busyId === account.id || !account.hasCredential}>{busyId === account.id ? "Envoi…" : "Envoyer le test"}</button>
-              <small>Envoi diagnostic unique : l’arrêt des campagnes reste actif.</small>
-            </form>
-            <footer><button className="win-button" disabled={busyId === account.id || !account.hasCredential} onClick={() => void test(account.id)}>{busyId === account.id ? "Test…" : "Tester SMTP / IMAP"}</button><button className="win-button danger" onClick={async () => { if (!window.confirm(`Supprimer ${account.email} ?`)) return; await api.deleteGmailAccount(account.id); await onMutated(); }}>Supprimer</button></footer>
-          </article>
-        ))}
+      <div className="account-list v16-account-list">
+        {accounts.map((account) => {
+          const state = accountState(account);
+          const score = account.bobworkHealthScore;
+          return (
+            <article className="v19-account-entry" key={account.id}>
+              <div className="v16-account-row">
+                <div className="sender-avatar">✉</div>
+                <div className="sender-identity">
+                  <strong>{account.email}</strong>
+                  <div className="v14-account-summary"><span className={`v14-tag ${state.className}`}>{state.label}</span><small>{roleLabel(account)}</small></div>
+                  <div className="v42-account-quota"><strong>{account.dailyLimit} emails/jour max.</strong><small>Lun–ven · {account.sendStart}–{account.sendEnd}</small></div>
+                </div>
+                <div className="v19-overview">
+                  <div className="v19-score-label">Indice de délivrabilité</div>
+                  <strong className={`v19-score ${score === null ? "unknown" : "has-score"}`}>{score === null ? "Non évalué" : `${score}/100`}</strong>
+                  <small>{score === null ? "En attente de mesures réelles" : "Source : BobWork"}</small>
+                </div>
+                <div className="v16-account-actions">
+                  <button className="win-button primary" type="button" disabled={busyId === account.id || !account.hasCredential} onClick={() => void test(account.id)}>{busyId === account.id ? "Test…" : "Tester SMTP / IMAP"}</button>
+                  <details className="v16-more"><summary title="Autres actions" aria-label="Autres actions">⋯</summary><div><button className="win-button danger" type="button" onClick={async () => { if (!window.confirm(`Supprimer ${account.email} ?`)) return; await api.deleteGmailAccount(account.id); await onMutated(); }}>Supprimer</button></div></details>
+                </div>
+              </div>
+              <details className="v19-account-details">
+                <summary>Détails de délivrabilité <span>({account.bobworkObservedAt ? "mesures BobWork disponibles" : "aucune mesure enregistrée"})</span></summary>
+                <div className="v19-details-body v20-details-body">
+                  <div><b>Coffre privé</b><span>{account.hasCredential ? "Clé enregistrée" : "À configurer"}</span></div>
+                  <div><b>SMTP</b><span>{account.smtpVerifiedAt ? `Vérifié ${new Date(account.smtpVerifiedAt).toLocaleDateString("fr-FR")}` : "Non vérifié"}</span></div>
+                  <div><b>IMAP</b><span>{account.imapVerifiedAt ? `Vérifié ${new Date(account.imapVerifiedAt).toLocaleDateString("fr-FR")}` : "Non vérifié"}</span></div>
+                  <div><b>Warm-up BobWork</b><span>{warmupLabel(account)}</span></div>
+                  <div><b>Taux spam sur 7 jours</b><span>{account.bobworkSpamRate7d === null ? "Non mesuré" : `${account.bobworkSpamRate7d}%`}</span></div>
+                  <div><b>Dernier contrôle</b><span>{account.bobworkObservedAt ? new Date(account.bobworkObservedAt).toLocaleString("fr-FR") : account.lastSyncAt ? new Date(account.lastSyncAt).toLocaleString("fr-FR") : "Aucune date enregistrée"}</span></div>
+                  <form className="gmail-test-send" onSubmit={(event) => void sendTestEmail(event, account)}>
+                    <label><span>Envoyer un email test à</span><input name="recipient" type="email" required placeholder="adresse@exemple.com" autoComplete="email" /></label>
+                    <button className="win-button primary" disabled={busyId === account.id || !account.hasCredential}>{busyId === account.id ? "Envoi…" : "Envoyer le test"}</button>
+                    <small>Envoi diagnostic unique : l’arrêt des campagnes reste actif.</small>
+                  </form>
+                  <button className="win-button" type="button" disabled={busyId === "bobwork"} onClick={() => void syncBobwork()}>{busyId === "bobwork" ? "Synchronisation…" : "Actualiser les mesures BobWork"}</button>
+                </div>
+              </details>
+            </article>
+          );
+        })}
         {!accounts.length ? <div className="v53-sender-empty">Aucune adresse. Ajoute un compte pour commencer.</div> : null}
       </div>
       <div className="v53-settings-crosslink"><span>Les boîtes réceptrices et les vérificateurs sont gérés pour toute l’application.</span><button className="win-button" onClick={onOpenDeliverability}>Ouvrir Tests &amp; réception ↗</button></div>
@@ -179,7 +239,7 @@ function GmailPanel({ accounts, vaultConfigured, onMutated, onOpenDeliverability
   );
 }
 
-function DeliverabilityPanel({ providers, accounts, vaultConfigured, onMutated }: { providers: DeliverabilityProvider[]; accounts: GmailAccount[]; vaultConfigured: boolean; onMutated: () => Promise<void> }) {
+function DeliverabilityPanel({ providers, accounts, onMutated }: { providers: DeliverabilityProvider[]; accounts: GmailAccount[]; onMutated: () => Promise<void> }) {
   const [providerForm, setProviderForm] = useState(false);
   const [message, setMessage] = useState<string | null>(null);
   const [providerBusyId, setProviderBusyId] = useState<string | null>(null);
@@ -218,59 +278,11 @@ function DeliverabilityPanel({ providers, accounts, vaultConfigured, onMutated }
     }
   }
 
-  async function saveBobWork(event: FormEvent<HTMLFormElement>) {
-    event.preventDefault();
-    const form = event.currentTarget;
-    const data = new FormData(form);
-    const secret = String(data.get("secret") || "");
-    const baseUrl = String(data.get("baseUrl") || "").trim();
-    const accountsPath = String(data.get("accountsPath") || "").trim();
-    const documentationUrl = String(data.get("documentationUrl") || "").trim();
-    const metadata = baseUrl && accountsPath && documentationUrl
-      ? {
-          baseUrl,
-          accountsPath,
-          documentationUrl,
-          authHeader: String(data.get("authHeader") || "authorization").trim(),
-          authScheme: String(data.get("authScheme") || "Bearer").trim(),
-        }
-      : undefined;
-    try {
-      await api.saveCredential({ kind: "bobwork", label: "BobWork", secret, metadata });
-      form.reset();
-      setMessage(metadata
-        ? "Clé BobWork et contrat API chiffrés. État non vérifié tant qu’une synchronisation réelle n’a pas réussi."
-        : "Clé BobWork chiffrée. La synchronisation reste inconnue tant qu’un contrat API officiel n’est pas renseigné.");
-    } catch (error) {
-      setMessage(error instanceof Error ? error.message : "Clé non enregistrée");
-    }
-  }
-
   return (
     <div className="settings-panel">
       <div className="panel-heading"><div><h2>Tests de délivrabilité &amp; boîtes réceptrices</h2><p>Infrastructure commune à tous les comptes Gmail expéditeurs. Les résultats restent individuels pour chaque adresse d’envoi.</p></div><span className="panel-stamp">PARAMÈTRES GLOBAUX</span></div>
       {message ? <div className="win-alert info" role="status">{message}</div> : null}
-      <div className="deliverability-grid">
-        <fieldset className="win-group">
-          <legend>BobWork</legend>
-          <p>La clé est enregistrée dans le coffre. « Configuré » ne signifie ni connecté, ni préchauffé, ni délivrable.</p>
-          {!vaultConfigured ? <div className="win-alert warning" role="alert">Le coffre privé Netlify n’est pas encore disponible. Rechargez la page pour relancer son initialisation automatique.</div> : null}
-          <form className="secret-inline-form" onSubmit={(event) => void saveBobWork(event)}>
-            <input name="secret" type="password" required disabled={!vaultConfigured} placeholder="Remplacer la clé API" autoComplete="new-password" />
-            <button className="win-button primary" disabled={!vaultConfigured}>Enregistrer</button>
-            <details className="full-field">
-              <summary>Contrat API avancé (uniquement d’après la documentation BobWork)</summary>
-              <div className="form-grid">
-                <label className="field"><span>URL de base HTTPS</span><input name="baseUrl" type="url" placeholder="https://api.exemple.tld" /></label>
-                <label className="field"><span>Chemin des comptes</span><input name="accountsPath" placeholder="/v1/accounts" /></label>
-                <label className="field"><span>Documentation officielle</span><input name="documentationUrl" type="url" /></label>
-                <label className="field"><span>En-tête d’authentification</span><input name="authHeader" defaultValue="authorization" /></label>
-                <label className="field"><span>Schéma</span><input name="authScheme" defaultValue="Bearer" /></label>
-              </div>
-            </details>
-          </form>
-          <div className="mini-account-list">{accounts.filter((account) => account.role === "sender").map((account) => <span key={account.id}>{account.email}<em>état BobWork inconnu</em></span>)}</div>
-        </fieldset>
+      <div className="deliverability-grid receivers-only">
         <fieldset className="win-group">
           <legend>Boîtes réceptrices</legend>
           {accounts.filter((account) => account.role === "test_inbox").map((account) => <div className="receiver-row" key={account.id}><strong>{account.email}</strong><span>{account.imapVerifiedAt ? "IMAP vérifié" : "Accès non vérifié"}</span></div>)}
@@ -394,7 +406,7 @@ export function SettingsView({ settings, accounts, providers, prospects, onMutat
         <div className="settings-body">
           {tab === "instructions" ? <InstructionsPanel settings={settings} onMutated={onMutated} /> : null}
           {tab === "accounts" ? <GmailPanel accounts={accounts} vaultConfigured={settings.vaultConfigured} onMutated={onMutated} onOpenDeliverability={() => setTab("deliverability")} /> : null}
-          {tab === "deliverability" ? <DeliverabilityPanel providers={providers} accounts={accounts} vaultConfigured={settings.vaultConfigured} onMutated={onMutated} /> : null}
+          {tab === "deliverability" ? <DeliverabilityPanel providers={providers} accounts={accounts} onMutated={onMutated} /> : null}
           {tab === "prospects" ? <ProspectsPanel prospects={prospects} onMutated={onMutated} /> : null}
         </div>
       </div>

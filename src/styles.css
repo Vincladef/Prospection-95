@@ -1379,6 +1379,271 @@ input[type="radio"] {
   border-top: 1px solid #aaa;
 }
 
+/* Comptes Gmail — structure et densité de la maquette V53. */
+.v16-account-list {
+  gap: 0;
+  background: #fff;
+  border: 1px solid #aaa;
+}
+
+.v19-account-entry {
+  background: #fff;
+  border-bottom: 1px solid #aaa;
+}
+
+.v19-account-entry:last-child {
+  border-bottom: 0;
+}
+
+.v16-account-row {
+  display: flex;
+  align-items: center;
+  gap: 14px;
+  padding: 13px 15px;
+  flex-wrap: wrap;
+  background: #fbfbfb;
+}
+
+.sender-avatar {
+  width: 34px;
+  height: 34px;
+  flex: 0 0 34px;
+  display: grid;
+  place-items: center;
+  color: #000080;
+  background: #dee5fd;
+  border: 1px solid #9aa3b7;
+  font-size: 18px;
+}
+
+.sender-identity {
+  min-width: 190px;
+  flex: 1;
+}
+
+.sender-identity > strong {
+  overflow-wrap: anywhere;
+}
+
+.v14-account-summary {
+  display: flex;
+  align-items: center;
+  gap: 9px;
+  flex-wrap: wrap;
+  margin-top: 5px;
+}
+
+.v14-account-summary small {
+  color: #555;
+}
+
+.v14-tag {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  padding: 4px 8px;
+  white-space: nowrap;
+  background: #eee;
+  border: 1px solid #adadad;
+  font-size: 10px;
+  font-weight: 700;
+  text-transform: uppercase;
+}
+
+.v14-tag.setup {
+  color: #805a00;
+  background: #fff3d0;
+  border-color: #c9b37f;
+}
+
+.v14-tag.ready {
+  color: #17623e;
+  background: #e0f4e6;
+  border-color: #73b28c;
+}
+
+.v14-tag.pause {
+  color: #8a2424;
+  background: #ffe4e4;
+  border-color: #bf9999;
+}
+
+.v42-account-quota {
+  display: flex;
+  align-items: center;
+  gap: 5px 10px;
+  flex-wrap: wrap;
+  margin-top: 5px;
+  font-size: 11px;
+}
+
+.v42-account-quota strong {
+  padding: 3px 6px;
+  color: #000080;
+  background: #eceefd;
+  border: 1px solid #a9afcc;
+}
+
+.v42-account-quota small {
+  color: #555;
+  font-size: 10px;
+}
+
+.v19-overview {
+  width: 180px;
+  min-width: 160px;
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  padding: 8px 10px;
+  background: #f6f6f6;
+  border: 1px solid #aaa;
+}
+
+.v19-score-label {
+  color: #5c5c5c;
+  font-size: 10px;
+  font-weight: 700;
+}
+
+.v19-score {
+  font-size: 17px;
+  line-height: 1.15;
+  font-weight: 800;
+}
+
+.v19-score.unknown {
+  color: #626262;
+  font-size: 12px;
+}
+
+.v19-score.has-score {
+  color: #000080;
+}
+
+.v19-overview small {
+  color: #666;
+  font-size: 10px;
+}
+
+.v16-account-actions {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  flex-wrap: wrap;
+  margin-left: auto;
+}
+
+.v16-more {
+  position: relative;
+  z-index: 10;
+  flex-shrink: 0;
+}
+
+.v16-more[open] {
+  z-index: 30;
+}
+
+.v16-more summary {
+  width: 34px;
+  height: 32px;
+  display: grid;
+  place-items: center;
+  color: #222;
+  background: #d4d4d4;
+  border: 2px solid;
+  border-color: #fff #777 #777 #fff;
+  cursor: pointer;
+  list-style: none;
+  font-size: 19px;
+  line-height: 1;
+  font-weight: 700;
+}
+
+.v16-more summary::-webkit-details-marker {
+  display: none;
+}
+
+.v16-more[open] summary {
+  border-color: #777 #fff #fff #777;
+}
+
+.v16-more > div {
+  position: absolute;
+  top: calc(100% + 2px);
+  right: 0;
+  z-index: 30;
+  min-width: 132px;
+  display: grid;
+  gap: 2px;
+  padding: 5px;
+  background: #d0d0d0;
+  border: 2px solid;
+  border-color: #fff #777 #777 #fff;
+  box-shadow: 3px 4px #0003;
+}
+
+.v16-more > div button {
+  width: 100%;
+  justify-content: flex-start;
+  white-space: nowrap;
+}
+
+.v19-account-details {
+  background: #f5f5f5;
+  border-top: 1px solid #d6d6d6;
+}
+
+.v19-account-details > summary {
+  padding: 9px 14px;
+  color: #000080;
+  cursor: pointer;
+  list-style-position: inside;
+  font-size: 11px;
+  font-weight: 700;
+}
+
+.v19-account-details > summary span {
+  color: #696969;
+  font-weight: 400;
+}
+
+.v19-account-details[open] > summary {
+  background: #e8e8f1;
+  border-bottom: 1px solid #ccc;
+}
+
+.v19-details-body {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 12px;
+  padding: 13px 16px;
+}
+
+.v19-details-body > div {
+  display: flex;
+  justify-content: space-between;
+  gap: 8px;
+  padding: 10px;
+  background: #fff;
+  border: 1px solid #ccc;
+  font-size: 11px;
+}
+
+.v19-details-body > div span {
+  color: #595959;
+  text-align: right;
+}
+
+.v19-details-body > .gmail-test-send,
+.v19-details-body > button {
+  grid-column: 1 / -1;
+}
+
+.v19-details-body > button {
+  justify-self: start;
+}
+
 .gmail-test-send {
   display: grid;
   grid-template-columns: minmax(220px, 1fr) auto;
@@ -1425,6 +1690,33 @@ input[type="radio"] {
   .gmail-test-send small {
     grid-column: 1;
   }
+
+  .v19-details-body {
+    grid-template-columns: 1fr;
+  }
+
+  .v19-overview {
+    width: auto;
+    min-width: 145px;
+    flex: 1;
+  }
+
+  .v16-account-actions {
+    width: 100%;
+    margin-left: 0;
+  }
+
+  .v16-account-actions > .win-button {
+    flex: 1;
+  }
+
+  .v16-account-row {
+    align-items: flex-start;
+  }
+
+  .sender-identity {
+    min-width: 0;
+  }
 }
 
 .account-form,
@@ -1451,6 +1743,10 @@ input[type="radio"] {
   grid-template-columns: minmax(0, 1fr) minmax(300px, .75fr);
   gap: 14px;
   align-items: start;
+}
+
+.deliverability-grid.receivers-only {
+  grid-template-columns: minmax(0, 1fr);
 }
 
 .secret-inline-form {

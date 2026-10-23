@@ -114,11 +114,8 @@ export const api = {
     }),
   deleteProvider: (id: string) =>
     request(`/providers/${encodeURIComponent(id)}`, { method: "DELETE" }),
-  saveCredential: (payload: { kind: string; label: string; secret: string; metadata?: Record<string, unknown> }) =>
-    request<{ configured: boolean; verificationStatus: string }>("/credentials", {
-      method: "POST",
-      body: JSON.stringify(payload),
-    }),
+  syncBobwork: () =>
+    request<{ ok: true; records: number; observedAt: string | null }>("/bobwork/sync", { method: "POST" }),
   initializeVault: () =>
     request<{ configured: true; created: boolean; source: "environment" | "netlify_blobs" }>("/vault/initialize", {
       method: "POST",

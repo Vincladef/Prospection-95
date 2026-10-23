@@ -3,6 +3,7 @@ import type { Config, Context } from "@netlify/functions";
 import { z } from "zod";
 import { requireAdmin, type AdminIdentity } from "../lib/auth.mts";
 import { auditEvent } from "../lib/audit.mts";
+import { syncBobworkAccounts } from "../lib/bobwork-sync.mts";
 import { initializeCredentialVault, retireCredential, storeCredential } from "../lib/credentials.mts";
 import { loadDashboard } from "../lib/dashboard.mts";
 import { pingDatabase, sqlOne, sqlQuery } from "../lib/db.mts";
@@ -689,19 +690,15 @@ async function deleteProvider(id: string, identity: AdminIdentity, requestId: st
   return noContent();
 }
 
-async function saveCredential(request: Request, identity: AdminIdentity, requestId: string): Promise<Response> {
-  const value = await parseJson(request, z.object({
-    kind: z.enum(["gmail_sender", "gmail_primary", "test_inbox", "bobwork"]),
-    label: z.string().trim().min(1).max(180),
-    secret: z.string().min(1).max(20_000),
-    metadata: z.record(z.string(), z.unknown()).optional(),
-  }));
-  const saved = await storeCredential(value);
-  if (value.kind === "bobwork") {
-    await sqlQuery(`update app.bobwork_connections set credential_id = $1::uuid, status = 'configured', last_error_code = null`, [saved.id]);
-  }
-  await logMutation(identity, requestId, { action: "credential_saved", entityType: "credential", entityId: saved.id, metadata: { kind: value.kind, label: value.label } });
-  return json({ configured: saved.configured, verificationStatus: saved.verificationStatus }, 201);
+async function syncBobwork(identity: AdminIdentity, requestId: string): Promise<Response> {
+  const result = await syncBobworkAccounts(true);
+  await logMutation(identity, requestId, {
+    action: "bobwork_synced",
+    entityType: "bobwork_connection",
+    entityId: "global",
+    metadata: { records: result.records, observedAt: result.observedAt },
+  });
+  return json({ ok: true, records: result.records, observedAt: result.observedAt });
 }
 
 async function initializeVault(identity: AdminIdentity, requestId: string): Promise<Response> {
@@ -928,7 +925,7 @@ async function privateRoute(request: Request, parts: string[], identity: AdminId
     if (request.method === "DELETE") return deleteProvider(id, identity, requestId);
     requireMethod(request, "PATCH", "DELETE");
   }
-  if (parts[0] === "credentials" && parts.length === 1) { requireMethod(request, "POST"); return saveCredential(request, identity, requestId); }
+  if (parts[0] === "bobwork" && parts[1] === "sync" && parts.length === 2) { requireMethod(request, "POST"); return syncBobwork(identity, requestId); }
   if (parts[0] === "vault" && parts[1] === "initialize" && parts.length === 2) { requireMethod(request, "POST"); return initializeVault(identity, requestId); }
   if (parts[0] === "import" && parts[1] === "preview" && parts.length === 2) { requireMethod(request, "POST"); return importPreview(request, identity, requestId); }
   if (parts[0] === "import" && parts[1] === "commit" && parts.length === 2) { requireMethod(request, "POST"); return importCommit(request, identity, requestId); }
