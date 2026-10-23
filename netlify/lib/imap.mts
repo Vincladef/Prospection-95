@@ -58,7 +58,9 @@ export async function fetchMailboxDelta(input: {
     secure: true,
     auth: { user: input.email, pass: password },
     logger: false,
-    socketTimeout: 25_000,
+    connectionTimeout: 7_000,
+    greetingTimeout: 7_000,
+    socketTimeout: 12_000,
   });
   await client.connect();
   try {
@@ -69,11 +71,18 @@ export async function fetchMailboxDelta(input: {
       const uidValidity = String(client.mailbox.uidValidity);
       const resetRequired = !!input.cursor.uidValidity && input.cursor.uidValidity !== uidValidity;
       const startUid = resetRequired ? 1 : Math.max(1, input.cursor.lastUid + 1);
+      const maxMessages = input.maxMessages ?? 25;
+      const found = await client.search({ uid: `${startUid}:*` }, { uid: true });
+      const candidateUids = (Array.isArray(found) ? found : [])
+        .filter((uid) => uid >= startUid)
+        .sort((left, right) => left - right)
+        .slice(0, maxMessages);
       const messages: SyncedMessage[] = [];
       let lastUid = resetRequired ? 0 : input.cursor.lastUid;
+      if (!candidateUids.length) return { uidValidity, lastUid, messages, resetRequired };
       for await (const item of client.fetch(
-        `${startUid}:*`,
-        { uid: true, source: true },
+        candidateUids.join(","),
+        { uid: true, source: { start: 0, maxLength: 512_000 } },
         { uid: true },
       )) {
         if (!item.source || item.uid < startUid) continue;
@@ -106,14 +115,13 @@ export async function fetchMailboxDelta(input: {
             /delivery status notification|undeliverable|mail delivery subsystem/i.test(parsed.subject ?? ""),
         });
         lastUid = Math.max(lastUid, item.uid);
-        if (messages.length >= (input.maxMessages ?? 25)) break;
       }
       return { uidValidity, lastUid, messages, resetRequired };
     } finally {
       lock.release();
     }
   } finally {
-    if (client.usable) await client.logout().catch(() => undefined);
+    client.close();
   }
 }
 
