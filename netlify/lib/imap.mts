@@ -1,3 +1,4 @@
+import { lookup } from "node:dns/promises";
 import { ImapFlow } from "imapflow";
 import { simpleParser } from "mailparser";
 import { readCredential } from "./credentials.mts";
@@ -52,36 +53,46 @@ export async function fetchMailboxDelta(input: {
     throw new Error("Credential is not a Gmail application password");
   }
   const password = credential.secret.replace(/\s+/g, "");
+  const imapAddress = await lookup("imap.gmail.com", { family: 4 });
   const client = new ImapFlow({
-    host: "imap.gmail.com",
+    host: imapAddress.address,
     port: 993,
     secure: true,
+    servername: "imap.gmail.com",
     auth: { user: input.email, pass: password },
     logger: false,
-    connectionTimeout: 7_000,
-    greetingTimeout: 7_000,
-    socketTimeout: 12_000,
+    disableAutoIdle: true,
+    connectionTimeout: 5_000,
+    greetingTimeout: 5_000,
+    socketTimeout: 7_000,
   });
-  await client.connect();
+  // Netlify's scheduler gives synchronous invocations a short response window.
+  // Closing the client rejects whichever IMAP operation is pending, leaving time
+  // for the worker to persist a useful failure instead of being cut off at 15 s.
+  const operationDeadline = setTimeout(() => client.close(), 10_000);
   try {
+    await client.connect();
     const selectedMailbox = await mailboxPath(client, input.cursor.mailbox);
-    const lock = await client.getMailboxLock(selectedMailbox);
+    const status = await client.status(selectedMailbox, { uidNext: true, uidValidity: true });
+    if (!status || status.uidValidity === undefined) throw new Error("IMAP mailbox status is unavailable");
+    const uidValidity = String(status.uidValidity);
+    const resetRequired = !!input.cursor.uidValidity && input.cursor.uidValidity !== uidValidity;
+    const startUid = resetRequired ? 1 : Math.max(1, input.cursor.lastUid + 1);
+    const maxMessages = input.maxMessages ?? 25;
+    const mailboxLastUid = Math.max(0, Number(status.uidNext ?? 1) - 1);
+    let lastUid = resetRequired ? 0 : input.cursor.lastUid;
+    if (mailboxLastUid < startUid) {
+      return { uidValidity, lastUid, messages: [], resetRequired };
+    }
+
+    const lock = await client.getMailboxLock(selectedMailbox, { readOnly: true });
     try {
       if (!client.mailbox) throw new Error("IMAP mailbox was not selected");
-      const uidValidity = String(client.mailbox.uidValidity);
-      const resetRequired = !!input.cursor.uidValidity && input.cursor.uidValidity !== uidValidity;
-      const startUid = resetRequired ? 1 : Math.max(1, input.cursor.lastUid + 1);
-      const maxMessages = input.maxMessages ?? 25;
       // Gmail interprets an open range whose start is already past the last UID
       // as a reversed range. Besides re-reading the last message, that query can
       // take longer than Netlify's scheduled-function request window. UIDNEXT is
-      // part of the selected mailbox state, so an empty delta can be returned
+      // part of the mailbox STATUS, so an empty delta can be returned
       // immediately and non-empty searches can be bounded to a real UID.
-      const mailboxLastUid = Math.max(0, Number(client.mailbox.uidNext ?? 1) - 1);
-      let lastUid = resetRequired ? 0 : input.cursor.lastUid;
-      if (mailboxLastUid < startUid) {
-        return { uidValidity, lastUid, messages: [], resetRequired };
-      }
       const found = await client.search({ uid: `${startUid}:${mailboxLastUid}` }, { uid: true });
       const candidateUids = (Array.isArray(found) ? found : [])
         .filter((uid) => uid >= startUid && uid <= mailboxLastUid)
@@ -130,6 +141,7 @@ export async function fetchMailboxDelta(input: {
       lock.release();
     }
   } finally {
+    clearTimeout(operationDeadline);
     client.close();
   }
 }

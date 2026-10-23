@@ -38,8 +38,9 @@ describe("operational IMAP classification", () => {
     const implementation = readFileSync(join(process.cwd(), "netlify", "lib", "imap.mts"), "utf8");
     expect(implementation).toContain("candidateUids.join");
     expect(implementation).toContain("maxLength: 512_000");
-    expect(implementation).toContain("connectionTimeout: 7_000");
-    expect(implementation).toContain("client.mailbox.uidNext");
+    expect(implementation).toContain("connectionTimeout: 5_000");
+    expect(implementation).toContain("client.status(selectedMailbox");
+    expect(implementation).toContain("operationDeadline");
     expect(implementation).toContain("`${startUid}:${mailboxLastUid}`");
     expect(implementation).toContain("client.close()");
   });
