@@ -13,4 +13,4 @@ export default async function syncBobwork(_request: Request, _context: Context):
   }
 }
 
-export const config: Config = { schedule: "* * * * *" };
+export const config: Config = { schedule: "17 */6 * * *" };

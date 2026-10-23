@@ -336,7 +336,7 @@ export async function loadDashboard(): Promise<Record<string, unknown>> {
       bobworkHealthScore: nullableNumber(firstMetric(bobworkMetrics,
         "health_score", "healthScore", "deliverability_score", "deliverabilityScore", "score")),
       bobworkSpamRate7d: nullableNumber(firstMetric(bobworkMetrics,
-        "spam_rate_7d", "spamRate7d", "seven_day_spam_rate", "sevenDaySpamRate")),
+        "spam_rate_7d_pct", "spam_rate_7d", "spamRate7d", "seven_day_spam_rate", "sevenDaySpamRate")),
       version: numberValue(row.version),
     };
   });
