@@ -1,14 +1,10 @@
 # Guide d'exploitation — Prospection 95
 
-## État initial sûr
+## État opérationnel
 
-Le système possède trois verrous indépendants :
+Le système conserve trois commandes indépendantes : la variable serveur `OUTBOUND_ENABLED`, l'autorisation persistante `app.settings.outbound_enabled` et la pause générale `app.settings.emergency_stop`. Le propriétaire a autorisé l'exploitation le 23 octobre 2026 : les deux premières sont actives et la pause générale est levée.
 
-1. variable Netlify `OUTBOUND_ENABLED=false` ;
-2. `app.settings.outbound_enabled=false` ;
-3. `app.settings.emergency_stop=true`.
-
-Un déploiement ou un import ne doit modifier aucun de ces verrous. Seul le test SMTP unitaire, déclenché explicitement depuis le compte Gmail vers une adresse saisie par l'administrateur, peut vérifier la connexion sans ouvrir les envois de campagne.
+Un déploiement, un import ou une migration ne modifie jamais ces valeurs. Le bouton de pause reste disponible pour une décision manuelle ; les protections par quota, calendrier, exclusion, idempotence et incident sérieux continuent de s'appliquer.
 
 ## Environnements distants
 
@@ -30,7 +26,7 @@ Une branche Neon temporaire doit toujours précéder une migration de la branche
 | `ADMIN_EMAIL` | Functions | non secrète | configurée |
 | `APP_BASE_URL` | Functions | publique | configurée |
 | `APP_TIMEZONE` | Functions | publique | configurée à `Europe/Paris` |
-| `OUTBOUND_ENABLED` | Functions | non secrète | configurée à `false` |
+| `OUTBOUND_ENABLED` | Functions | non secrète | configurée à `true` en production |
 
 `NEON_API_KEY` et `NETLIFY_AUTH_TOKEN` sont des jetons d'administration et ne sont pas requis par l'application. Ils doivent être absents de la configuration du site. Ne jamais les renommer pour les faire consommer par l'application.
 
@@ -42,10 +38,10 @@ La clé AES de 32 octets est créée automatiquement après la première connexi
 
 ## Migrations Neon
 
-Les onze migrations sont additives et s'appliquent dans l'ordre lexical. Procédure :
+Les quatorze migrations sont additives et s'appliquent dans l'ordre lexical. Procédure :
 
 1. créer une branche enfant de la branche principale ;
-2. appliquer `db/migrations/001_...` à `011_...` avec le propriétaire de cette branche ;
+2. appliquer `db/migrations/001_...` à `014_...` avec le propriétaire de cette branche ;
 3. exécuter toutes les assertions de `db/verify.sql` ;
 4. inspecter le diff de schéma ;
 5. obtenir l'accord explicite du propriétaire ;
@@ -107,7 +103,7 @@ Prérequis : HTTPS et utilisateur Neon Auth correspondant à `ADMIN_EMAIL`. Le c
 2. Créer un mot de passe d'application dédié.
 3. Dans **Paramètres → Comptes Gmail**, choisir le rôle : expéditeur, Gmail principal ou boîte de test.
 4. Saisir adresse, identité, mot de passe, limite et calendrier.
-5. Lancer le test. Avec `OUTBOUND_ENABLED=false`, l'IMAP peut être vérifié mais aucune expédition n'est réalisée ; l'interface ne doit pas appeler cela un test d'envoi.
+5. Lancer le test SMTP / IMAP et vérifier l'affichage vert des deux connexions. Le test d'envoi manuel reste un diagnostic distinct, vers l'adresse saisie.
 6. Vérifier la date IMAP et les éventuels codes d'erreur.
 
 Dans le Gmail principal, configurer manuellement :
@@ -116,7 +112,7 @@ Dans le Gmail principal, configurer manuellement :
 - les identités **Envoyer des e-mails en tant que** ;
 - l'autorisation et l'adresse de réponse correctes pour chaque alias.
 
-Le worker lit `INBOX` et le dossier spécial IMAP `\Sent` de façon incrémentale. Un message envoyé manuellement n'est conservé que s'il correspond à une conversation existante.
+Le worker lit `INBOX` et le dossier spécial IMAP `\Sent` de façon incrémentale. Un message envoyé manuellement n'est conservé que s'il correspond à une conversation existante. Si aucun compte de rôle « Gmail principal » n'est configuré, les brouillons de réponse sont créés dans le compte expéditeur de la conversation.
 
 ### Recette réelle brouillon/alias
 
@@ -157,8 +153,8 @@ Les endpoints publics `/t/c/:token` et `/t/o/:token` n'acceptent que des jetons 
 
 Recette réelle minimale :
 
-1. conserver les trois verrous d'envoi actifs et utiliser uniquement le test SMTP explicitement déclenché vers une adresse autorisée ;
-2. pour la recette d'une campagne, obtenir d'abord l'autorisation commerciale explicite puis n'activer qu'un destinataire de test ;
+1. utiliser une campagne et un destinataire de recette explicitement identifiés ;
+2. conserver les autres campagnes inactives pendant la recette ;
 3. activer le suivi sur la campagne avant la génération de l'email ;
 4. vérifier que le clic redirige vers la destination et apparaît comme « Clic observé » ;
 5. vérifier l'ouverture sur un client qui charge les images, en conservant la qualification « signal technique ».
@@ -169,7 +165,7 @@ Recette réelle minimale :
 
 Utiliser le bouton d'arrêt d'urgence. Si l'interface est indisponible, exécuter `db/rollback/disable-application.sql`, puis remettre `OUTBOUND_ENABLED=false`.
 
-### Reprise
+### Reprise après une pause explicite
 
 Avant de désactiver l'arrêt d'urgence :
 
@@ -180,9 +176,9 @@ Avant de désactiver l'arrêt d'urgence :
 - effectuer la recette de réponse juste avant relance ;
 - saisir une raison de reprise dans l'interface.
 
-### Activation commerciale
+### Activation commerciale d'une nouvelle installation
 
-L'activation nécessite une autorisation explicite du propriétaire. Ordre conseillé :
+L'activation nécessite une autorisation explicite du propriétaire. Cette autorisation a déjà été donnée pour la production actuelle. Pour une nouvelle installation, ordre conseillé :
 
 1. compte et destinataire de test uniquement ;
 2. `OUTBOUND_ENABLED=true` ;
@@ -217,7 +213,7 @@ npx netlify-cli@latest build --offline
 git diff --check
 ```
 
-Le push sur `main` déclenche la production Netlify. Ne pousser qu'après migration principale réussie et configuration sûre des variables. Après déploiement : vérifier `/api/health`, la connexion, le tableau de bord et les fonctions planifiées, sans activer SMTP.
+Le push sur `main` déclenche la production Netlify. Ne pousser qu'après migration principale réussie et configuration sûre des variables. Après déploiement : vérifier `/api/health`, la connexion, le tableau de bord et les fonctions planifiées. Ne pas modifier l'autorisation SMTP existante.
 
 Retour arrière applicatif : republier le dernier déploiement Netlify sain ou revert du commit, puis laisser les verrous d'envoi actifs. Les migrations sont additives ; restaurer Neon séparément seulement si la compatibilité l'exige.
 
@@ -231,7 +227,7 @@ Retour arrière applicatif : republier le dernier déploiement Netlify sain ou r
 
 ## Checklist de recette finale
 
-- [ ] onze migrations et toutes les assertions `db/verify.sql` sur la branche principale ;
+- [ ] quatorze migrations et toutes les assertions `db/verify.sql` sur la branche principale ;
 - [ ] `DATABASE_URL` du rôle runtime restreint ;
 - [ ] aucun jeton d'administration dans le runtime Netlify ;
 - [ ] coffre Netlify Blobs initialisé et ajout Gmail disponible ;
@@ -242,4 +238,4 @@ Retour arrière applicatif : republier le dernier déploiement Netlify sain ou r
 - [ ] diagnostic de test idempotent et rapport sourcé ;
 - [ ] BobWork réel ou état explicitement inconnu ;
 - [ ] concurrence, quota, résultat SMTP incertain et arrêt d'urgence ;
-- [ ] `OUTBOUND_ENABLED` maintenu à `false` jusqu'à l'autorisation commerciale explicite.
+- [ ] autorisation serveur, autorisation Neon et pause générale cohérentes avec la décision actuelle du propriétaire.

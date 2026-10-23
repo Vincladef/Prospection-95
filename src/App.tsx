@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import { authClient } from "./lib/auth";
 import { api } from "./lib/api";
 import { useAppData } from "./hooks/useAppData";
@@ -25,6 +25,23 @@ export default function App() {
   const [page, setPage] = useState<Page>("messages");
   const { data, loading, error, refresh } = useAppData(Boolean(session.data?.user));
 
+  useEffect(() => {
+    const closeOutside = (event: PointerEvent) => {
+      document.querySelectorAll<HTMLDetailsElement>("details.v16-more[open]").forEach((details) => {
+        if (!details.contains(event.target as Node)) details.open = false;
+      });
+    };
+    const closeOnEscape = (event: KeyboardEvent) => {
+      if (event.key === "Escape") document.querySelectorAll<HTMLDetailsElement>("details.v16-more[open]").forEach((details) => { details.open = false; });
+    };
+    document.addEventListener("pointerdown", closeOutside);
+    document.addEventListener("keydown", closeOnEscape);
+    return () => {
+      document.removeEventListener("pointerdown", closeOutside);
+      document.removeEventListener("keydown", closeOnEscape);
+    };
+  }, []);
+
   if (session.isPending) return <LoadingWindow label="Vérification de la session…" />;
   if (!session.data?.user) return <LoginScreen />;
   if (loading && !data) return <LoadingWindow />;
@@ -43,9 +60,11 @@ export default function App() {
 
   async function toggleEmergencyStop() {
     const enable = !data!.settings.emergencyStop;
-    if (!enable && !window.confirm("Autoriser les campagnes dans l’application ? Le verrou serveur OUTBOUND_ENABLED reste inchangé.")) return;
-    const reason = window.prompt(enable ? "Motif de la mise en pause" : "Motif de l’autorisation", enable ? "Mise en pause manuelle" : "Campagnes autorisées par le propriétaire") || "Action manuelle";
-    await api.setEmergencyStop(enable, reason);
+    const reason = enable
+      ? window.prompt("Motif de la mise en pause", "Mise en pause manuelle")
+      : "Campagnes autorisées par le propriétaire";
+    if (enable && reason === null) return;
+    await api.setEmergencyStop(enable, reason || "Mise en pause manuelle");
     await refresh();
   }
 

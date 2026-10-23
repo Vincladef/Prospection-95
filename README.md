@@ -14,7 +14,7 @@ Le dépôt ne contient ni prospect réel, ni mot de passe Gmail, ni clé d’API
 - historique anti-recontact, exclusions, audit append-only et arrêt d’urgence ;
 - API SQL dédiée aux agents ChatGPT, sans appel OpenAI dans le backend.
 
-L’expédition réelle est désactivée par défaut à trois niveaux : `OUTBOUND_ENABLED=false`, `app.settings.outbound_enabled=false` et arrêt d’urgence actif.
+Une nouvelle installation démarre avec l’expédition coupée. Sur la production actuelle, le propriétaire a autorisé le moteur : `OUTBOUND_ENABLED=true`, `app.settings.outbound_enabled=true` et pause générale désactivée. Les déploiements ne modifient pas cet état.
 
 ## Architecture
 
@@ -31,7 +31,7 @@ Netlify Functions ─── Neon PostgreSQL
 - `src/` : interface React et client API ;
 - `netlify/functions/` : API authentifiée et traitements serveur ;
 - `netlify/lib/` : authentification, SQL, coffre, planification et import ;
-- `db/migrations/` : treize migrations PostgreSQL additives et rejouables ;
+- `db/migrations/` : quatorze migrations PostgreSQL additives et rejouables ;
 - `docs/` : contrats des agents et procédures d’exploitation.
 
 Contrats et exploitation : [agent de prospection](AGENT_PROSPECTION.md), [agent de délivrabilité](AGENT_DELIVRABILITE.md) et [guide d’exploitation](docs/OPERATIONS.md).
@@ -65,7 +65,7 @@ La variable `DATABASE_URL` doit viser une branche Neon de développement. N’ap
 | `ADMIN_EMAIL` | Functions | non | unique administrateur autorisé |
 | `APP_BASE_URL` | Functions | non | URL canonique du site |
 | `APP_TIMEZONE` | Functions | non | `Europe/Paris` |
-| `OUTBOUND_ENABLED` | Functions | non | doit rester `false` avant recette |
+| `OUTBOUND_ENABLED` | Functions | non | `true` en production après autorisation du propriétaire |
 
 `NEON_API_KEY` sert uniquement aux opérations d’infrastructure et n’est pas consommée par l’application. Un jeton Netlify ne doit pas être exposé au runtime des fonctions.
 

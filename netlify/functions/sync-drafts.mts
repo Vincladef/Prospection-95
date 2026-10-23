@@ -42,12 +42,13 @@ export default async function syncDrafts(_request: Request, _context: Context): 
       join lateral (
         select primary_candidate.email, primary_candidate.credential_id
         from app.gmail_accounts primary_candidate
-        where primary_candidate.role = 'primary'
-          and primary_candidate.status = 'active'
+        where primary_candidate.status = 'active'
           and primary_candidate.paused_at is null
           and primary_candidate.deleted_at is null
           and primary_candidate.credential_id is not null
-        order by primary_candidate.created_at
+          and (primary_candidate.role = 'primary' or primary_candidate.id = alias_account.id)
+        order by case when primary_candidate.role = 'primary' then 0 else 1 end,
+                 primary_candidate.created_at
         limit 1
       ) primary_account on true
       join app.email_messages source on source.id = claimed.source_message_id

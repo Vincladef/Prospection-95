@@ -1738,6 +1738,528 @@ input[type="radio"] {
   background: #ddd;
 }
 
+/* Assistant Gmail — structure V53, conservée sur ordinateur comme sur mobile. */
+.gmail-setup-shell {
+  width: 100%;
+  max-width: 1030px;
+}
+
+.v15-top {
+  display: flex;
+  align-items: center;
+  gap: 17px;
+  flex-wrap: wrap;
+  margin-bottom: 16px;
+  padding-bottom: 15px;
+  border-bottom: 2px solid #979797;
+}
+
+.v15-top > div {
+  min-width: 180px;
+  flex: 1;
+}
+
+.v15-top h2,
+.v15-top p {
+  margin: 0;
+}
+
+.v15-top h2 {
+  font-size: 18px;
+}
+
+.v15-top p {
+  margin-top: 3px;
+  color: #555;
+  font-size: 11px;
+}
+
+.v12-back,
+.v15-steplink {
+  padding: 4px;
+  color: #000080;
+  background: transparent;
+  border: 0;
+  text-decoration: underline;
+  cursor: pointer;
+}
+
+.v12-back {
+  font-size: 11px;
+  font-weight: 700;
+}
+
+.v15-wizard {
+  display: grid;
+  grid-template-columns: minmax(205px, 228px) minmax(0, 1fr);
+  gap: 14px;
+  align-items: start;
+}
+
+.v15-steps {
+  display: flex;
+  flex-direction: column;
+  gap: 5px;
+  padding: 8px;
+  background: #cecece;
+  border: 2px solid;
+  border-color: #858585 #fff #fff #858585;
+}
+
+.v15-step {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 10px 8px;
+  color: #333;
+  background: #e6e6e6;
+  border: 1px solid #a9a9a9;
+  text-align: left;
+  cursor: pointer;
+}
+
+.v15-step:hover {
+  background: #edf0ff;
+}
+
+.v15-step.active {
+  color: #fff;
+  background: #000080;
+  border-color: #000080;
+}
+
+.v15-step-icon {
+  width: 25px;
+  height: 25px;
+  flex: none;
+  display: grid;
+  place-items: center;
+  border: 1px solid currentcolor;
+  font-weight: 800;
+}
+
+.v15-step b {
+  font-size: 12px;
+}
+
+.v15-step small {
+  display: block;
+  margin-top: 3px;
+  font-size: 10px;
+  opacity: .8;
+}
+
+.v15-main {
+  min-width: 0;
+  min-height: 430px;
+  display: flex;
+  flex-direction: column;
+  padding: 22px 26px;
+  background: #fff;
+  border: 2px solid;
+  border-color: #808080 #fff #fff #808080;
+}
+
+.v15-stepcount {
+  margin-bottom: 15px;
+  color: #000080;
+  font-size: 10px;
+  font-weight: 800;
+  letter-spacing: .6px;
+}
+
+.v15-copy h3 {
+  margin: 0 0 7px;
+  color: #000080;
+  font-size: 19px;
+}
+
+.v15-copy p {
+  max-width: 65ch;
+  margin: 0 0 17px;
+  color: #4e4e4e;
+  font-size: 12px;
+  line-height: 1.5;
+}
+
+.v15-two,
+.v15-formgrid {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 13px;
+}
+
+.v15-panel {
+  min-width: 0;
+  padding: 13px;
+  background: #f0f0f0;
+  border: 1px solid #bababa;
+}
+
+.v15-panel > b {
+  font-size: 12px;
+}
+
+.v15-panel > p,
+.v15-panel > small {
+  display: block;
+  margin: 7px 0 10px;
+  color: #535353;
+  font-size: 11px;
+  line-height: 1.65;
+}
+
+.gmail-credential-panel {
+  display: grid;
+  gap: 8px;
+}
+
+.v15-field {
+  min-width: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  margin-bottom: 12px;
+  color: #323232;
+  font-size: 11px;
+  font-weight: 700;
+}
+
+.v15-field input,
+.v15-field select {
+  width: 100%;
+  min-width: 0;
+  height: 37px;
+  padding: 6px 9px;
+  color: #222;
+  background: #fff;
+  border: 2px solid;
+  border-color: #797979 #e8e8e8 #e8e8e8 #797979;
+  font-size: 12px;
+}
+
+.v15-form {
+  max-width: 850px;
+}
+
+.gmail-limits-form {
+  display: grid;
+  gap: 14px;
+}
+
+.v15-inputunit {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  font-weight: 400;
+}
+
+.v15-inputunit input {
+  max-width: 105px;
+}
+
+.v15-inputunit > span {
+  color: #555;
+}
+
+.v15-check {
+  display: flex;
+  align-items: flex-start;
+  gap: 10px;
+  padding: 12px 0;
+  border-top: 1px solid #ddd;
+  cursor: pointer;
+}
+
+.v15-check input,
+.v42-random input {
+  accent-color: #000080;
+}
+
+.v15-check input {
+  width: 17px;
+  height: 17px;
+  flex: none;
+}
+
+.v15-check b {
+  font-size: 12px;
+}
+
+.v15-check small {
+  display: block;
+  margin-top: 4px;
+  color: #666;
+  font-size: 11px;
+  line-height: 1.55;
+}
+
+.v15-result,
+.v16-compact-info {
+  margin: 13px 0;
+  padding: 11px 13px;
+  color: #242424;
+  background: #f3f4fd;
+  border-left: 4px solid #000080;
+}
+
+.v15-result {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
+
+.v15-result.configured {
+  background: #e7f5e9;
+  border-left-color: #1c7a3d;
+}
+
+.v15-result.is-pending {
+  background: #fffbed;
+  border-left-color: #a27825;
+}
+
+.v15-result b,
+.v16-compact-info strong {
+  font-size: 12px;
+}
+
+.v15-result span,
+.v16-compact-info {
+  font-size: 11px;
+  line-height: 1.55;
+}
+
+.gmail-inline-test {
+  align-self: flex-start;
+}
+
+.v42-schedule {
+  display: grid;
+  gap: 12px;
+  padding: 13px;
+  background: #f6f6f6;
+  border: 1px solid #b5b5b5;
+}
+
+.v42-schedule > strong {
+  color: #000080;
+  font-size: 12px;
+}
+
+.v42-days {
+  display: grid;
+  grid-template-columns: repeat(7, minmax(0, 1fr));
+  gap: 5px;
+}
+
+.v42-days label {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 5px;
+  padding: 8px 5px;
+  background: #e3e3e3;
+  border: 1px solid #9d9d9d;
+  font-size: 11px;
+  cursor: pointer;
+}
+
+.v42-days label:has(input:checked) {
+  color: #000080;
+  background: #e3eaff;
+  border-color: #687aac;
+  font-weight: 750;
+}
+
+.v42-days input {
+  accent-color: #000080;
+}
+
+.v42-hours {
+  display: flex;
+  gap: 15px;
+  flex-wrap: wrap;
+}
+
+.v42-hours .v15-field {
+  margin: 0;
+}
+
+.v42-hours input[type="time"] {
+  width: 130px;
+}
+
+.v42-hours .timezone-field {
+  min-width: 185px;
+  flex: 1;
+}
+
+.v42-random {
+  display: flex;
+  align-items: center;
+  gap: 7px;
+  font-size: 11px;
+  cursor: pointer;
+}
+
+.v15-finalrows {
+  border: 1px solid #b7b7b7;
+}
+
+.v15-finalrow {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 9px;
+  padding: 11px 13px;
+  border-bottom: 1px solid #dadada;
+}
+
+.v15-finalrow:last-child {
+  border: 0;
+}
+
+.v15-finalrow strong {
+  font-size: 12px;
+}
+
+.v15-finalrow small {
+  display: block;
+  margin-top: 4px;
+  color: #666;
+  font-size: 10px;
+}
+
+.v15-finalright {
+  display: flex;
+  align-items: center;
+  justify-content: flex-end;
+  gap: 9px;
+  flex-wrap: wrap;
+}
+
+.v15-smallstate {
+  padding: 4px 6px;
+  color: #664d1b;
+  background: #faf1d9;
+  border: 1px solid #bbaa8a;
+  font-size: 10px;
+  white-space: nowrap;
+}
+
+.v15-smallstate.configured {
+  color: #315a36;
+  background: #e7f1e9;
+  border-color: #a9bdac;
+}
+
+.v15-steplink {
+  font-size: 11px;
+}
+
+.v16-actionbar {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 11px;
+  flex-wrap: wrap;
+}
+
+.v16-wizard-actions {
+  margin-top: auto;
+  padding-top: 18px;
+}
+
+.v16-mobile-progress {
+  display: none;
+}
+
+@media (max-width: 850px) {
+  .v15-wizard {
+    display: block;
+  }
+
+  .v15-steps {
+    display: none;
+  }
+
+  .v16-mobile-progress {
+    display: block;
+    margin-bottom: 18px;
+  }
+
+  .v16-mobile-progress-head {
+    display: flex;
+    justify-content: space-between;
+    gap: 9px;
+    font-size: 11px;
+  }
+
+  .v16-mobile-progress-head span {
+    color: #555;
+  }
+
+  .v16-progress-bars {
+    display: flex;
+    gap: 5px;
+    margin-top: 8px;
+  }
+
+  .v16-progress-bars i {
+    height: 5px;
+    flex: 1;
+    display: block;
+    background: #d4d4d4;
+  }
+
+  .v16-progress-bars i.filled {
+    background: #000080;
+  }
+
+  .v16-desktop-progress {
+    display: none;
+  }
+}
+
+@media (max-width: 650px) {
+  .v15-main {
+    min-height: 355px;
+    padding: 15px;
+  }
+
+  .v15-two,
+  .v15-formgrid {
+    grid-template-columns: 1fr;
+  }
+
+  .v42-days {
+    grid-template-columns: repeat(4, minmax(0, 1fr));
+  }
+
+  .v42-days label {
+    justify-content: flex-start;
+  }
+
+  .v15-finalrow {
+    flex-wrap: wrap;
+  }
+
+  .v15-finalright {
+    width: 100%;
+    justify-content: space-between;
+  }
+
+  .v16-wizard-actions {
+    position: sticky;
+    bottom: 43px;
+    z-index: 2;
+    padding: 11px 0 2px;
+    background: #fff;
+    border-top: 1px solid #ddd;
+  }
+}
+
 .send-days {
   grid-column: 1 / -1;
   display: flex;
@@ -3899,6 +4421,119 @@ input[type="radio"] {
 .campaign-stats-dialog > p {
   margin: 0;
   padding: 0 16px 14px;
+}
+
+.campaign-ab-stats {
+  margin: 0 16px 14px;
+  background: #f7f7f7;
+  border: 1px solid #aaa;
+}
+
+.campaign-ab-stats-heading {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+  padding: 9px 11px;
+  color: #000080;
+  background: #dedede;
+  border-bottom: 1px solid #aaa;
+  font-size: 11px;
+}
+
+.campaign-ab-stats-heading span {
+  color: #666;
+  font-size: 10px;
+  font-weight: 400;
+}
+
+.campaign-ab-test {
+  border-bottom: 1px solid #c8c8c8;
+}
+
+.campaign-ab-test:last-of-type {
+  border-bottom: 0;
+}
+
+.campaign-ab-test > summary {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 10px;
+  padding: 8px 10px;
+  cursor: pointer;
+  font-size: 11px;
+  font-weight: 700;
+}
+
+.campaign-ab-test > summary:hover,
+.campaign-ab-test[open] > summary {
+  background: #eaebf5;
+}
+
+.campaign-ab-test > summary small {
+  color: #666;
+  font-size: 9px;
+  font-weight: 400;
+}
+
+.campaign-ab-table-wrap {
+  overflow-x: auto;
+  background: #fff;
+  border-top: 1px solid #d2d2d2;
+}
+
+.campaign-ab-table {
+  width: 100%;
+  min-width: 650px;
+  border-collapse: collapse;
+  font-size: 10px;
+}
+
+.campaign-ab-table th,
+.campaign-ab-table td {
+  padding: 7px 8px;
+  border-right: 1px solid #ddd;
+  border-bottom: 1px solid #e3e3e3;
+  text-align: center;
+}
+
+.campaign-ab-table thead th {
+  color: #000080;
+  background: #f0f0f0;
+}
+
+.campaign-ab-table tbody th {
+  min-width: 120px;
+  text-align: left;
+}
+
+.campaign-ab-table td small,
+.campaign-ab-table tbody th small {
+  display: block;
+  margin-top: 2px;
+  color: #666;
+  font-size: 8px;
+  font-weight: 400;
+}
+
+.campaign-ab-letter {
+  width: 20px;
+  height: 20px;
+  display: inline-grid;
+  place-items: center;
+  margin-right: 5px;
+  color: #fff;
+  background: #000080;
+  border: 1px solid #555;
+  font-weight: 800;
+}
+
+.campaign-ab-stats > p {
+  margin: 0;
+  padding: 12px;
+  color: #666;
+  font-size: 10px;
 }
 
 .campaign-stats-dialog > footer {

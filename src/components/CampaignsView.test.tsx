@@ -47,8 +47,8 @@ const experiment: Experiment = {
   thresholdContactsPerVariant: 40,
   thresholdReplies: 20,
   variants: [
-    { id: "aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa", label: "A", name: "Référence", allocationWeight: 1, overrides: {}, assignedCount: 0, sentCount: 0, humanReplyCount: 0, positiveReplyCount: 0, confirmedMeetingCount: 0, openCount: 0, clickCount: 0 },
-    { id: "bbbbbbbb-bbbb-4bbb-8bbb-bbbbbbbbbbbb", label: "B", name: "Version B", allocationWeight: 1, overrides: { search: { criteria: "Recherche propre à la version B" } }, assignedCount: 0, sentCount: 0, humanReplyCount: 0, positiveReplyCount: 0, confirmedMeetingCount: 0, openCount: 0, clickCount: 0 },
+    { id: "aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa", label: "A", name: "Référence", allocationWeight: 1, overrides: {}, assignedCount: 12, sentCount: 10, humanReplyCount: 2, positiveReplyCount: 1, confirmedMeetingCount: 1, openCount: 6, clickCount: 3 },
+    { id: "bbbbbbbb-bbbb-4bbb-8bbb-bbbbbbbbbbbb", label: "B", name: "Version B", allocationWeight: 1, overrides: { search: { criteria: "Recherche propre à la version B" } }, assignedCount: 11, sentCount: 10, humanReplyCount: 3, positiveReplyCount: 2, confirmedMeetingCount: 1, openCount: 7, clickCount: 4 },
   ],
 };
 
@@ -118,5 +118,17 @@ describe("CampaignsView V53", () => {
 
     await waitFor(() => expect(apiMocks.addExperimentVariant).toHaveBeenCalledWith(experiment.id));
     expect(onMutated).toHaveBeenCalledOnce();
+  });
+
+  it("shows discreet per-variant metrics in campaign statistics", () => {
+    renderCampaigns([experiment]);
+
+    fireEvent.click(screen.getByRole("button", { name: "▥ Voir les statistiques" }));
+
+    expect(screen.getByRole("dialog", { name: "Statistiques · Nouvelle campagne" })).toBeInTheDocument();
+    expect(screen.getByText("Résultats des tests A/B")).toBeInTheDocument();
+    expect(screen.getByText("60 %")).toBeInTheDocument();
+    expect(screen.getByText("70 %")).toBeInTheDocument();
+    expect(screen.getByText("Version B")).toBeInTheDocument();
   });
 });

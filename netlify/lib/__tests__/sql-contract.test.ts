@@ -7,9 +7,9 @@ const migrationsDirectory = join(process.cwd(), "db", "migrations");
 describe("database safety contract", () => {
   it("keeps a contiguous additive migration set", () => {
     const files = readdirSync(migrationsDirectory).filter((name) => name.endsWith(".sql")).sort();
-    expect(files).toHaveLength(13);
+    expect(files).toHaveLength(14);
     expect(files.map((name) => name.slice(0, 3))).toEqual([
-      "001", "002", "003", "004", "005", "006", "007", "008", "009", "010", "011", "012", "013",
+      "001", "002", "003", "004", "005", "006", "007", "008", "009", "010", "011", "012", "013", "014",
     ]);
   });
 
@@ -35,13 +35,27 @@ describe("database safety contract", () => {
     expect(api).toContain("'error'::app.account_status");
   });
 
-  it("keeps campaign SMTP blocked while exposing only the explicit diagnostic route", () => {
+  it("keeps SMTP behind the explicit production switch and exposes the diagnostic route", () => {
     const api = readFileSync(join(process.cwd(), "netlify", "functions", "api.mts"), "utf8");
     const gmail = readFileSync(join(process.cwd(), "netlify", "lib", "gmail.mts"), "utf8");
     expect(api).toContain('parts[2] === "test-send"');
     expect(api).toContain("sendGmailDiagnostic");
     expect(gmail).toContain("if (!isProductionOutboundEnabled())");
     expect(gmail).toContain('"X-Prospection95-Diagnostic": "manual-test"');
+  });
+
+  it("advances past accepted sequence steps and lets the worker dispatch diagnostics", () => {
+    const sql = readFileSync(join(migrationsDirectory, "014_sequence_progression_and_diagnostics.sql"), "utf8");
+    const worker = readFileSync(join(process.cwd(), "netlify", "functions", "dispatch-outbox.mts"), "utf8");
+    expect(sql).toContain("candidate.status IN ('prepared','pending_approval','approved','scheduled')");
+    expect(worker).toContain("left join app.campaigns c on c.id = leased.campaign_id");
+    expect(worker).toContain("coalesce(c.tracking_opens_enabled, false)");
+  });
+
+  it("falls back to the conversation sender when no primary Gmail exists", () => {
+    const worker = readFileSync(join(process.cwd(), "netlify", "functions", "sync-drafts.mts"), "utf8");
+    expect(worker).toContain("primary_candidate.role = 'primary' or primary_candidate.id = alias_account.id");
+    expect(worker).toContain("case when primary_candidate.role = 'primary' then 0 else 1 end");
   });
 
   it("persists A/B variant creation and overrides through private routes", () => {

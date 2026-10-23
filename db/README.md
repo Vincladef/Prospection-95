@@ -1,6 +1,6 @@
 # Schéma Lakebase Postgres
 
-Le dossier contient treize migrations additives, rejouables et sans données métier embarquées. Elles doivent être appliquées dans l’ordre lexical.
+Le dossier contient quatorze migrations additives, rejouables et sans données métier embarquées. Elles doivent être appliquées dans l’ordre lexical.
 
 1. `001_foundation.sql` : rôles, schémas, paramètres, campagnes, comptes publics, prospects, anti-recontact et coffre chiffré.
 2. `002_messaging.sql` : versions de messages, conversations, SMTP/IMAP, file d’envoi, baux et brouillons.
@@ -15,13 +15,14 @@ Le dossier contient treize migrations additives, rejouables et sans données mé
 11. `011_v53_tracking_defaults.sql` : activation par défaut du suivi des interactions sur les campagnes.
 12. `012_product_flexibility_and_attachments.sql` : pièces jointes privées d’instructions et ressources BobWork étendues pour les agents.
 13. `013_application_role_new_resources.sql` : droits du backend Netlify sur les nouvelles ressources et privilèges par défaut pour les prochains objets applicatifs.
+14. `014_sequence_progression_and_diagnostics.sql` : progression effective de J0 à R5 après acceptation SMTP et compatibilité du worker avec les diagnostics.
 
 ## Principes de sécurité
 
 - `prospection95_app` et `prospection95_agent` sont des rôles de groupe `NOLOGIN`. Un identifiant de connexion distinct doit être créé pour chaque consommateur puis recevoir uniquement le rôle nécessaire.
 - Le rôle agent ne possède aucun privilège sur `vault`, les tables `app`, les confirmations SMTP ou les journaux bruts.
 - `vault.credentials` ne contient que le ciphertext AES-256-GCM, le nonce, le tag et la version de clé. La clé maître reste exclusivement dans Netlify.
-- Le verrou serveur démarre avec `outbound_enabled=false`. La pause métier reste pilotée par le propriétaire et n’est jamais réactivée automatiquement lors d’un déploiement.
+- Une nouvelle base démarre avec `outbound_enabled=false`. Après autorisation du propriétaire, cet état opérationnel est persistant et n’est jamais réinitialisé lors d’un déploiement.
 - Un import ne crée aucun job d’envoi et force toutes les campagnes créées à l’état `inactive` avec `imported_disabled=true`.
 - Un statut CSV « Envoyé » est conservé comme déclaration historique non confirmée ; seule `app.confirm_smtp_acceptance` ou une réconciliation Gmail peut créer une confirmation technique.
 

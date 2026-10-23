@@ -190,7 +190,7 @@ SELECT agent_api.propose_reply_draft(
 ) AS request_id;
 ```
 
-Le backend crée ensuite, de façon asynchrone, un brouillon dans le Gmail principal. Ne jamais dire que le brouillon existe avant que `agent_api.pending_operations` ne le signale plus et que l'application confirme l'état `created`. La vérification réelle du fil et de l'alias Gmail reste une étape de recette externe.
+Le backend crée ensuite, de façon asynchrone, un brouillon dans le Gmail principal lorsqu'il est configuré ; sinon il utilise le compte expéditeur de la conversation. Ne jamais dire que le brouillon existe avant que `agent_api.pending_operations` ne le signale plus et que l'application confirme l'état `created`. La vérification réelle du fil et de l'alias Gmail reste une étape de recette externe.
 
 ## Proposer une expérience
 

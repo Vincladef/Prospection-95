@@ -67,11 +67,12 @@ export default async function dispatchOutbox(_request: Request, _context: Contex
               m.to_addresses, m.subject, m.body_text, m.body_html,
               m.internet_message_id, m.in_reply_to, m.references_header,
               a.credential_id::text, a.display_name,
-              c.tracking_opens_enabled, c.tracking_clicks_enabled
+              coalesce(c.tracking_opens_enabled, false) as tracking_opens_enabled,
+              coalesce(c.tracking_clicks_enabled, false) as tracking_clicks_enabled
        from app.lease_outbox_jobs($1, 1, 40) leased
        join app.email_messages m on m.id = leased.message_id
        join app.gmail_accounts a on a.id = leased.account_id
-       join app.campaigns c on c.id = leased.campaign_id`,
+       left join app.campaigns c on c.id = leased.campaign_id`,
       [worker],
     );
     if (!job) return workerResult(worker, { ok: true, scheduled: Number(scheduled?.count ?? 0), leased: 0 });

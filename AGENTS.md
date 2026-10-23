@@ -6,8 +6,8 @@ Application privée de prospection B2B : React/Vite sur Netlify, fonctions Netli
 
 ## Invariants non négociables
 
-- Ne jamais envoyer d'email commercial sans accord explicite du propriétaire.
-- Conserver `OUTBOUND_ENABLED=false` et `app.settings.outbound_enabled=false` pendant la recette. Le statut de pause métier est piloté par le propriétaire dans l'interface et ne doit jamais être réactivé automatiquement lors d'un déploiement.
+- L'accord explicite du propriétaire pour activer le moteur d'envoi a été donné le 23 octobre 2026. En production, conserver `OUTBOUND_ENABLED=true` et `app.settings.outbound_enabled=true` tant que le propriétaire ne demande pas une pause.
+- Un déploiement ou une migration ne doit modifier ni l'autorisation d'envoi ni la pause métier. Seule une action explicite du propriétaire ou un incident sérieux tracé peut suspendre un compte ou les campagnes.
 - Ne jamais ajouter à Git un export CRM, un secret, un mot de passe d'application ou une donnée personnelle réelle.
 - Une ligne importée « Envoyé » n'est pas une confirmation technique.
 - Seul le backend peut appeler `app.confirm_smtp_acceptance` et créer un véritable brouillon Gmail.
@@ -48,7 +48,7 @@ Application privée de prospection B2B : React/Vite sur Netlify, fonctions Netli
 - Une réponse pertinente ou un envoi manuel Gmail annule les travaux restants.
 - Un résultat SMTP ambigu devient `uncertain` et n'est jamais reloué automatiquement.
 - Les workers sont courts, incrémentaux et reprenables ; aucun processus IMAP permanent.
-- Les brouillons sont créés dans le Gmail principal avec l'identité de la conversation. L'association au fil et la sélection réelle de l'alias doivent rester non vérifiées tant qu'une recette Gmail n'a pas eu lieu.
+- Les brouillons sont créés dans le Gmail principal avec l'identité de la conversation ; en l'absence de compte principal, le backend utilise le compte expéditeur. L'association au fil et la sélection réelle de l'alias doivent rester non vérifiées tant qu'une recette Gmail n'a pas eu lieu.
 
 ## État de sécurité initial
 

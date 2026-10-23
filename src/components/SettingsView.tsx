@@ -14,6 +14,44 @@ interface SettingsViewProps {
   onMutated: () => Promise<void>;
 }
 
+interface GmailEditorDraft {
+  email: string;
+  displayName: string;
+  role: GmailAccount["role"];
+  appPassword: string;
+  dailyLimit: string;
+  warmupDailyLimit: string;
+  sendDays: number[];
+  sendStart: string;
+  sendEnd: string;
+  timezone: string;
+  randomizeSendTimes: boolean;
+  progressiveRampEnabled: boolean;
+}
+
+const gmailSetupSteps = [
+  ["✉", "Connexion Gmail"],
+  ["⚙", "Limites d’envoi"],
+  ["✓", "Vérification finale"],
+] as const;
+
+function gmailEditorDraft(account?: GmailAccount | null): GmailEditorDraft {
+  return {
+    email: account?.email ?? "",
+    displayName: account?.displayName ?? "",
+    role: account?.role ?? "sender",
+    appPassword: "",
+    dailyLimit: String(account?.dailyLimit ?? 10),
+    warmupDailyLimit: account?.warmupDailyLimit == null ? "" : String(account.warmupDailyLimit),
+    sendDays: account?.sendDays ?? [1, 2, 3, 4, 5],
+    sendStart: account?.sendStart ?? "08:00",
+    sendEnd: account?.sendEnd ?? "18:00",
+    timezone: account?.timezone ?? "Europe/Paris",
+    randomizeSendTimes: account?.randomizeSendTimes ?? true,
+    progressiveRampEnabled: account?.progressiveRampEnabled ?? true,
+  };
+}
+
 const storageKeys = [
   "crm-maquette-v5-targets",
   "prospection95-v9-general-guidance",
@@ -61,45 +99,100 @@ function InstructionsPanel({ settings, attachments, onMutated }: { settings: App
 
 function GmailPanel({ accounts, vaultConfigured, onMutated, onOpenDeliverability }: { accounts: GmailAccount[]; vaultConfigured: boolean; onMutated: () => Promise<void>; onOpenDeliverability: () => void }) {
   const [editorId, setEditorId] = useState<string | null>(null);
+  const [editorStep, setEditorStep] = useState(0);
+  const [editorDraft, setEditorDraft] = useState<GmailEditorDraft | null>(null);
+  const [editorSaving, setEditorSaving] = useState(false);
   const [message, setMessage] = useState<string | null>(null);
   const [messageTone, setMessageTone] = useState<"info" | "success" | "error">("info");
   const [busyId, setBusyId] = useState<string | null>(null);
   const [verifiedFlashId, setVerifiedFlashId] = useState<string | null>(null);
   const editing = editorId && editorId !== "new" ? accounts.find((account) => account.id === editorId) ?? null : null;
 
-  async function save(event: FormEvent<HTMLFormElement>) {
-    event.preventDefault();
-    const form = event.currentTarget;
-    const data = new FormData(form);
+  function openEditor(account?: GmailAccount) {
+    setEditorId(account?.id ?? "new");
+    setEditorStep(0);
+    setEditorDraft(gmailEditorDraft(account));
     setMessage(null);
-    if (!data.getAll("sendDays").length) {
-      setMessageTone("error");
-      setMessage("Sélectionne au moins un jour d’envoi.");
-      return;
+  }
+
+  function closeEditor() {
+    setEditorId(null);
+    setEditorDraft(null);
+    setEditorStep(0);
+  }
+
+  function validateEditorStep(step: number): boolean {
+    if (!editorDraft) return false;
+    if (step === 0) {
+      if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(editorDraft.email.trim())) {
+        setMessageTone("error");
+        setMessage("Indique une adresse Gmail valide.");
+        return false;
+      }
+      if (!editing?.hasCredential && editorDraft.appPassword.replace(/\s+/g, "").length < 8) {
+        setMessageTone("error");
+        setMessage("Indique le mot de passe d’application Google de ce compte.");
+        return false;
+      }
     }
+    if (step === 1) {
+      const dailyLimit = Number(editorDraft.dailyLimit);
+      const warmupLimit = editorDraft.warmupDailyLimit === "" ? null : Number(editorDraft.warmupDailyLimit);
+      if (!Number.isInteger(dailyLimit) || dailyLimit < 1 || dailyLimit > 2_000 ||
+          (warmupLimit !== null && (!Number.isInteger(warmupLimit) || warmupLimit < 0 || warmupLimit > dailyLimit))) {
+        setMessageTone("error");
+        setMessage("Vérifie le plafond quotidien et la limite de préchauffage.");
+        return false;
+      }
+      if (!editorDraft.sendDays.length) {
+        setMessageTone("error");
+        setMessage("Sélectionne au moins un jour d’envoi.");
+        return false;
+      }
+      if (editorDraft.sendStart >= editorDraft.sendEnd) {
+        setMessageTone("error");
+        setMessage("L’heure de fin doit être postérieure à l’heure de début.");
+        return false;
+      }
+    }
+    setMessage(null);
+    return true;
+  }
+
+  function goToEditorStep(step: number) {
+    if (step > editorStep && !validateEditorStep(editorStep)) return;
+    setEditorStep(step);
+  }
+
+  async function save() {
+    if (!editorDraft || !validateEditorStep(0) || !validateEditorStep(1)) return;
+    setMessage(null);
+    setEditorSaving(true);
     try {
       await api.saveGmailAccount({
-        email: String(data.get("email") || ""),
-        displayName: String(data.get("displayName") || ""),
-        role: String(data.get("role") || "sender"),
-        ...(data.get("appPassword") ? { appPassword: String(data.get("appPassword")) } : {}),
-        dailyLimit: Number(data.get("dailyLimit") || 20),
-        warmupDailyLimit: data.get("warmupDailyLimit") === "" ? null : Number(data.get("warmupDailyLimit")),
-        sendDays: data.getAll("sendDays").map(Number),
-        sendStart: String(data.get("sendStart") || "08:00"),
-        sendEnd: String(data.get("sendEnd") || "18:00"),
-        timezone: String(data.get("timezone") || "Europe/Paris"),
-        randomizeSendTimes: data.get("randomizeSendTimes") === "on",
-        progressiveRampEnabled: data.get("progressiveRampEnabled") === "on",
+        email: editorDraft.email.trim().toLowerCase(),
+        displayName: editorDraft.displayName.trim(),
+        role: editorDraft.role,
+        ...(editorDraft.appPassword ? { appPassword: editorDraft.appPassword } : {}),
+        dailyLimit: Number(editorDraft.dailyLimit),
+        warmupDailyLimit: editorDraft.warmupDailyLimit === "" ? null : Number(editorDraft.warmupDailyLimit),
+        sendDays: editorDraft.sendDays,
+        sendStart: editorDraft.sendStart,
+        sendEnd: editorDraft.sendEnd,
+        timezone: editorDraft.timezone,
+        randomizeSendTimes: editorDraft.randomizeSendTimes,
+        progressiveRampEnabled: editorDraft.progressiveRampEnabled,
         ...(editing ? { version: editing.version } : {}),
       }, editing?.id);
-      setEditorId(null);
+      closeEditor();
       await onMutated();
       setMessageTone("success");
       setMessage(editing ? "✓ Configuration du compte mise à jour." : "✓ Compte enregistré. Le mot de passe n’est plus accessible au navigateur.");
     } catch (error) {
       setMessageTone("error");
       setMessage(error instanceof Error ? error.message : "Compte non enregistré");
+    } finally {
+      setEditorSaving(false);
     }
   }
 
@@ -115,8 +208,8 @@ function GmailPanel({ accounts, vaultConfigured, onMutated, onOpenDeliverability
         setVerifiedFlashId(id);
         window.setTimeout(() => setVerifiedFlashId((current) => current === id ? null : current), 5000);
       } else if (result.imap) {
-        setMessageTone("success");
-        setMessage("✓ IMAP vérifié. SMTP reste indisponible tant que le verrou serveur bloque les envois.");
+        setMessageTone("error");
+        setMessage(`IMAP vérifié, mais SMTP n’est pas encore opérationnel${result.errorCode ? ` (${result.errorCode})` : ""}.`);
         setVerifiedFlashId(id);
         window.setTimeout(() => setVerifiedFlashId((current) => current === id ? null : current), 5000);
       } else if (["gmail_auth_failed", "gmail_app_password_required", "authenticationfailed"].includes(result.errorCode || "")) {
@@ -212,31 +305,78 @@ function GmailPanel({ accounts, vaultConfigured, onMutated, onOpenDeliverability
     return `${dayLabel} · ${account.sendStart}–${account.sendEnd}`;
   }
 
+  const editorConnectionReady = Boolean(editorDraft && (editing?.hasCredential || editorDraft.appPassword.replace(/\s+/g, "").length >= 8));
+  const editorLimitsReady = Boolean(editorDraft && Number(editorDraft.dailyLimit) > 0 && editorDraft.sendDays.length && editorDraft.sendStart < editorDraft.sendEnd);
+  const editorTitle = editing?.email || editorDraft?.email || "un nouveau compte";
+
   return (
     <div className="settings-panel">
-      <div className="panel-heading"><div><h2>Comptes Gmail</h2><p>Connecte tes adresses une fois, puis consulte leur délivrabilité.</p></div><button className="win-button primary" disabled={!vaultConfigured} onClick={() => setEditorId((value) => value === "new" ? null : "new")}>+ Ajouter un compte</button></div>
+      {!editorId ? <div className="panel-heading"><div><h2>Comptes Gmail</h2><p>Connecte tes adresses une fois, puis consulte leur délivrabilité.</p></div><button className="win-button primary" disabled={!vaultConfigured} onClick={() => openEditor()}>+ Ajouter un compte</button></div> : null}
       {!vaultConfigured ? <div className="win-alert warning" role="alert">Le coffre privé Netlify n’est pas encore disponible. Rechargez la page pour relancer son initialisation automatique.</div> : null}
       {message ? <div className={`win-alert ${messageTone}`} role="status">{message}</div> : null}
-      {editorId ? (
-        <form className="account-form win-group" key={editorId} onSubmit={(event) => void save(event)}>
-          <legend>{editing ? `Modifier ${editing.email}` : "Nouveau compte"}</legend>
-          <div className="form-grid">
-            <label className="field"><span>Adresse Gmail</span><input name="email" type="email" required autoComplete="off" defaultValue={editing?.email || ""} /></label>
-            <label className="field"><span>Nom d’expéditeur</span><input name="displayName" autoComplete="off" defaultValue={editing?.displayName || ""} /></label>
-            <label className="field"><span>Rôle</span><select name="role" defaultValue={editing?.role || "sender"}><option value="sender">Expéditeur</option><option value="primary">Gmail principal</option><option value="test_inbox">Boîte réceptrice de test</option></select></label>
-            <label className="field"><span>Mot de passe d’application {editing ? "(laisser vide pour conserver)" : ""}</span><input name="appPassword" type="password" required={!editing} minLength={8} autoComplete="new-password" /></label>
-            <label className="field"><span>Limite quotidienne</span><input name="dailyLimit" type="number" min={0} max={2000} defaultValue={editing?.dailyLimit ?? 20} /></label>
-            <label className="field"><span>Limite pendant le warm-up (facultatif)</span><input name="warmupDailyLimit" type="number" min={0} max={2000} defaultValue={editing?.warmupDailyLimit ?? ""} /></label>
-            <label className="field"><span>Plage autorisée</span><span className="inline-fields"><input name="sendStart" type="time" defaultValue={editing?.sendStart || "08:00"} /><span>à</span><input name="sendEnd" type="time" defaultValue={editing?.sendEnd || "18:00"} /></span></label>
-            <label className="field"><span>Fuseau horaire</span><input name="timezone" defaultValue={editing?.timezone || "Europe/Paris"} /></label>
-            <fieldset className="send-days"><legend>Jours d’envoi autorisés</legend>{[[1,"Lun"],[2,"Mar"],[3,"Mer"],[4,"Jeu"],[5,"Ven"],[6,"Sam"],[7,"Dim"]].map(([day, label]) => <label key={day}><input name="sendDays" type="checkbox" value={day} defaultChecked={editing ? editing.sendDays.includes(Number(day)) : Number(day) <= 5} /> {label}</label>)}</fieldset>
-            <label className="check-field"><input name="randomizeSendTimes" type="checkbox" defaultChecked={editing?.randomizeSendTimes ?? true} /> Répartir les heures d’envoi dans la plage</label>
-            <label className="check-field"><input name="progressiveRampEnabled" type="checkbox" defaultChecked={editing?.progressiveRampEnabled ?? true} /> Augmentation progressive du volume</label>
+      {editorId && editorDraft ? (
+        <form className="v15-shell v16-shell gmail-setup-shell" key={editorId} onSubmit={(event) => { event.preventDefault(); if (editorStep < gmailSetupSteps.length - 1) goToEditorStep(editorStep + 1); else void save(); }}>
+          <div className="v15-top">
+            <button className="v12-back" type="button" onClick={closeEditor}>← Comptes Gmail</button>
+            <div><h2>Configurer {editorTitle}</h2><p>Connexion sécurisée, rythme d’envoi et vérification avant enregistrement.</p></div>
           </div>
-          <div className="settings-actions"><span>Le mot de passe est chiffré côté serveur. Les autres réglages restent modifiables.</span><div><button type="button" className="win-button" onClick={() => setEditorId(null)}>Annuler</button><button className="win-button primary">{editing ? "Enregistrer les modifications" : "Chiffrer et enregistrer"}</button></div></div>
+          <div className="v15-wizard">
+            <aside className="v15-steps" aria-label="Étapes de configuration">
+              {gmailSetupSteps.map(([glyph, label], index) => (
+                <button type="button" className={`v15-step ${editorStep === index ? "active" : ""}`} onClick={() => goToEditorStep(index)} key={label}>
+                  <span className="v15-step-icon">{glyph}</span>
+                  <span><b>{index + 1}. {label}</b><small>{index === 0 ? (editorConnectionReady ? "✓ Préparée" : "À compléter") : index === 1 ? (editorLimitsReady ? "✓ Préparées" : "À compléter") : "Récapitulatif"}</small></span>
+                </button>
+              ))}
+            </aside>
+            <section className="v15-main">
+              <div className="v16-mobile-progress"><div className="v16-mobile-progress-head"><strong>Étape {editorStep + 1} sur {gmailSetupSteps.length}</strong><span>{gmailSetupSteps[editorStep][1]}</span></div><div className="v16-progress-bars">{gmailSetupSteps.map((step, index) => <i className={index <= editorStep ? "filled" : ""} key={step[1]} />)}</div></div>
+              <div className="v15-stepcount v16-desktop-progress">ÉTAPE {editorStep + 1} SUR {gmailSetupSteps.length}</div>
+
+              {editorStep === 0 ? <>
+                <div className="v15-copy"><h3>Connecter Gmail</h3><p>Utilise un mot de passe d’application Google créé avec exactement l’adresse indiquée ci-dessous. Il sera chiffré dans le coffre privé et ne sera plus renvoyé au navigateur.</p></div>
+                <div className="v15-two gmail-connection-grid">
+                  <div className="v15-panel"><b>1. Créer le mot de passe d’application</b><p>Ouvre Google avec le bon compte, puis crée un mot de passe pour Prospection 95.</p><a className="win-link" href="https://myaccount.google.com/apppasswords" target="_blank" rel="noopener noreferrer">Ouvrir Google ↗</a></div>
+                  <div className="v15-panel gmail-credential-panel">
+                    <b>2. Renseigner le compte</b>
+                    <label className="v15-field"><span>Adresse Gmail</span><input type="email" required autoComplete="off" value={editorDraft.email} onChange={(event) => setEditorDraft((current) => current && ({ ...current, email: event.target.value }))} /></label>
+                    <label className="v15-field"><span>Nom d’expéditeur</span><input autoComplete="off" value={editorDraft.displayName} onChange={(event) => setEditorDraft((current) => current && ({ ...current, displayName: event.target.value }))} /></label>
+                    <label className="v15-field"><span>Rôle du compte</span><select value={editorDraft.role} onChange={(event) => setEditorDraft((current) => current && ({ ...current, role: event.target.value as GmailAccount["role"] }))}><option value="sender">Expéditeur</option><option value="primary">Gmail principal</option><option value="test_inbox">Boîte réceptrice de test</option></select></label>
+                    <label className="v15-field"><span>Mot de passe d’application {editing?.hasCredential ? "(laisser vide pour conserver la clé actuelle)" : ""}</span><input type="password" required={!editing?.hasCredential} minLength={8} autoComplete="new-password" value={editorDraft.appPassword} onChange={(event) => setEditorDraft((current) => current && ({ ...current, appPassword: event.target.value }))} /></label>
+                  </div>
+                </div>
+                <div className={`v15-result ${editorConnectionReady ? "configured" : "is-pending"}`}><b>{editorConnectionReady ? "Connexion prête à être enregistrée" : "Connexion à compléter"}</b><span>{editing?.hasCredential && !editorDraft.appPassword ? "La clé déjà enregistrée sera conservée." : "La connexion SMTP et IMAP pourra être contrôlée après l’enregistrement."}</span></div>
+                {editing?.hasCredential && !editorDraft.appPassword ? <button className="win-button gmail-inline-test" type="button" disabled={busyId === editing.id} onClick={() => void test(editing.id)}>{busyId === editing.id ? "Vérification…" : "Tester maintenant SMTP / IMAP"}</button> : null}
+              </> : null}
+
+              {editorStep === 1 ? <>
+                <div className="v15-copy"><h3>Limites et horaires d’envoi</h3><p>Ces réglages s’appliquent à cette adresse et restent modifiables à tout moment.</p></div>
+                <div className="v15-form gmail-limits-form">
+                  <div className="v15-formgrid">
+                    <label className="v15-field"><span>Plafond quotidien</span><span className="v15-inputunit"><input type="number" min={1} max={2000} required value={editorDraft.dailyLimit} onChange={(event) => setEditorDraft((current) => current && ({ ...current, dailyLimit: event.target.value }))} /><span>emails / jour</span></span></label>
+                    <label className="v15-field"><span>Limite pendant le préchauffage</span><span className="v15-inputunit"><input type="number" min={0} max={2000} placeholder="Facultatif" value={editorDraft.warmupDailyLimit} onChange={(event) => setEditorDraft((current) => current && ({ ...current, warmupDailyLimit: event.target.value }))} /><span>emails / jour</span></span></label>
+                  </div>
+                  <label className="v15-check"><input type="checkbox" checked={editorDraft.progressiveRampEnabled} onChange={(event) => setEditorDraft((current) => current && ({ ...current, progressiveRampEnabled: event.target.checked }))} /><span><b>Augmenter progressivement le volume</b><small>Le moteur respecte toujours le plus petit plafond applicable.</small></span></label>
+                  <div className="v42-schedule"><strong>Jours d’envoi</strong><div className="v42-days">{[[1,"Lun"],[2,"Mar"],[3,"Mer"],[4,"Jeu"],[5,"Ven"],[6,"Sam"],[7,"Dim"]].map(([day, label]) => <label key={day}><input type="checkbox" checked={editorDraft.sendDays.includes(Number(day))} onChange={(event) => setEditorDraft((current) => current && ({ ...current, sendDays: event.target.checked ? [...current.sendDays, Number(day)].sort() : current.sendDays.filter((value) => value !== Number(day)) }))} /><span>{label}</span></label>)}</div><div className="v42-hours"><label className="v15-field"><span>De</span><input type="time" required value={editorDraft.sendStart} onChange={(event) => setEditorDraft((current) => current && ({ ...current, sendStart: event.target.value }))} /></label><label className="v15-field"><span>À</span><input type="time" required value={editorDraft.sendEnd} onChange={(event) => setEditorDraft((current) => current && ({ ...current, sendEnd: event.target.value }))} /></label><label className="v15-field timezone-field"><span>Fuseau horaire</span><input required value={editorDraft.timezone} onChange={(event) => setEditorDraft((current) => current && ({ ...current, timezone: event.target.value }))} /></label></div><label className="v42-random"><input type="checkbox" checked={editorDraft.randomizeSendTimes} onChange={(event) => setEditorDraft((current) => current && ({ ...current, randomizeSendTimes: event.target.checked }))} /> Répartir les envois à des horaires variables dans cette plage</label></div>
+                </div>
+              </> : null}
+
+              {editorStep === 2 ? <>
+                <div className="v15-copy"><h3>Récapitulatif du compte</h3><p>Vérifie les réglages avant de les enregistrer. Le mot de passe d’application ne sera jamais affiché après cette étape.</p></div>
+                <div className="v15-finalrows">
+                  <div className="v15-finalrow"><div><strong>Connexion Gmail</strong><small>{editorDraft.email} · {editorDraft.role === "sender" ? "Expéditeur" : editorDraft.role === "primary" ? "Gmail principal" : "Boîte réceptrice"}</small></div><div className="v15-finalright"><span className={`v15-smallstate ${editorConnectionReady ? "configured" : "pending"}`}>{editorConnectionReady ? "Préparée" : "À compléter"}</span><button className="v15-steplink" type="button" onClick={() => setEditorStep(0)}>Modifier</button></div></div>
+                  <div className="v15-finalrow"><div><strong>Limites d’envoi</strong><small>{editorDraft.dailyLimit} emails/jour · {editorDraft.sendStart}–{editorDraft.sendEnd} · {editorDraft.timezone}</small></div><div className="v15-finalright"><span className={`v15-smallstate ${editorLimitsReady ? "configured" : "pending"}`}>{editorLimitsReady ? "Préparées" : "À compléter"}</span><button className="v15-steplink" type="button" onClick={() => setEditorStep(1)}>Modifier</button></div></div>
+                  <div className="v15-finalrow"><div><strong>Jours autorisés</strong><small>{editorDraft.sendDays.map((day) => ["", "Lun", "Mar", "Mer", "Jeu", "Ven", "Sam", "Dim"][day]).join(", ")}</small></div><span className="v15-smallstate configured">Configurés</span></div>
+                </div>
+                <div className="v16-compact-info"><strong>Enregistrement sécurisé.</strong> La connexion sera testable immédiatement depuis la fiche du compte.</div>
+              </> : null}
+
+              <div className="v16-actionbar v16-wizard-actions"><button className="win-button" type="button" onClick={() => editorStep ? setEditorStep(editorStep - 1) : closeEditor()}>{editorStep ? "← Précédent" : "Annuler"}</button><button className="win-button primary" type="submit" disabled={editorSaving}>{editorStep === gmailSetupSteps.length - 1 ? (editorSaving ? "Enregistrement…" : editing ? "Enregistrer les modifications" : "Chiffrer et enregistrer") : "Continuer →"}</button></div>
+            </section>
+          </div>
         </form>
       ) : null}
-      <div className="account-list v16-account-list">
+      {!editorId ? <div className="account-list v16-account-list">
         {accounts.map((account) => {
           const state = accountState(account);
           const score = account.bobworkHealthScore;
@@ -255,8 +395,8 @@ function GmailPanel({ accounts, vaultConfigured, onMutated, onOpenDeliverability
                   <small>{score === null ? "En attente de mesures réelles" : "Source : BobWork"}</small>
                 </div>
                 <div className="v16-account-actions">
-                  <button className="win-button primary" type="button" onClick={() => setEditorId(account.id)}>Modifier la configuration</button>
-                  <details className="v16-more"><summary title="Autres actions" aria-label="Autres actions">⋯</summary><div><button className="win-button" type="button" onClick={() => setEditorId(account.id)}>Modifier</button><button className="win-button danger" type="button" onClick={async () => { if (!window.confirm(`Supprimer ${account.email} ?`)) return; await api.deleteGmailAccount(account.id); await onMutated(); }}>Supprimer</button></div></details>
+                  {!account.hasCredential ? <button className="win-button primary" type="button" onClick={() => openEditor(account)}>Terminer la configuration</button> : null}
+                  <details className="v16-more"><summary title="Autres actions" aria-label="Autres actions">⋯</summary><div><button className="win-button" type="button" onClick={() => openEditor(account)}>Modifier</button><button className="win-button danger" type="button" onClick={async () => { if (!window.confirm(`Supprimer ${account.email} ?`)) return; await api.deleteGmailAccount(account.id); await onMutated(); }}>Supprimer</button></div></details>
                 </div>
               </div>
               <details className="v19-account-details">
@@ -273,7 +413,7 @@ function GmailPanel({ accounts, vaultConfigured, onMutated, onOpenDeliverability
                   <form className="gmail-test-send" onSubmit={(event) => void sendTestEmail(event, account)}>
                     <label><span>Envoyer un email test à</span><input name="recipient" type="email" required placeholder="adresse@exemple.com" autoComplete="email" /></label>
                     <button className="win-button primary" disabled={busyId === account.id || !account.hasCredential}>{busyId === account.id ? "Envoi…" : "Envoyer le test"}</button>
-                    <small>Envoi diagnostic unique : l’arrêt des campagnes reste actif.</small>
+                    <small>Envoi diagnostic unique, indépendant des campagnes.</small>
                   </form>
                   <button className="win-button" type="button" disabled={busyId === "bobwork"} onClick={() => void syncBobwork()}>{busyId === "bobwork" ? "Synchronisation…" : "Actualiser les mesures BobWork"}</button>
                 </div>
@@ -282,8 +422,8 @@ function GmailPanel({ accounts, vaultConfigured, onMutated, onOpenDeliverability
           );
         })}
         {!accounts.length ? <div className="v53-sender-empty">Aucune adresse. Ajoute un compte pour commencer.</div> : null}
-      </div>
-      <div className="v53-settings-crosslink"><span>Les boîtes réceptrices et les vérificateurs sont gérés pour toute l’application.</span><button className="win-button" onClick={onOpenDeliverability}>Ouvrir Tests &amp; réception ↗</button></div>
+      </div> : null}
+      {!editorId ? <div className="v53-settings-crosslink"><span>Les boîtes réceptrices et les vérificateurs sont gérés pour toute l’application.</span><button className="win-button" onClick={onOpenDeliverability}>Ouvrir Tests &amp; réception ↗</button></div> : null}
     </div>
   );
 }
