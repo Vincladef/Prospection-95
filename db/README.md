@@ -1,6 +1,6 @@
 # Schéma Lakebase Postgres
 
-Le dossier contient douze migrations additives, rejouables et sans données métier embarquées. Elles doivent être appliquées dans l’ordre lexical.
+Le dossier contient treize migrations additives, rejouables et sans données métier embarquées. Elles doivent être appliquées dans l’ordre lexical.
 
 1. `001_foundation.sql` : rôles, schémas, paramètres, campagnes, comptes publics, prospects, anti-recontact et coffre chiffré.
 2. `002_messaging.sql` : versions de messages, conversations, SMTP/IMAP, file d’envoi, baux et brouillons.
@@ -14,6 +14,7 @@ Le dossier contient douze migrations additives, rejouables et sans données mét
 10. `010_signed_interaction_tracking_and_v53_verifiers.sql` : suivi signé des ouvertures/clics et catalogue V53 des vérificateurs.
 11. `011_v53_tracking_defaults.sql` : activation par défaut du suivi des interactions sur les campagnes.
 12. `012_product_flexibility_and_attachments.sql` : pièces jointes privées d’instructions et ressources BobWork étendues pour les agents.
+13. `013_application_role_new_resources.sql` : droits du backend Netlify sur les nouvelles ressources et privilèges par défaut pour les prochains objets applicatifs.
 
 ## Principes de sécurité
 

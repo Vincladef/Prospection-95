@@ -7,9 +7,9 @@ const migrationsDirectory = join(process.cwd(), "db", "migrations");
 describe("database safety contract", () => {
   it("keeps a contiguous additive migration set", () => {
     const files = readdirSync(migrationsDirectory).filter((name) => name.endsWith(".sql")).sort();
-    expect(files).toHaveLength(12);
+    expect(files).toHaveLength(13);
     expect(files.map((name) => name.slice(0, 3))).toEqual([
-      "001", "002", "003", "004", "005", "006", "007", "008", "009", "010", "011", "012",
+      "001", "002", "003", "004", "005", "006", "007", "008", "009", "010", "011", "012", "013",
     ]);
   });
 
@@ -65,5 +65,14 @@ describe("database safety contract", () => {
     expect(sql).toContain("tracking_opens_enabled SET DEFAULT true");
     expect(sql).toContain("tracking_clicks_enabled SET DEFAULT true");
     expect(sql).toContain("SET tracking_opens_enabled = true");
+  });
+
+  it("grants the application role access to resources created after the base permission migration", () => {
+    const sql = readFileSync(join(migrationsDirectory, "013_application_role_new_resources.sql"), "utf8");
+    const verify = readFileSync(join(process.cwd(), "db", "verify.sql"), "utf8");
+    expect(sql).toContain("app.instruction_attachments, app.bobwork_api_snapshots");
+    expect(sql).toContain("TO prospection95_app");
+    expect(sql).toContain("ALTER DEFAULT PRIVILEGES IN SCHEMA app");
+    expect(verify).toContain("application_role_can_use_product_flexibility_objects");
   });
 });

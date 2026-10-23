@@ -55,6 +55,11 @@ SELECT to_regclass('app.instruction_attachments') IS NOT NULL
    AND NOT has_table_privilege('prospection95_agent', 'app.instruction_attachments', 'SELECT')
    AS product_flexibility_contract_is_available;
 
+SELECT has_table_privilege('prospection95_app', 'app.instruction_attachments', 'SELECT,INSERT,UPDATE,DELETE')
+   AND has_table_privilege('prospection95_app', 'app.bobwork_api_snapshots', 'SELECT,INSERT,UPDATE,DELETE')
+   AND has_sequence_privilege('prospection95_app', 'app.bobwork_api_snapshots_id_seq', 'USAGE,SELECT')
+   AS application_role_can_use_product_flexibility_objects;
+
 SELECT NOT EXISTS (
   SELECT 1
   FROM information_schema.columns
