@@ -30,9 +30,6 @@ const campaign: Campaign = {
   experimentPolicy: "continue",
   nextTestInstructions: "",
   importedDisabled: true,
-  writingIterationStatus: "pending",
-  writingIterationsCompleted: 0,
-  writingIterationsTotal: 3,
   version: 1,
   sequence: {
     subject: "",

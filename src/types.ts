@@ -40,9 +40,6 @@ export interface Campaign {
   experimentPolicy: "continue" | "stabilize";
   nextTestInstructions: string;
   importedDisabled: boolean;
-  writingIterationStatus: "pending" | "running" | "completed" | "cancelled" | null;
-  writingIterationsCompleted: number;
-  writingIterationsTotal: number;
   version: number;
   sequence: SequenceContent;
   updatedAt: string;
@@ -93,6 +90,10 @@ export interface Prospect {
   excluded: boolean;
   exclusionReason: string | null;
   variantLabel: string | null;
+  writingIterationStatus: "pending" | "running" | "completed" | "cancelled";
+  writingIterationsCompleted: number;
+  writingIterationsTotal: number;
+  hasOutboundMessages: boolean;
   subject: string;
   messages: [string, string, string, string, string, string];
   version: number;

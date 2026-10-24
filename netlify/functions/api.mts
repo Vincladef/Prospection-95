@@ -359,6 +359,26 @@ async function updateProspect(request: Request, id: string, identity: AdminIdent
     return json({ prospect: updated });
   }
 
+  const preparation = await sqlOne<{ ready: boolean }>(`
+    select exists (
+      select 1
+      from app.conversations conversation
+      join app.prospect_iteration_states iteration_state
+        on iteration_state.campaign_id = conversation.campaign_id
+       and iteration_state.prospect_id = conversation.prospect_id
+       and iteration_state.experiment_assignment_id is not distinct from conversation.experiment_assignment_id
+       and iteration_state.status = 'completed'
+       and iteration_state.completed_iterations = iteration_state.total_iterations
+      join app.email_messages message
+        on message.conversation_id = conversation.id
+       and message.direction = 'outbound'
+       and not message.technical_confirmation
+      where conversation.prospect_id = $1::uuid
+    ) as ready`, [id]);
+  if (!preparation?.ready) {
+    throw new HttpError(409, "prospect_preparation_incomplete", "La séquence doit terminer toutes ses itérations avant validation ou planification.");
+  }
+
   const updated = await setProspectStatus([id], value.status, value.version);
   if (!updated) throw new HttpError(409, "version_conflict", "Le prospect a été modifié ailleurs ou ne possède aucun message.");
   await logMutation(identity, requestId, { action: "prospect_status_updated", entityType: "prospect", entityId: id, metadata: { status: value.status } });
@@ -373,6 +393,12 @@ async function setProspectStatus(ids: string[], status: z.infer<typeof editableM
               current_message.step, current_message.subject, current_message.body_text
        from app.conversations conv
        join app.prospects p on p.id = conv.prospect_id
+       join app.prospect_iteration_states iteration_state
+         on iteration_state.campaign_id = conv.campaign_id
+        and iteration_state.prospect_id = conv.prospect_id
+        and iteration_state.experiment_assignment_id is not distinct from conv.experiment_assignment_id
+        and iteration_state.status = 'completed'
+        and iteration_state.completed_iterations = iteration_state.total_iterations
        join lateral (
          select m.id, m.step, m.subject, m.body_text
          from app.email_messages m

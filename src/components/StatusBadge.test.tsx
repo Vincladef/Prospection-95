@@ -11,4 +11,8 @@ describe("StatusBadge", () => {
   it("conserve les états inconnus au lieu de les inventer", () => {
     expect(statusLabel("legacy_imported")).toBe("legacy_imported");
   });
+
+  it("uses the simplified pending label without renaming the technical status", () => {
+    expect(statusLabel("pending_approval")).toBe("En attente…");
+  });
 });

@@ -236,7 +236,9 @@ SELECT agent_api.propose_completed_sequence(
 
 La fonction vérifie la réservation, le compte expéditeur, l'achèvement de toutes les passes et l'absence de changement de configuration. Elle attache l'attribution A/B à la conversation et marque la variante comme exposée. `agent_api.propose_sequence` n'est volontairement plus exécutable par le rôle agent afin qu'aucune planification ne puisse contourner les itérations.
 
-En validation manuelle, les contenus restent `pending_approval`. En validation automatique, ils deviennent `prepared` ; le backend seul crée ensuite les travaux arrivés à échéance. R1, R2, R3, R4 et R5 sont calculés respectivement à +3, +7, +7, +14 et +14 jours depuis l'acceptation SMTP précédente.
+En validation manuelle, les contenus restent `pending_approval`. Son libellé utilisateur est « En attente… » : la valeur technique ne change pas. Tant que les passes ne sont pas toutes achevées, l'interface affiche « En attente… x/n » depuis `prospect_iteration_progress`, séparément pour chaque prospect et attribution A/B. Ce compteur ne doit jamais être modifié comme un statut de message. Aucun contenu ne peut être validé, planifié ou envoyé avant l'état `completed`, et l'absence de message ne doit jamais être interprétée comme « Préparé ».
+
+En validation automatique, les contenus deviennent `prepared` après l'achèvement confirmé des passes ; le backend seul crée ensuite les travaux arrivés à échéance. R1, R2, R3, R4 et R5 sont calculés respectivement à +3, +7, +7, +14 et +14 jours depuis l'acceptation SMTP précédente.
 
 Ne jamais modifier rétroactivement un message exposé. Une nouvelle version ou une nouvelle expérience doit produire un nouveau contenu.
 

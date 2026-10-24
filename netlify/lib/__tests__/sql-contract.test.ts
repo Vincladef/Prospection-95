@@ -122,4 +122,17 @@ describe("database safety contract", () => {
     expect(sql).not.toContain("ON CONFLICT (campaign_id, prospect_id) DO NOTHING");
     expect(sql).toContain("TO prospection95_agent");
   });
+
+  it("reads writing progress per prospect and blocks premature approval", () => {
+    const dashboard = readFileSync(join(process.cwd(), "netlify", "lib", "dashboard.mts"), "utf8");
+    const api = readFileSync(join(process.cwd(), "netlify", "functions", "api.mts"), "utf8");
+    expect(dashboard).toContain("app.prospect_iteration_states");
+    expect(dashboard).not.toContain("app.campaign_iteration_states iteration_state");
+    expect(dashboard).toContain("has_outbound_messages");
+    expect(dashboard).toContain("state.experiment_assignment_id is not distinct from conv.experiment_assignment_id");
+    expect(dashboard).toContain("not existing_message.technical_confirmation");
+    expect(api).toContain("prospect_preparation_incomplete");
+    expect(api).toContain("iteration_state.completed_iterations = iteration_state.total_iterations");
+    expect(api).toContain("iteration_state.experiment_assignment_id is not distinct from conv.experiment_assignment_id");
+  });
 });

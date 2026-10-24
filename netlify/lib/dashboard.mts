@@ -59,16 +59,12 @@ export async function loadDashboard(): Promise<Record<string, unknown>> {
     sqlQuery(`select id::text, name, position from app.campaign_folders order by position, name`),
     sqlQuery(`
       select c.*,
-             iteration_state.status as writing_iteration_status,
-             coalesce(iteration_state.completed_iterations, 0) as writing_iterations_completed,
-             coalesce(iteration_state.total_iterations, 1) as writing_iterations_total,
              coalesce((
                select array_agg(csa.account_id::text order by csa.account_id)
                from app.campaign_sender_accounts csa
                where csa.campaign_id = c.id and csa.enabled
              ), '{}'::text[]) as sender_account_ids
       from app.campaigns c
-      left join app.campaign_iteration_states iteration_state on iteration_state.campaign_id = c.id
       order by c.created_at desc
     `),
     sqlQuery(`
@@ -90,10 +86,19 @@ export async function loadDashboard(): Promise<Record<string, unknown>> {
              interactions.first_open_at, interactions.last_open_at,
              interactions.first_click_at, interactions.last_click_at,
              interactions.open_observation_count, interactions.click_observation_count,
+             coalesce(iteration_state.status, 'pending') as writing_iteration_status,
+             coalesce(iteration_state.completed_iterations, 0) as writing_iterations_completed,
+             coalesce(iteration_state.total_iterations, configured_iterations.total_iterations, 1) as writing_iterations_total,
+             exists (
+               select 1 from app.email_messages existing_message
+               where existing_message.conversation_id = conv.id
+                 and existing_message.direction = 'outbound'
+                 and not existing_message.technical_confirmation
+             ) as has_outbound_messages,
              exists(select 1 from app.contact_history h where h.normalized_email = p.normalized_email) as already_contacted,
              coalesce(app.is_excluded(p.email), false) as excluded,
              exclusion.reason as exclusion_reason,
-             ev.code as variant_label
+             coalesce(ev.code, progress_variant.code) as variant_label
       from app.prospects p
       left join app.organizations o on o.id = p.organization_id
       left join lateral (
@@ -108,9 +113,43 @@ export async function loadDashboard(): Promise<Record<string, unknown>> {
         on conv.prospect_id = p.id and conv.campaign_id = selected.campaign_id
       left join app.gmail_accounts ga on ga.id = conv.sender_account_id
       left join lateral (
+        select state.*
+        from app.prospect_iteration_states state
+        where state.campaign_id = selected.campaign_id
+          and state.prospect_id = p.id
+          and (conv.id is null
+            or state.experiment_assignment_id is not distinct from conv.experiment_assignment_id)
+        order by state.updated_at desc, state.created_at desc
+        limit 1
+      ) iteration_state on true
+      left join lateral (
+        select assignment.variant_id
+        from app.experiment_assignments assignment
+        where assignment.campaign_id = selected.campaign_id
+          and assignment.prospect_id = p.id
+        order by assignment.assigned_at desc
+        limit 1
+      ) prospective_assignment on iteration_state.id is null
+      left join app.experiment_variants progress_variant
+        on progress_variant.id = coalesce(iteration_state.variant_id, prospective_assignment.variant_id)
+      left join lateral (
+        select case
+          when jsonb_typeof(progress_variant.overrides #> '{iterations,draftPasses}') = 'array' then
+            case
+              when jsonb_array_length(progress_variant.overrides #> '{iterations,draftPasses}') between 1 and 10
+              then jsonb_array_length(progress_variant.overrides #> '{iterations,draftPasses}')
+              else cardinality(app.extract_campaign_iteration_instructions(campaign.ai_instructions))
+            end
+          else cardinality(app.extract_campaign_iteration_instructions(campaign.ai_instructions))
+        end::int as total_iterations
+        from app.campaigns campaign
+        where campaign.id = selected.campaign_id
+      ) configured_iterations on true
+      left join lateral (
         select m.status, m.smtp_accepted_at, m.sent_at
         from app.email_messages m
         where m.conversation_id = conv.id and m.direction = 'outbound'
+          and not m.technical_confirmation
         order by
           case when not m.technical_confirmation and m.status not in ('cancelled','failed') then 0 else 1 end,
           case m.step
@@ -328,9 +367,6 @@ export async function loadDashboard(): Promise<Record<string, unknown>> {
       experimentPolicy: textValue(row.experiment_policy),
       nextTestInstructions: textValue(row.next_test_instructions),
       importedDisabled: Boolean(row.imported_disabled),
-      writingIterationStatus: nullableText(row.writing_iteration_status),
-      writingIterationsCompleted: numberValue(row.writing_iterations_completed),
-      writingIterationsTotal: Math.max(1, numberValue(row.writing_iterations_total)),
       version: numberValue(row.version),
       sequence: {
         subject: templates.get(`${row.id}:J0`)?.subject ?? "",
@@ -385,6 +421,10 @@ export async function loadDashboard(): Promise<Record<string, unknown>> {
       excluded: Boolean(row.excluded),
       exclusionReason: nullableText(row.exclusion_reason),
       variantLabel: nullableText(row.variant_label),
+      writingIterationStatus: textValue(row.writing_iteration_status, "pending"),
+      writingIterationsCompleted: Math.max(0, numberValue(row.writing_iterations_completed)),
+      writingIterationsTotal: Math.max(1, Math.min(10, numberValue(row.writing_iterations_total))),
+      hasOutboundMessages: Boolean(row.has_outbound_messages),
       subject: contentFor("J0")?.subject ?? "",
       messages: STEPS.map((step) => contentFor(step)?.body ?? ""),
       version: numberValue(row.version),
@@ -524,7 +564,14 @@ export async function loadDashboard(): Promise<Record<string, unknown>> {
     })),
     totals: {
       prospects: prospects.length,
-      pendingApproval: prospects.filter((row) => ["draft", "prepared", "pending_approval"].includes(row.messageStatus ?? "")).length,
+      pendingApproval: prospects.filter((row) =>
+        !row.excluded && (
+          row.writingIterationStatus !== "completed"
+          || row.writingIterationsCompleted < row.writingIterationsTotal
+          || !row.hasOutboundMessages
+          || ["draft", "prepared", "pending_approval"].includes(row.messageStatus ?? "")
+        )
+      ).length,
       scheduled: prospects.filter((row) => ["approved", "scheduled", "reserved", "sending"].includes(row.messageStatus ?? "")).length,
       sent: prospects.filter((row) => ["smtp_accepted", "sent_manually"].includes(row.messageStatus ?? "")).length,
       replied: prospects.filter((row) => row.contactState === "replied" || row.messageStatus === "received").length,

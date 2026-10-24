@@ -3,7 +3,7 @@ import type { MessageStatus } from "../types";
 const labels: Record<string, string> = {
   draft: "Brouillon",
   prepared: "Préparé",
-  pending_approval: "À valider",
+  pending_approval: "En attente…",
   approved: "Validé",
   scheduled: "Programmé",
   reserved: "Réservé",
