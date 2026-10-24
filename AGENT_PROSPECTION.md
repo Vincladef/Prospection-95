@@ -77,6 +77,8 @@ Définitions immuables, variantes, seuils et mesures confirmées. `smtp_accepted
 
 Disponibilité, quotas, pauses, état et métriques BobWork observés, et incidents ouverts. Une donnée absente signifie « inconnue ».
 
+`bobwork_metrics.ready_for_outbound=false` est un signal consultatif du service de préchauffage, pas une pause du compte ni un verrou serveur. Pris isolément, il ne bloque ni la recherche, ni la rédaction, ni la proposition, ni la planification. Seuls une pause enregistrée, un incident sérieux, un compte indisponible ou un garde-fou backend effectif sont bloquants ; quotas et horaires restent applicables.
+
 ### `agent_api.instruction_attachments`
 
 Pièces jointes associées aux consignes globales, aux campagnes et aux variantes. Lire `extracted_text` lorsqu'il est disponible et toujours conserver le nom/type du fichier comme provenance. Pour un format binaire non extrait, ne pas inventer son contenu.

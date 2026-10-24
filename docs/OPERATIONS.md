@@ -137,6 +137,8 @@ La clé BobWork est la variable Netlify secrète `BOBWORK_API`, limitée aux Fun
 
 L’adaptateur utilise uniquement le contrat officiel disponible en lecture : `GET /mailboxes`, `GET /stats` et `GET /domains`, avec authentification Bearer. Les boîtes sont rapprochées des comptes Gmail ; les statistiques et domaines assainis sont exposés aux agents par `agent_api.bobwork_latest_resources`. Le worker `sync-bobwork` s’exécute toutes les six heures ; **Comptes Gmail → Détails de délivrabilité → Actualiser les mesures BobWork** déclenche la même lecture immédiatement.
 
+Le champ BobWork `ready_for_outbound` reste une observation du préchauffage. Une valeur `false` ne suspend pas le compte Prospection 95 et ne remplace pas les garde-fous effectifs : statut du compte, pause explicite, vérifications SMTP/IMAP, incidents, quotas et horaires. L’agent commercial ne doit donc pas en faire un blocage autonome.
+
 Après configuration ou rotation de la variable :
 
 1. publier un nouveau déploiement Netlify, les variables étant figées par déploiement ;

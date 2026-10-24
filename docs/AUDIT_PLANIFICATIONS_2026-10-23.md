@@ -6,7 +6,7 @@ Les deux prompts transmis décrivent correctement la séparation générale : Ch
 
 - `agent_api.campaign_parameters` expose les campagnes, la cible, les instructions, la validation, le tracking et les comptes autorisés.
 - `agent_api.register_prospect` déduplique globalement, conserve les sources et respecte l'historique ainsi que les exclusions.
-- `agent_api.reserve_prospect` puis `agent_api.propose_sequence` matérialisent atomiquement J0 et R1–R5.
+- `agent_api.reserve_prospect`, l’attribution A/B éventuelle, puis `claim_prospect_iteration` / `complete_prospect_iteration` conservent chaque passe par prospect. Après la dernière passe, `agent_api.propose_completed_sequence` matérialise J0 et R1–R5 depuis la version archivée ; l’appel direct à `propose_sequence` est révoqué pour l’agent.
 - La validation manuelle produit des messages en attente ; la validation automatique produit des messages préparés.
 - Le backend transforme les messages arrivés à échéance en travaux idempotents, applique jours, horaires, quotas et pauses, puis envoie via le mot de passe d'application Gmail chiffré.
 - La migration `014_sequence_progression_and_diagnostics` garantit qu'une étape acceptée ne masque plus la relance suivante.
@@ -37,4 +37,4 @@ Le modèle de données prend déjà en charge la création et la modification de
 
 ## Conclusion
 
-La recherche, le CRM, la préparation des séquences, l'envoi SMTP, la réception IMAP, le tracking, BobWork et les diagnostics ont une chaîne technique cohérente. Les deux planifications ne seront pleinement opérationnelles qu'après leur création avec le rôle agent dédié ; la planification de délivrabilité exige en plus l'outil navigateur prévu. Les contrats canoniques du dépôt doivent être joints aux prompts longs pour éviter toute ambiguïté sur les vues, fonctions et états réels.
+La recherche, le CRM, la préparation des séquences, l'envoi SMTP, la réception IMAP, le tracking, BobWork et les diagnostics ont une chaîne technique cohérente. Le login `prospection95_runtime` hérite désormais du contrat agent contrôlé ; la planification de délivrabilité exige en plus l'outil navigateur prévu. Les contrats canoniques du dépôt doivent être joints aux prompts longs pour éviter toute ambiguïté sur les vues, fonctions et états réels.
