@@ -22,6 +22,28 @@ const emptySequence: SequenceContent = {
   stepInstructions: ["", "", "", "", "", ""],
 };
 
+const iterationInstructionsMarker = "<!-- prospection-95:writing-iterations:v1 -->";
+const maximumDraftPasses = 10;
+
+function decodeDraftPasses(value: string): string[] {
+  if (!value.startsWith(iterationInstructionsMarker)) return [value];
+  const matches = [...value.matchAll(/(?:^|\n)### Itération (\d+)\n([\s\S]*?)(?=\n### Itération \d+\n|$)/g)];
+  const passes = matches
+    .filter((match, index) => Number(match[1]) === index + 1)
+    .map((match) => match[2].trim());
+  return passes.length ? passes.slice(0, maximumDraftPasses) : [value];
+}
+
+function encodeDraftPasses(passes: string[]): string {
+  if (passes.length <= 1) return passes[0] ?? "";
+  return `${iterationInstructionsMarker}\n${passes.map((pass, index) => `### Itération ${index + 1}\n${pass.trim()}`).join("\n\n")}`;
+}
+
+function resizeDraftPasses(passes: string[], requestedCount: number): string[] {
+  const count = Math.max(1, Math.min(maximumDraftPasses, Math.trunc(requestedCount) || 1));
+  return Array.from({ length: count }, (_, index) => passes[index] ?? "");
+}
+
 type VariantGroupKey = "search" | "iterations" | "subject" | "initial" | "followup0" | "followup1" | "followup2" | "followup3" | "followup4" | "reply";
 type VariantOverrides = Partial<Record<VariantGroupKey, Record<string, unknown>>>;
 
@@ -203,7 +225,7 @@ function CampaignEditor({
 
   function baseVariantGroup(key: VariantGroupKey): Record<string, unknown> {
     if (key === "search") return { criteria: draft.targetDescription };
-    if (key === "iterations") return { draftPasses: [draft.aiInstructions] };
+    if (key === "iterations") return { draftPasses: decodeDraftPasses(draft.aiInstructions) };
     if (key === "subject") return { subject: draft.sequence.subject, subjectInstructions: draft.sequence.subjectInstructions };
     if (key === "initial") return { body: draft.sequence.steps[0], bodyInstructions: draft.sequence.stepInstructions[0] };
     if (key === "reply") return { replyInstructions: draft.replyInstructions };
@@ -250,7 +272,7 @@ function CampaignEditor({
   }
 
   const searchGroup = variantGroup(selectedOverrides, "search", { criteria: draft.targetDescription });
-  const iterationsGroup = variantGroup(selectedOverrides, "iterations", { draftPasses: [draft.aiInstructions] as string[] });
+  const iterationsGroup = variantGroup(selectedOverrides, "iterations", { draftPasses: decodeDraftPasses(draft.aiInstructions) });
   const subjectGroup = variantGroup(selectedOverrides, "subject", { subject: draft.sequence.subject, subjectInstructions: draft.sequence.subjectInstructions });
   const initialGroup = variantGroup(selectedOverrides, "initial", { body: draft.sequence.steps[0], bodyInstructions: draft.sequence.stepInstructions[0] });
   const replyGroup = variantGroup(selectedOverrides, "reply", { replyInstructions: draft.replyInstructions });
@@ -436,10 +458,15 @@ function CampaignEditor({
 
         <section className="target-section">
           <div className="target-section-title"><h3>Itérations de rédaction IA</h3><small>{isReferenceVariant ? "Configuration de référence" : `Version ${selectedVariant?.label}`}</small></div>
-          {variantBlock("iterations", "Itérations", <div className="v23-pass-config"><div className="v23-pass-head"><label>Nombre d’itérations <input type="number" value={1} min={1} max={1} readOnly /></label><span className="target-pill">1 itération successive</span></div><div className="v23-pass-list"><label className="v23-pass-step"><strong>Itération 1</strong><small>Prépare une première version de la séquence : objet, premier email et relances.</small><textarea value={iterationsGroup.draftPasses[0] || ""} onChange={(event) => {
-            if (isReferenceVariant) setDraft((current) => ({ ...current, aiInstructions: event.target.value }));
-            else updateVariantGroup("iterations", { ...iterationsGroup, draftPasses: [event.target.value] });
-          }} /></label><InstructionAttachments attachments={attachments} scope="campaign" campaignId={campaign.id} fieldKey={attachmentField("iterations")} /></div><p className="v23-pass-help">Les itérations concernent l’objet et les six emails de cette version. Le statut des prospects sera actualisé par ChatGPT via Neon.</p></div>)}
+          {variantBlock("iterations", "Itérations", <div className="v23-pass-config"><div className="v23-pass-head"><label>Nombre d’itérations <input type="number" value={iterationsGroup.draftPasses.length} min={1} max={maximumDraftPasses} onChange={(event) => {
+            const nextPasses = resizeDraftPasses(iterationsGroup.draftPasses, event.currentTarget.valueAsNumber);
+            if (isReferenceVariant) setDraft((current) => ({ ...current, aiInstructions: encodeDraftPasses(nextPasses) }));
+            else updateVariantGroup("iterations", { ...iterationsGroup, draftPasses: nextPasses });
+          }} /></label><span className="target-pill">{iterationsGroup.draftPasses.length} itération{iterationsGroup.draftPasses.length > 1 ? "s" : ""} successive{iterationsGroup.draftPasses.length > 1 ? "s" : ""}</span></div><div className="v23-pass-list">{iterationsGroup.draftPasses.map((pass, index) => <label className="v23-pass-step" key={index}><strong>Itération {index + 1}</strong><small>{index === 0 ? "Prépare une première version de la séquence : objet, premier email et relances." : "Améliore la version précédente en appliquant les consignes ci-dessous."}</small><textarea value={pass} onChange={(event) => {
+            const nextPasses = iterationsGroup.draftPasses.map((currentPass, passIndex) => passIndex === index ? event.target.value : currentPass);
+            if (isReferenceVariant) setDraft((current) => ({ ...current, aiInstructions: encodeDraftPasses(nextPasses) }));
+            else updateVariantGroup("iterations", { ...iterationsGroup, draftPasses: nextPasses });
+          }} /></label>)}<InstructionAttachments attachments={attachments} scope="campaign" campaignId={campaign.id} fieldKey={attachmentField("iterations")} /></div><p className="v23-pass-help">Les itérations concernent l’objet et les six emails de cette version. Le statut des prospects sera actualisé par ChatGPT via Neon.</p></div>)}
         </section>
 
         <section className="target-section">

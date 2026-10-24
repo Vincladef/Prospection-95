@@ -6,6 +6,7 @@ import { CampaignsView } from "./CampaignsView";
 const apiMocks = vi.hoisted(() => ({
   addExperimentVariant: vi.fn(),
   updateExperimentVariant: vi.fn(),
+  updateCampaign: vi.fn(),
 }));
 
 vi.mock("../lib/api", () => ({ api: apiMocks }));
@@ -74,6 +75,7 @@ describe("CampaignsView V53", () => {
   beforeEach(() => {
     vi.clearAllMocks();
     apiMocks.addExperimentVariant.mockResolvedValue({ variant: { id: "cccccccc-cccc-4ccc-8ccc-cccccccccccc", label: "C", name: "Version C" } });
+    apiMocks.updateCampaign.mockResolvedValue({ campaign: { id: campaign.id, version: 2 } });
   });
 
   afterEach(cleanup);
@@ -117,6 +119,24 @@ describe("CampaignsView V53", () => {
     fireEvent.click(screen.getByRole("button", { name: "+ Version" }));
 
     await waitFor(() => expect(apiMocks.addExperimentVariant).toHaveBeenCalledWith(experiment.id));
+    expect(onMutated).toHaveBeenCalledOnce();
+  });
+
+  it("changes and persists the number of successive AI writing iterations", async () => {
+    const { onMutated } = renderCampaigns();
+    const iterationCount = screen.getByRole("spinbutton", { name: "Nombre d’itérations" });
+
+    fireEvent.change(iterationCount, { target: { value: "3" } });
+
+    expect(iterationCount).toHaveValue(3);
+    expect(screen.getByText("3 itérations successives")).toBeInTheDocument();
+    expect(screen.getByText("Itération 3")).toBeInTheDocument();
+    const iterationTextareas = screen.getAllByRole("textbox").filter((field) => field.closest(".v23-pass-step"));
+    fireEvent.change(iterationTextareas[2], { target: { value: "Resserre le message et améliore l’appel à l’action." } });
+    fireEvent.click(screen.getAllByRole("button", { name: "Enregistrer" }).find((button) => !button.hasAttribute("disabled"))!);
+
+    await waitFor(() => expect(apiMocks.updateCampaign).toHaveBeenCalledOnce());
+    expect(apiMocks.updateCampaign.mock.calls[0][1].aiInstructions).toContain("### Itération 3\nResserre le message");
     expect(onMutated).toHaveBeenCalledOnce();
   });
 
