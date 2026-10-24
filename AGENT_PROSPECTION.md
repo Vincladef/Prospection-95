@@ -122,6 +122,33 @@ SELECT * FROM agent_api.register_prospect(
 );
 ```
 
+## Révisions successives de rédaction IA
+
+La campagne encode éventuellement plusieurs passes dans `ai_instructions` sous la forme :
+
+```text
+<!-- prospection-95:writing-iterations:v1 -->
+### Itération 1
+[consignes de rédaction]
+### Itération 2
+[consignes de relecture critique]
+### Itération 3
+[consignes de révision finale]
+```
+
+Le nombre de passes est paramétrable dans l'éditeur (1 à 10), avec **trois passes par défaut** pour les nouvelles campagnes. Il ne s'agit pas simplement d'un compteur : **l'agent doit exécuter chaque passe successivement avant de proposer une séquence**. Le backend n'appelle pas de LLM ; c'est à la planification ChatGPT d'effectuer ces révisions. Si le champ contient une instruction simple, le traiter comme une unique passe historique.
+
+Pour chaque prospect réservé :
+
+1. Lire `agent_api.campaign_parameters` et la variante éventuellement attribuée dans `agent_api.experiments` ; l'override `iterations.draftPasses` prime sur les passes héritées de la campagne s'il existe.
+2. Exécuter l'itération 1 : préparer l'objet et les six messages avec les faits sourcés et les contraintes de la campagne.
+3. Exécuter chaque itération suivante dans l'ordre, en prenant **la production complète précédente** comme point de départ ; la critique doit déboucher sur une révision effective, pas une simple déclaration d'intention.
+4. Après la dernière passe, vérifier liens, destinataire, assertions, personnalisation, objection éventuelle et appel à l'action. Ne pas exposer l'analyse interne au prospect.
+5. Appeler `agent_api.propose_sequence` **une seule fois**, avec la version finale des six emails ; une révision interne ne doit pas générer six nouvelles propositions ni plusieurs envois.
+6. Lors du bilan de run, indiquer le nombre de passes **effectivement exécutées** ; si le contexte ou le temps disponible empêche l'itération complète, conserver une proposition en préparation ou signaler le travail partiel au lieu d'affirmer avoir tout révisé.
+
+Les passes servent à améliorer la qualité rédactionnelle, mais n'ajoutent aucun fait extérieur vérifié : toute information sur le prospect doit rester sourcée. Les tests A/B doivent comparer les variables prévues sans mélanger les prompts d'une variante à une autre.
+
 ## Réserver puis proposer J0–R5
 
 Réservation atomique :
