@@ -6,7 +6,7 @@ SELECT to_regnamespace('app') IS NOT NULL
    AND to_regnamespace('agent_api') IS NOT NULL
    AND to_regnamespace('audit') IS NOT NULL AS all_schemas_exist;
 
-SELECT count(*) = 19 AS all_migrations_registered
+SELECT count(*) = 20 AS all_migrations_registered
 FROM app.schema_migrations
 WHERE version IN (
   '001_foundation',
@@ -27,7 +27,8 @@ WHERE version IN (
   '016_crm_campaign_update',
   '017_crm_campaign_ai_instructions',
   '018_campaign_iteration_workflow',
-  '019_prospect_variant_iteration_workflow'
+  '019_prospect_variant_iteration_workflow',
+  '020_register_prospect_conflict_target'
 );
 
 SELECT NOT has_schema_privilege('prospection95_agent', 'vault', 'USAGE')
@@ -198,3 +199,16 @@ SELECT has_function_privilege(
        )
    AND pg_has_role('prospection95_runtime', 'prospection95_agent', 'member')
    AS runtime_has_controlled_commercial_agent_contract;
+
+SELECT position(
+         'ON CONFLICT ON CONSTRAINT campaign_prospects_pkey'
+         IN pg_get_functiondef(
+           'agent_api.register_prospect(uuid,text,text,text,text,text,text,text,jsonb,numeric,text,uuid,text)'::regprocedure
+         )
+       ) > 0
+   AND has_function_privilege(
+         'prospection95_runtime',
+         'agent_api.register_prospect(uuid,text,text,text,text,text,text,text,jsonb,numeric,text,uuid,text)',
+         'EXECUTE'
+       )
+   AS prospect_registration_conflict_target_is_unambiguous;

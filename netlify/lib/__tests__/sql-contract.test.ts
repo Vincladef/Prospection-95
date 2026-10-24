@@ -7,9 +7,9 @@ const migrationsDirectory = join(process.cwd(), "db", "migrations");
 describe("database safety contract", () => {
   it("keeps a contiguous additive migration set", () => {
     const files = readdirSync(migrationsDirectory).filter((name) => name.endsWith(".sql")).sort();
-    expect(files).toHaveLength(19);
+    expect(files).toHaveLength(20);
     expect(files.map((name) => name.slice(0, 3))).toEqual([
-      "001", "002", "003", "004", "005", "006", "007", "008", "009", "010", "011", "012", "013", "014", "015", "016", "017", "018", "019",
+      "001", "002", "003", "004", "005", "006", "007", "008", "009", "010", "011", "012", "013", "014", "015", "016", "017", "018", "019", "020",
     ]);
   });
 
@@ -114,5 +114,12 @@ describe("database safety contract", () => {
     expect(sql).toContain("agent_api.propose_completed_sequence");
     expect(sql).toContain("REVOKE EXECUTE ON FUNCTION agent_api.propose_sequence");
     expect(sql).toContain("GRANT prospection95_agent TO prospection95_runtime");
+  });
+
+  it("uses an unambiguous conflict target when registering prospects", () => {
+    const sql = readFileSync(join(migrationsDirectory, "020_register_prospect_conflict_target.sql"), "utf8");
+    expect(sql).toContain("ON CONFLICT ON CONSTRAINT campaign_prospects_pkey DO NOTHING");
+    expect(sql).not.toContain("ON CONFLICT (campaign_id, prospect_id) DO NOTHING");
+    expect(sql).toContain("TO prospection95_agent");
   });
 });
