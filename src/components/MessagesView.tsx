@@ -22,6 +22,7 @@ interface MessagesViewProps {
     replied: number;
     excluded: number;
   };
+  onOpenCampaign: (campaignId: string) => void;
   onMutated: () => Promise<void>;
 }
 
@@ -72,11 +73,13 @@ const MessageRow = memo(function MessageRow({
   rowNumber,
   prospect,
   onOpen,
+  onOpenCampaign,
   onStatus,
 }: {
   rowNumber: number;
   prospect: Prospect;
   onOpen: () => void;
+  onOpenCampaign: () => void;
   onStatus: (status: MessageStatus) => void;
 }) {
   const preserved = prospect.messageStatus ? preservedStatuses.has(prospect.messageStatus) : false;
@@ -94,16 +97,22 @@ const MessageRow = memo(function MessageRow({
         <span className="row-index">{rowNumber}</span>
       </td>
       <td className="sticky-col sticky-contact pin-contact">
-        <button className="contact-button" type="button" onDoubleClick={onOpen} onClick={onOpen}>
-          <strong className="person-name">{prospect.name}</strong>
-          <small className="person-contact">{prospect.email || prospect.contactRaw || "Contact non adressable"}</small>
-          <em className="v28-prospect-campaign">{prospect.campaignName || "Sans campagne"}</em>
+        <div className="contact-cell-content">
+          <button className="contact-button" type="button" onDoubleClick={onOpen} onClick={onOpen}>
+            <strong className="person-name">{prospect.name}</strong>
+            <small className="person-contact">{prospect.email || prospect.contactRaw || "Contact non adressable"}</small>
+          </button>
+          {prospect.campaignId ? (
+            <button className="v28-prospect-campaign campaign-link" type="button" onClick={onOpenCampaign} title={`Ouvrir la campagne ${prospect.campaignName || "correspondante"}`}>
+              {prospect.campaignName || "Campagne"}
+            </button>
+          ) : <span className="v28-prospect-campaign campaign-link unavailable">Sans campagne</span>}
           {prospect.openObserved || prospect.clickObserved ? <span className="interaction-observations">
             {prospect.openObserved ? <i title="Au moins une observation technique d’ouverture reçue">◉ Ouverture observée</i> : null}
             {prospect.clickObserved ? <i title="Au moins un lien suivi a été appelé">↗ Clic observé</i> : null}
           </span> : null}
-          <span className="tiny-link">Voir toute la séquence</span>
-        </button>
+          <button className="tiny-link sequence-link" type="button" onClick={onOpen}>Voir toute la séquence</button>
+        </div>
       </td>
       <td className="sticky-col sticky-status pin-status status-cell">
         <select
@@ -121,7 +130,11 @@ const MessageRow = memo(function MessageRow({
           {prospect.messageStatus && !editableStatuses.some(([status]) => status === prospect.messageStatus) ? (
             <option value={prospect.messageStatus}>{statusLabel(prospect.messageStatus)}</option>
           ) : null}
-          {editableStatuses.map(([value, label]) => <option key={value} value={value} disabled={preparing}>{label}</option>)}
+          {editableStatuses.map(([value, label]) => (
+            <option key={value} value={value} disabled={preparing}>
+              {value === "pending_approval" && !preparing && isPreparationComplete(prospect) ? preparationLabel(prospect) : label}
+            </option>
+          ))}
         </select>
         {prospect.excluded ? <span className="cell-warning">⚠ Exclu</span> : null}
       </td>
@@ -135,7 +148,7 @@ const MessageRow = memo(function MessageRow({
   );
 });
 
-export function MessagesView({ campaigns, prospects, totals, onMutated }: MessagesViewProps) {
+export function MessagesView({ campaigns, prospects, totals, onOpenCampaign, onMutated }: MessagesViewProps) {
   const [query, setQuery] = useState("");
   const deferredQuery = useDeferredValue(query);
   const [campaignId, setCampaignId] = useState("all");
@@ -280,6 +293,7 @@ export function MessagesView({ campaigns, prospects, totals, onMutated }: Messag
                   rowNumber={index + 1}
                   prospect={prospect}
                   onOpen={() => setEditing(prospect)}
+                  onOpenCampaign={() => { if (prospect.campaignId) onOpenCampaign(prospect.campaignId); }}
                   onStatus={(status) => void updateStatus(prospect, status)}
                 />
               ))}

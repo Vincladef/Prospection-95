@@ -53,15 +53,17 @@ const baseProspect: Prospect = {
 
 function renderMessages(prospect: Prospect) {
   const onMutated = vi.fn().mockResolvedValue(undefined);
+  const onOpenCampaign = vi.fn();
   render(
     <MessagesView
       campaigns={[]}
       prospects={[prospect]}
       totals={{ prospects: 1, pendingApproval: 1, scheduled: 0, sent: 0, replied: 0, excluded: 0 }}
+      onOpenCampaign={onOpenCampaign}
       onMutated={onMutated}
     />,
   );
-  return { onMutated };
+  return { onMutated, onOpenCampaign };
 }
 
 describe("MessagesView statuses", () => {
@@ -96,11 +98,13 @@ describe("MessagesView statuses", () => {
       subject: "Objet final",
       messages: ["J0", "R1", "R2", "R3", "R4", "R5"] as Prospect["messages"],
     };
-    const { onMutated } = renderMessages(ready);
+    const { onMutated, onOpenCampaign } = renderMessages(ready);
     const status = screen.getByRole("combobox", { name: "Statut de Prospect Test" });
 
     expect(status).toHaveValue("pending_approval");
-    expect(screen.getByRole("option", { name: "En attente…" })).toBeInTheDocument();
+    expect(screen.getByRole("option", { name: "En attente… 3/3" })).toBeInTheDocument();
+    fireEvent.click(screen.getByRole("button", { name: "Campagne test" }));
+    expect(onOpenCampaign).toHaveBeenCalledWith(ready.campaignId);
     fireEvent.change(status, { target: { value: "approved" } });
 
     await waitFor(() => expect(apiMocks.updateProspect).toHaveBeenCalledWith(ready.id, { status: "approved", version: 1 }));

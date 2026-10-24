@@ -23,6 +23,7 @@ function LoadingWindow({ label = "Chargement de Prospection 95…" }: { label?: 
 export default function App() {
   const session = authClient.useSession();
   const [page, setPage] = useState<Page>("messages");
+  const [campaignToOpen, setCampaignToOpen] = useState<string | null>(null);
   const { data, loading, error, refresh } = useAppData(Boolean(session.data?.user));
 
   useEffect(() => {
@@ -81,8 +82,8 @@ export default function App() {
       onEmergencyToggle={() => void toggleEmergencyStop()}
     >
       {error ? <div className="floating-error" role="alert">⚠ {error} <button onClick={() => void refresh()}>Réessayer</button></div> : null}
-      {page === "messages" ? <MessagesView campaigns={data.campaigns} prospects={data.prospects} totals={data.totals} onMutated={refresh} /> : null}
-      {page === "campaigns" ? <CampaignsView campaigns={data.campaigns} folders={data.folders} accounts={data.gmailAccounts} experiments={data.experiments} attachments={data.attachments} prospects={data.prospects} totals={data.totals} onOpenSettings={() => setPage("settings")} onMutated={refresh} /> : null}
+      {page === "messages" ? <MessagesView campaigns={data.campaigns} prospects={data.prospects} totals={data.totals} onOpenCampaign={(campaignId) => { setCampaignToOpen(campaignId); setPage("campaigns"); }} onMutated={refresh} /> : null}
+      {page === "campaigns" ? <CampaignsView campaigns={data.campaigns} folders={data.folders} accounts={data.gmailAccounts} experiments={data.experiments} attachments={data.attachments} prospects={data.prospects} totals={data.totals} selectedCampaignId={campaignToOpen} onOpenSettings={() => setPage("settings")} onMutated={refresh} /> : null}
       {page === "settings" ? <SettingsView settings={data.settings} accounts={data.gmailAccounts} providers={data.providers} attachments={data.attachments} prospects={data.prospects} onMutated={refresh} /> : null}
     </Shell>
   );

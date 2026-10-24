@@ -54,17 +54,18 @@ const experiment: Experiment = {
   ],
 };
 
-function renderCampaigns(experiments: Experiment[] = []) {
+function renderCampaigns(experiments: Experiment[] = [], campaigns: Campaign[] = [campaign], selectedCampaignId: string | null = null) {
   const onMutated = vi.fn().mockResolvedValue(undefined);
   render(
     <CampaignsView
-      campaigns={[campaign]}
+      campaigns={campaigns}
       folders={[]}
       accounts={[]}
       experiments={experiments}
       attachments={[]}
       prospects={[]}
       totals={{ pendingApproval: 0 }}
+      selectedCampaignId={selectedCampaignId}
       onOpenSettings={vi.fn()}
       onMutated={onMutated}
     />,
@@ -101,6 +102,14 @@ describe("CampaignsView V53", () => {
     });
     expect(screen.queryByRole("tab", { name: "Cible & envoi" })).not.toBeInTheDocument();
     expect(screen.getAllByRole("button", { name: "Enregistrer" }).every((button) => button.hasAttribute("disabled"))).toBe(true);
+  });
+
+  it("opens the campaign explicitly requested from the Messages view", () => {
+    const requested = { ...campaign, id: "33333333-3333-4333-8333-333333333333", name: "Campagne ciblée" };
+    renderCampaigns([], [campaign, requested], requested.id);
+
+    expect(screen.getByLabelText("Choisir une campagne")).toHaveValue(requested.id);
+    expect(screen.getAllByDisplayValue("Campagne ciblée")).toHaveLength(2);
   });
 
   it("switches to B and exposes its persisted custom blocks", () => {

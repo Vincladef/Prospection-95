@@ -11,6 +11,7 @@ interface CampaignsViewProps {
   attachments: InstructionAttachment[];
   prospects: Prospect[];
   totals: { pendingApproval: number };
+  selectedCampaignId?: string | null;
   onOpenSettings: () => void;
   onMutated: () => Promise<void>;
 }
@@ -535,9 +536,10 @@ function CampaignEditor({
   );
 }
 
-export function CampaignsView({ campaigns, folders, accounts, experiments, attachments, prospects, totals, onOpenSettings, onMutated }: CampaignsViewProps) {
-  const [selectedId, setSelectedId] = useState<string | null>(campaigns[0]?.id || null);
-  const [showArchived, setShowArchived] = useState(false);
+export function CampaignsView({ campaigns, folders, accounts, experiments, attachments, prospects, totals, selectedCampaignId = null, onOpenSettings, onMutated }: CampaignsViewProps) {
+  const requestedCampaign = campaigns.find((campaign) => campaign.id === selectedCampaignId);
+  const [selectedId, setSelectedId] = useState<string | null>(requestedCampaign?.id || campaigns[0]?.id || null);
+  const [showArchived, setShowArchived] = useState(requestedCampaign?.status === "archived");
   const [creating, setCreating] = useState(false);
 
   const displayed = useMemo(
@@ -559,6 +561,14 @@ export function CampaignsView({ campaigns, folders, accounts, experiments, attac
   useEffect(() => {
     if (selected) setSelectedId(selected.id);
   }, [selected]);
+
+  useEffect(() => {
+    if (!selectedCampaignId) return;
+    const requested = campaigns.find((campaign) => campaign.id === selectedCampaignId);
+    if (!requested) return;
+    setShowArchived(requested.status === "archived");
+    setSelectedId(requested.id);
+  }, [campaigns, selectedCampaignId]);
 
   async function createFolder() {
     const name = window.prompt("Nom du dossier");
