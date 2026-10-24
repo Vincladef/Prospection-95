@@ -6,7 +6,7 @@ SELECT to_regnamespace('app') IS NOT NULL
    AND to_regnamespace('agent_api') IS NOT NULL
    AND to_regnamespace('audit') IS NOT NULL AS all_schemas_exist;
 
-SELECT count(*) = 14 AS all_migrations_registered
+SELECT count(*) = 15 AS all_migrations_registered
 FROM app.schema_migrations
 WHERE version IN (
   '001_foundation',
