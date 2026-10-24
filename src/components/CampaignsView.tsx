@@ -24,6 +24,11 @@ const emptySequence: SequenceContent = {
 
 const iterationInstructionsMarker = "<!-- prospection-95:writing-iterations:v1 -->";
 const maximumDraftPasses = 10;
+const defaultDraftPasses = [
+  "Rédaction : analyse la cible, sa programmation et les sources vérifiées. Rédige l'objet et les six emails J0-R5 avec un angle pertinent pour ce destinataire et une demande simple. Respecte les instructions de campagne et n'invente aucun fait.",
+  "Relecture critique : relis la première proposition comme un programmateur débordé. Vérifie l'intérêt pour lui, la pertinence des références, la clarté de l'offre, la charge cognitive, les répétitions, les objections et la facilité de répondre. Corrige chaque faiblesse repérée.",
+  "Révision finale : améliore la version précédente sans allonger inutilement les messages. Vérifie chaque affirmation et chaque lien, supprime les promesses non confirmées, conserve un seul appel à l'action par email et harmonise le ton des relances. Livre uniquement la version finale prête pour validation.",
+];
 
 function decodeDraftPasses(value: string): string[] {
   if (!value.startsWith(iterationInstructionsMarker)) return [value];
@@ -41,7 +46,7 @@ function encodeDraftPasses(passes: string[]): string {
 
 function resizeDraftPasses(passes: string[], requestedCount: number): string[] {
   const count = Math.max(1, Math.min(maximumDraftPasses, Math.trunc(requestedCount) || 1));
-  return Array.from({ length: count }, (_, index) => passes[index] ?? "");
+  return Array.from({ length: count }, (_, index) => passes[index] ?? defaultDraftPasses[index] ?? "");
 }
 
 type VariantGroupKey = "search" | "iterations" | "subject" | "initial" | "followup0" | "followup1" | "followup2" | "followup3" | "followup4" | "reply";
@@ -466,7 +471,7 @@ function CampaignEditor({
             const nextPasses = iterationsGroup.draftPasses.map((currentPass, passIndex) => passIndex === index ? event.target.value : currentPass);
             if (isReferenceVariant) setDraft((current) => ({ ...current, aiInstructions: encodeDraftPasses(nextPasses) }));
             else updateVariantGroup("iterations", { ...iterationsGroup, draftPasses: nextPasses });
-          }} /></label>)}<InstructionAttachments attachments={attachments} scope="campaign" campaignId={campaign.id} fieldKey={attachmentField("iterations")} /></div><p className="v23-pass-help">Les itérations concernent l’objet et les six emails de cette version. Le statut des prospects sera actualisé par ChatGPT via Neon.</p></div>)}
+          }} /></label>)}<InstructionAttachments attachments={attachments} scope="campaign" campaignId={campaign.id} fieldKey={attachmentField("iterations")} /></div><p className="v23-pass-help">Chaque passe affine l’objet et les six emails : rédaction, relecture critique, puis révision finale. Les consignes sont exécutées successivement par l’agent ChatGPT lors de la préparation, pas par ce formulaire.</p></div>)}
         </section>
 
         <section className="target-section">
@@ -579,7 +584,7 @@ export function CampaignsView({ campaigns, folders, accounts, experiments, attac
     if (creating) return;
     setCreating(true);
     try {
-      const result = await api.createCampaign({ name: "Nouvelle campagne", status: "inactive", folderId, validationPolicy: "manual", dailyNewContactGoal: 0, trackingOpensEnabled: true, trackingClicksEnabled: true, sequence: emptySequence });
+      const result = await api.createCampaign({ name: "Nouvelle campagne", status: "inactive", folderId, validationPolicy: "manual", dailyNewContactGoal: 0, trackingOpensEnabled: true, trackingClicksEnabled: true, aiInstructions: encodeDraftPasses(defaultDraftPasses), sequence: emptySequence });
       setShowArchived(false);
       setSelectedId(result.campaign.id);
       await onMutated();
