@@ -1,6 +1,6 @@
 # Schéma Lakebase Postgres
 
-Le dossier contient quinze migrations additives, rejouables et sans données métier embarquées. Elles doivent être appliquées dans l’ordre lexical.
+Le dossier contient dix-huit migrations additives, rejouables et sans données métier embarquées. Elles doivent être appliquées dans l’ordre lexical.
 
 1. `001_foundation.sql` : rôles, schémas, paramètres, campagnes, comptes publics, prospects, anti-recontact et coffre chiffré.
 2. `002_messaging.sql` : versions de messages, conversations, SMTP/IMAP, file d’envoi, baux et brouillons.
@@ -17,6 +17,9 @@ Le dossier contient quinze migrations additives, rejouables et sans données mé
 13. `013_application_role_new_resources.sql` : droits du backend Netlify sur les nouvelles ressources et privilèges par défaut pour les prochains objets applicatifs.
 14. `014_sequence_progression_and_diagnostics.sql` : progression effective de J0 à R5 après acceptation SMTP et compatibilité du worker avec les diagnostics.
 15. `015_crm_plugin_contract.sql` : contrat restreint et idempotent de création de campagnes inactives pour le plugin CRM.
+16. `016_crm_campaign_update.sql` : modification contrôlée des campagnes inactives, des modèles versionnés et des variantes A/B non exposées.
+17. `017_crm_campaign_ai_instructions.sql` : modification limitée des consignes de rédaction sur une campagne active ou inactive.
+18. `018_campaign_iteration_workflow.sql` : progression persistante des passes de rédaction, archive immuable et contrat agent idempotent.
 
 ## Principes de sécurité
 

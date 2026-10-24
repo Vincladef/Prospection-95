@@ -59,12 +59,17 @@ export async function loadDashboard(): Promise<Record<string, unknown>> {
     sqlQuery(`select id::text, name, position from app.campaign_folders order by position, name`),
     sqlQuery(`
       select c.*,
+             iteration_state.status as writing_iteration_status,
+             coalesce(iteration_state.completed_iterations, 0) as writing_iterations_completed,
+             coalesce(iteration_state.total_iterations, 1) as writing_iterations_total,
              coalesce((
                select array_agg(csa.account_id::text order by csa.account_id)
                from app.campaign_sender_accounts csa
                where csa.campaign_id = c.id and csa.enabled
              ), '{}'::text[]) as sender_account_ids
-      from app.campaigns c order by c.created_at desc
+      from app.campaigns c
+      left join app.campaign_iteration_states iteration_state on iteration_state.campaign_id = c.id
+      order by c.created_at desc
     `),
     sqlQuery(`
       select distinct on (campaign_id, step)
@@ -323,6 +328,9 @@ export async function loadDashboard(): Promise<Record<string, unknown>> {
       experimentPolicy: textValue(row.experiment_policy),
       nextTestInstructions: textValue(row.next_test_instructions),
       importedDisabled: Boolean(row.imported_disabled),
+      writingIterationStatus: nullableText(row.writing_iteration_status),
+      writingIterationsCompleted: numberValue(row.writing_iterations_completed),
+      writingIterationsTotal: Math.max(1, numberValue(row.writing_iterations_total)),
       version: numberValue(row.version),
       sequence: {
         subject: templates.get(`${row.id}:J0`)?.subject ?? "",

@@ -7,9 +7,9 @@ const migrationsDirectory = join(process.cwd(), "db", "migrations");
 describe("database safety contract", () => {
   it("keeps a contiguous additive migration set", () => {
     const files = readdirSync(migrationsDirectory).filter((name) => name.endsWith(".sql")).sort();
-    expect(files).toHaveLength(15);
+    expect(files).toHaveLength(18);
     expect(files.map((name) => name.slice(0, 3))).toEqual([
-      "001", "002", "003", "004", "005", "006", "007", "008", "009", "010", "011", "012", "013", "014", "015",
+      "001", "002", "003", "004", "005", "006", "007", "008", "009", "010", "011", "012", "013", "014", "015", "016", "017", "018",
     ]);
   });
 
@@ -88,5 +88,17 @@ describe("database safety contract", () => {
     expect(sql).toContain("TO prospection95_app");
     expect(sql).toContain("ALTER DEFAULT PRIVILEGES IN SCHEMA app");
     expect(verify).toContain("application_role_can_use_product_flexibility_objects");
+  });
+
+  it("persists one scheduled campaign-writing iteration at a time", () => {
+    const sql = readFileSync(join(migrationsDirectory, "018_campaign_iteration_workflow.sql"), "utf8");
+    expect(sql).toContain("CREATE TABLE IF NOT EXISTS app.campaign_iteration_runs");
+    expect(sql).toContain("campaign_iteration_one_pass_per_agent_run_uq");
+    expect(sql).toContain("completed_campaign_iteration_is_immutable");
+    expect(sql).toContain("agent_api.claim_campaign_iteration");
+    expect(sql).toContain("agent_api.complete_campaign_iteration");
+    expect(sql).toContain("agent_api.fail_campaign_iteration");
+    expect(sql).toContain("iteration_state.status = 'completed'");
+    expect(sql).toContain("FROM PUBLIC, prospection95_agent");
   });
 });

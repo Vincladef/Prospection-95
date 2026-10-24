@@ -30,6 +30,9 @@ const campaign: Campaign = {
   experimentPolicy: "continue",
   nextTestInstructions: "",
   importedDisabled: true,
+  writingIterationStatus: "pending",
+  writingIterationsCompleted: 0,
+  writingIterationsTotal: 3,
   version: 1,
   sequence: {
     subject: "",
@@ -154,6 +157,12 @@ describe("CampaignsView V53", () => {
     await waitFor(() => expect(apiMocks.updateCampaign).toHaveBeenCalledOnce());
     expect(apiMocks.updateCampaign.mock.calls[0][1].aiInstructions).toContain("### Itération 3\nResserre le message");
     expect(onMutated).toHaveBeenCalledOnce();
+  });
+
+  it("shows the persisted progress of scheduled writing iterations", () => {
+    renderCampaigns();
+
+    expect(screen.getByRole("status")).toHaveTextContent("Prochaine activation : itération 1/3");
   });
 
   it("shows discreet per-variant metrics in campaign statistics", () => {

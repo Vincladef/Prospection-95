@@ -40,6 +40,9 @@ export interface Campaign {
   experimentPolicy: "continue" | "stabilize";
   nextTestInstructions: string;
   importedDisabled: boolean;
+  writingIterationStatus: "pending" | "running" | "completed" | "cancelled" | null;
+  writingIterationsCompleted: number;
+  writingIterationsTotal: number;
   version: number;
   sequence: SequenceContent;
   updatedAt: string;

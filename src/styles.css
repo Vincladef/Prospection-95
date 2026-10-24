@@ -4215,6 +4215,35 @@ input[type="radio"] {
   gap: 9px;
 }
 
+.v54-iteration-progress {
+  width: fit-content;
+  max-width: 100%;
+  margin: -2px 0 11px;
+  padding: 5px 9px;
+  border: 1px solid #8e8e8e;
+  background: #f2f2f2;
+  color: #343434;
+  font-size: 10px;
+  font-weight: 750;
+  line-height: 1.35;
+}
+
+.v54-iteration-progress.running {
+  border-color: #a16b00;
+  background: #fff5ce;
+  color: #6b4600;
+}
+
+.v54-iteration-progress.completed {
+  border-color: #4b9561;
+  background: #effaf2;
+  color: #17642d;
+}
+
+.v54-iteration-progress.cancelled {
+  color: #666;
+}
+
 .v23-pass-step {
   display: block;
   padding: 11px;

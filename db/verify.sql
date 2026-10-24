@@ -6,7 +6,7 @@ SELECT to_regnamespace('app') IS NOT NULL
    AND to_regnamespace('agent_api') IS NOT NULL
    AND to_regnamespace('audit') IS NOT NULL AS all_schemas_exist;
 
-SELECT count(*) = 15 AS all_migrations_registered
+SELECT count(*) = 18 AS all_migrations_registered
 FROM app.schema_migrations
 WHERE version IN (
   '001_foundation',
@@ -22,7 +22,11 @@ WHERE version IN (
   '011_v53_tracking_defaults',
   '012_product_flexibility_and_attachments',
   '013_application_role_new_resources',
-  '014_sequence_progression_and_diagnostics'
+  '014_sequence_progression_and_diagnostics',
+  '015_crm_plugin_contract',
+  '016_crm_campaign_update',
+  '017_crm_campaign_ai_instructions',
+  '018_campaign_iteration_workflow'
 );
 
 SELECT NOT has_schema_privilege('prospection95_agent', 'vault', 'USAGE')
@@ -102,8 +106,7 @@ SELECT count(*) = 16
 FROM app.deliverability_providers
 WHERE coalesce((capabilities ->> 'builtIn')::boolean, false);
 
-SELECT coalesce(bool_and(tracking_opens_enabled AND tracking_clicks_enabled), true)
-   AND (
+SELECT (
      SELECT column_default = 'true'
      FROM information_schema.columns
      WHERE table_schema = 'app' AND table_name = 'campaigns'
@@ -114,8 +117,7 @@ SELECT coalesce(bool_and(tracking_opens_enabled AND tracking_clicks_enabled), tr
      FROM information_schema.columns
      WHERE table_schema = 'app' AND table_name = 'campaigns'
        AND column_name = 'tracking_clicks_enabled'
-   ) AS v53_tracking_defaults_are_enabled
-FROM app.campaigns;
+   ) AS v53_tracking_defaults_are_enabled;
 
 SELECT NOT has_table_privilege(
          'prospection95_agent', 'app.agent_prospect_registrations', 'SELECT'
@@ -125,3 +127,37 @@ SELECT NOT has_table_privilege(
          'agent_api.raise_incident(uuid,app.incident_severity,text,jsonb,timestamptz,boolean,uuid,text)',
          'EXECUTE'
        ) AS agent_extensions_are_limited;
+
+SELECT to_regclass('app.campaign_iteration_states') IS NOT NULL
+   AND to_regclass('app.campaign_iteration_runs') IS NOT NULL
+   AND has_table_privilege('prospection95_app', 'app.campaign_iteration_states', 'SELECT')
+   AND NOT has_table_privilege('prospection95_app', 'app.campaign_iteration_runs', 'UPDATE')
+   AND NOT has_table_privilege('prospection95_agent', 'app.campaign_iteration_runs', 'SELECT')
+   AND has_table_privilege('prospection95_agent', 'agent_api.pending_campaign_iterations', 'SELECT')
+   AND has_table_privilege('prospection95_agent', 'agent_api.campaign_iteration_history', 'SELECT')
+   AS campaign_iteration_storage_is_private;
+
+SELECT has_function_privilege(
+         'prospection95_agent',
+         'agent_api.claim_campaign_iteration(uuid,uuid,text)',
+         'EXECUTE'
+       )
+   AND has_function_privilege(
+         'prospection95_agent',
+         'agent_api.complete_campaign_iteration(uuid,uuid,jsonb,text)',
+         'EXECUTE'
+       )
+   AND has_function_privilege(
+         'prospection95_agent',
+         'agent_api.fail_campaign_iteration(uuid,uuid,text)',
+         'EXECUTE'
+       ) AS campaign_iteration_agent_contract_is_available;
+
+SELECT NOT EXISTS (
+  SELECT 1
+  FROM app.campaigns c
+  LEFT JOIN app.campaign_iteration_states s ON s.campaign_id = c.id
+  WHERE s.campaign_id IS NULL
+     OR s.total_iterations NOT BETWEEN 1 AND 10
+     OR s.completed_iterations > s.total_iterations
+) AS every_campaign_has_valid_iteration_state;

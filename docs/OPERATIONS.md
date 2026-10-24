@@ -38,10 +38,10 @@ La clé AES de 32 octets est créée automatiquement après la première connexi
 
 ## Migrations Neon
 
-Les quinze migrations sont additives et s'appliquent dans l'ordre lexical. Procédure :
+Les dix-huit migrations sont additives et s'appliquent dans l'ordre lexical. Procédure :
 
 1. créer une branche enfant de la branche principale ;
-2. appliquer `db/migrations/001_...` à `015_...` avec le propriétaire de cette branche ;
+2. appliquer `db/migrations/001_...` à `018_...` avec le propriétaire de cette branche ;
 3. exécuter toutes les assertions de `db/verify.sql` ;
 4. inspecter le diff de schéma ;
 5. obtenir l'accord explicite du propriétaire ;
@@ -227,7 +227,7 @@ Retour arrière applicatif : republier le dernier déploiement Netlify sain ou r
 
 ## Checklist de recette finale
 
-- [ ] quinze migrations et toutes les assertions `db/verify.sql` sur la branche principale ;
+- [ ] dix-huit migrations et toutes les assertions `db/verify.sql` sur la branche principale ;
 - [ ] `DATABASE_URL` du rôle runtime restreint ;
 - [ ] aucun jeton d'administration dans le runtime Netlify ;
 - [ ] coffre Netlify Blobs initialisé et ajout Gmail disponible ;

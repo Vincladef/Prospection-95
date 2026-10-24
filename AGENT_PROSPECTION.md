@@ -22,10 +22,11 @@ Les fonctions peuvent préparer du travail, mais seul le backend applique horair
 
 1. Créer/reprendre l'exécution avec `agent_api.begin_run`.
 2. Relire toutes les vues utiles ; ne pas réutiliser aveuglément l'état d'un passage précédent.
-3. Traiter d'abord les réponses non analysées, puis les conversations/prospects et enfin les expériences.
-4. Réserver un prospect avant de proposer sa séquence.
-5. Conserver les opérations asynchrones dans leur état réel.
-6. Terminer avec `agent_api.complete_run`, même en état `partial` ou `failed`.
+3. Traiter d'abord les réponses non analysées, puis au plus une itération de rédaction par campagne active.
+4. Ne rechercher/réserver les prospects d'une campagne qu'après la dernière itération de rédaction.
+5. Réserver un prospect avant de proposer sa séquence.
+6. Conserver les opérations asynchrones dans leur état réel.
+7. Terminer avec `agent_api.complete_run`, même en état `partial` ou `failed`.
 
 Exemple d'ouverture :
 
@@ -44,6 +45,8 @@ SELECT agent_api.begin_run(
 ### `agent_api.campaign_parameters`
 
 Configuration courante : cible, objectif, politique de validation, attribution Gmail, `allowed_sender_account_ids`, instructions, tracking, politique d'expérience et version. Une campagne importée désactivée n'apparaît jamais comme éligible dans les vues de prospects. Choisir le compte de `propose_sequence` uniquement dans ce tableau ; l'attribution est ensuite figée sur la conversation.
+
+Les colonnes `writing_iteration_status`, `writing_iterations_completed` et `writing_iterations_total` donnent l'avancement persistant de la rédaction de campagne.
 
 ```sql
 SELECT * FROM agent_api.campaign_parameters
@@ -85,6 +88,10 @@ Dernières réponses officielles BobWork pour les ressources `stats` et `domains
 ### `agent_api.pending_operations`
 
 Demandes de brouillon et diagnostics non terminés. Ne jamais recréer une opération encore en attente avec une autre clé.
+
+### `agent_api.pending_campaign_iterations` et `agent_api.campaign_iteration_history`
+
+La première vue expose uniquement les campagnes actives dont une passe reste à traiter ou est déjà réclamée. La seconde conserve l'entrée et la sortie exactes de chaque passe, avec le run agent et les horodatages. Une ligne `completed` de l'historique est immuable.
 
 ## Enregistrer un prospect sourcé
 
@@ -136,18 +143,55 @@ La campagne encode éventuellement plusieurs passes dans `ai_instructions` sous 
 [consignes de révision finale]
 ```
 
-Le nombre de passes est paramétrable dans l'éditeur (1 à 10), avec **trois passes par défaut** pour les nouvelles campagnes. Il ne s'agit pas simplement d'un compteur : **l'agent doit exécuter chaque passe successivement avant de proposer une séquence**. Le backend n'appelle pas de LLM ; c'est à la planification ChatGPT d'effectuer ces révisions. Si le champ contient une instruction simple, le traiter comme une unique passe historique.
+Le nombre de passes est paramétrable dans l'éditeur (1 à 10), avec **trois passes par défaut** pour les nouvelles campagnes. Le backend n'appelle pas de LLM : la planification ChatGPT réalise la passe demandée. Une instruction simple sans marqueur est traitée comme une unique passe historique.
 
-Pour chaque prospect réservé :
+Une activation planifiée exécute **au plus une passe par campagne**. Elle ne doit jamais enchaîner les trois passes dans le même run : Neon avance durablement de `0/3` à `1/3`, puis `2/3`, puis `3/3` lors d'activations distinctes.
 
-1. Lire `agent_api.campaign_parameters` et la variante éventuellement attribuée dans `agent_api.experiments` ; l'override `iterations.draftPasses` prime sur les passes héritées de la campagne s'il existe.
-2. Exécuter l'itération 1 : préparer l'objet et les six messages avec les faits sourcés et les contraintes de la campagne.
-3. Exécuter chaque itération suivante dans l'ordre, en prenant **la production complète précédente** comme point de départ ; la critique doit déboucher sur une révision effective, pas une simple déclaration d'intention.
-4. Après la dernière passe, vérifier liens, destinataire, assertions, personnalisation, objection éventuelle et appel à l'action. Ne pas exposer l'analyse interne au prospect.
-5. Appeler `agent_api.propose_sequence` **une seule fois**, avec la version finale des six emails ; une révision interne ne doit pas générer six nouvelles propositions ni plusieurs envois.
-6. Lors du bilan de run, indiquer le nombre de passes **effectivement exécutées** ; si le contexte ou le temps disponible empêche l'itération complète, conserver une proposition en préparation ou signaler le travail partiel au lieu d'affirmer avoir tout révisé.
+1. Lire `agent_api.pending_campaign_iterations`.
+2. Réclamer la passe avec une clé stable liée au run :
 
-Les passes servent à améliorer la qualité rédactionnelle, mais n'ajoutent aucun fait extérieur vérifié : toute information sur le prospect doit rester sourcée. Les tests A/B doivent comparer les variables prévues sans mélanger les prompts d'une variante à une autre.
+```sql
+SELECT * FROM agent_api.claim_campaign_iteration(
+  $campaign_id,
+  $run_id,
+  'campaign-iteration:campaign-id:scheduled-run-id'
+);
+```
+
+La fonction retourne `iteration_run_id`, le numéro de passe, son instruction et `input_sequence`. Pour l'itération 1, l'entrée est la séquence actuellement enregistrée. Pour les suivantes, c'est la sortie archivée de la passe précédente.
+
+3. Appliquer uniquement `instruction` à la séquence complète reçue : objet, instructions d'objet, J0, R1–R5 et leurs instructions. La critique doit produire une version effectivement révisée, pas un commentaire séparé.
+4. Enregistrer la sortie complète :
+
+```sql
+SELECT agent_api.complete_campaign_iteration(
+  $iteration_run_id,
+  $run_id,
+  '{
+    "subject":"Objet révisé",
+    "subjectInstructions":"Consignes objet",
+    "steps":["J0","R1","R2","R3","R4","R5"],
+    "stepInstructions":["Consigne J0","Consigne R1","Consigne R2","Consigne R3","Consigne R4","Consigne R5"]
+  }'::jsonb,
+  'campaign-iteration-complete:iteration-run-id'
+);
+```
+
+Chaque réussite archive l'entrée, la sortie et six nouvelles versions de modèles. Après la dernière, la campagne passe à `completed` et ses prospects deviennent visibles dans `agent_api.eligible_prospects`. Avant cela, ils n'y figurent pas.
+
+5. En cas d'échec après la réclamation, libérer proprement la passe afin qu'une activation ultérieure reprenne le même numéro :
+
+```sql
+SELECT agent_api.fail_campaign_iteration(
+  $iteration_run_id,
+  $run_id,
+  'generation_incomplete'
+);
+```
+
+Les réclamations expirent après deux heures et les répétitions avec la même clé sont idempotentes. Une contrainte empêche le même run planifié d'effectuer deux passes sur la même campagne. Modifier les consignes dans l'application démarre un nouveau cycle à `0/n` sans effacer l'historique précédent.
+
+Les passes améliorent la séquence de référence de la campagne et n'ajoutent aucun fait extérieur non vérifié. La personnalisation de chaque prospect et les variantes A/B restent appliquées ensuite, sans mélanger les consignes d'une variante à une autre.
 
 ## Réserver puis proposer J0–R5
 
