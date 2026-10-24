@@ -6,7 +6,7 @@ SELECT to_regnamespace('app') IS NOT NULL
    AND to_regnamespace('agent_api') IS NOT NULL
    AND to_regnamespace('audit') IS NOT NULL AS all_schemas_exist;
 
-SELECT count(*) = 18 AS all_migrations_registered
+SELECT count(*) = 19 AS all_migrations_registered
 FROM app.schema_migrations
 WHERE version IN (
   '001_foundation',
@@ -26,7 +26,8 @@ WHERE version IN (
   '015_crm_plugin_contract',
   '016_crm_campaign_update',
   '017_crm_campaign_ai_instructions',
-  '018_campaign_iteration_workflow'
+  '018_campaign_iteration_workflow',
+  '019_prospect_variant_iteration_workflow'
 );
 
 SELECT NOT has_schema_privilege('prospection95_agent', 'vault', 'USAGE')
@@ -137,27 +138,63 @@ SELECT to_regclass('app.campaign_iteration_states') IS NOT NULL
    AND has_table_privilege('prospection95_agent', 'agent_api.campaign_iteration_history', 'SELECT')
    AS campaign_iteration_storage_is_private;
 
-SELECT has_function_privilege(
+SELECT NOT has_function_privilege(
          'prospection95_agent',
          'agent_api.claim_campaign_iteration(uuid,uuid,text)',
          'EXECUTE'
        )
-   AND has_function_privilege(
+   AND NOT has_function_privilege(
          'prospection95_agent',
          'agent_api.complete_campaign_iteration(uuid,uuid,jsonb,text)',
          'EXECUTE'
        )
-   AND has_function_privilege(
+   AND NOT has_function_privilege(
          'prospection95_agent',
          'agent_api.fail_campaign_iteration(uuid,uuid,text)',
          'EXECUTE'
-       ) AS campaign_iteration_agent_contract_is_available;
+       ) AS campaign_iteration_agent_contract_is_retired;
 
-SELECT NOT EXISTS (
-  SELECT 1
-  FROM app.campaigns c
-  LEFT JOIN app.campaign_iteration_states s ON s.campaign_id = c.id
-  WHERE s.campaign_id IS NULL
-     OR s.total_iterations NOT BETWEEN 1 AND 10
-     OR s.completed_iterations > s.total_iterations
-) AS every_campaign_has_valid_iteration_state;
+SELECT NOT EXISTS (SELECT 1 FROM agent_api.pending_campaign_iterations)
+   AS campaign_level_iteration_queue_is_retired;
+
+SELECT to_regclass('app.prospect_iteration_states') IS NOT NULL
+   AND to_regclass('app.prospect_iteration_runs') IS NOT NULL
+   AND has_table_privilege('prospection95_app', 'app.prospect_iteration_states', 'SELECT')
+   AND NOT has_table_privilege('prospection95_app', 'app.prospect_iteration_runs', 'UPDATE')
+   AND NOT has_table_privilege('prospection95_agent', 'app.prospect_iteration_runs', 'SELECT')
+   AND has_table_privilege('prospection95_agent', 'agent_api.prospect_iteration_progress', 'SELECT')
+   AND has_table_privilege('prospection95_agent', 'agent_api.prospect_iteration_history', 'SELECT')
+   AS prospect_variant_iteration_storage_is_private;
+
+SELECT has_function_privilege(
+         'prospection95_runtime',
+         'agent_api.assign_prospect_variant(uuid,uuid,uuid,text)',
+         'EXECUTE'
+       )
+   AND has_function_privilege(
+         'prospection95_runtime',
+         'agent_api.claim_prospect_iteration(uuid,uuid,uuid,uuid,text)',
+         'EXECUTE'
+       )
+   AND has_function_privilege(
+         'prospection95_runtime',
+         'agent_api.complete_prospect_iteration(uuid,uuid,jsonb,text)',
+         'EXECUTE'
+       )
+   AND has_function_privilege(
+         'prospection95_runtime',
+         'agent_api.fail_prospect_iteration(uuid,uuid,text)',
+         'EXECUTE'
+       )
+   AND has_function_privilege(
+         'prospection95_runtime',
+         'agent_api.propose_completed_sequence(uuid,uuid,uuid,text)',
+         'EXECUTE'
+       )
+   AND NOT has_function_privilege(
+         'prospection95_runtime',
+         'agent_api.propose_sequence(uuid,uuid,uuid,text,jsonb,uuid,text)',
+         'EXECUTE'
+       )
+   AND pg_has_role('prospection95_runtime', 'prospection95_agent', 'member')
+   AS runtime_has_controlled_commercial_agent_contract;

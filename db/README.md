@@ -1,6 +1,6 @@
 # Schéma Lakebase Postgres
 
-Le dossier contient dix-huit migrations additives, rejouables et sans données métier embarquées. Elles doivent être appliquées dans l’ordre lexical.
+Le dossier contient dix-neuf migrations additives, rejouables et sans données métier embarquées. Elles doivent être appliquées dans l’ordre lexical.
 
 1. `001_foundation.sql` : rôles, schémas, paramètres, campagnes, comptes publics, prospects, anti-recontact et coffre chiffré.
 2. `002_messaging.sql` : versions de messages, conversations, SMTP/IMAP, file d’envoi, baux et brouillons.
@@ -20,10 +20,11 @@ Le dossier contient dix-huit migrations additives, rejouables et sans données m
 16. `016_crm_campaign_update.sql` : modification contrôlée des campagnes inactives, des modèles versionnés et des variantes A/B non exposées.
 17. `017_crm_campaign_ai_instructions.sql` : modification limitée des consignes de rédaction sur une campagne active ou inactive.
 18. `018_campaign_iteration_workflow.sql` : progression persistante des passes de rédaction, archive immuable et contrat agent idempotent.
+19. `019_prospect_variant_iteration_workflow.sql` : révisions successives archivées par prospect et attribution A/B, proposition finale verrouillée et accès agent hérité par le login runtime existant.
 
 ## Principes de sécurité
 
-- `prospection95_app` et `prospection95_agent` sont des rôles de groupe `NOLOGIN`. Un identifiant de connexion distinct doit être créé pour chaque consommateur puis recevoir uniquement le rôle nécessaire.
+- `prospection95_app` et `prospection95_agent` sont des rôles de groupe `NOLOGIN`. En production, le login existant `prospection95_runtime` hérite des deux contrats afin que Netlify et les planifications puissent utiliser le même identifiant sans exposer un second mot de passe.
 - Le rôle agent ne possède aucun privilège sur `vault`, les tables `app`, les confirmations SMTP ou les journaux bruts.
 - `vault.credentials` ne contient que le ciphertext AES-256-GCM, le nonce, le tag et la version de clé. La clé maître reste exclusivement dans Netlify.
 - Une nouvelle base démarre avec `outbound_enabled=false`. Après autorisation du propriétaire, cet état opérationnel est persistant et n’est jamais réinitialisé lors d’un déploiement.

@@ -159,12 +159,6 @@ describe("CampaignsView V53", () => {
     expect(onMutated).toHaveBeenCalledOnce();
   });
 
-  it("shows the persisted progress of scheduled writing iterations", () => {
-    renderCampaigns();
-
-    expect(screen.getByRole("status")).toHaveTextContent("Prochaine activation : itération 1/3");
-  });
-
   it("shows discreet per-variant metrics in campaign statistics", () => {
     renderCampaigns([experiment]);
 

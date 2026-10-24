@@ -38,10 +38,10 @@ La clé AES de 32 octets est créée automatiquement après la première connexi
 
 ## Migrations Neon
 
-Les dix-huit migrations sont additives et s'appliquent dans l'ordre lexical. Procédure :
+Les dix-neuf migrations sont additives et s'appliquent dans l'ordre lexical. Procédure :
 
 1. créer une branche enfant de la branche principale ;
-2. appliquer `db/migrations/001_...` à `018_...` avec le propriétaire de cette branche ;
+2. appliquer `db/migrations/001_...` à `019_...` avec le propriétaire de cette branche ;
 3. exécuter toutes les assertions de `db/verify.sql` ;
 4. inspecter le diff de schéma ;
 5. obtenir l'accord explicite du propriétaire ;
@@ -59,7 +59,7 @@ Ce script coupe l'envoi et diffère le travail actif. Un retour de schéma doit 
 
 ## Rôles SQL du runtime et des agents
 
-Les migrations créent deux rôles de groupe `NOLOGIN` : `prospection95_app` et `prospection95_agent`.
+Les migrations créent deux rôles de groupe `NOLOGIN` : `prospection95_app` et `prospection95_agent`. La migration 019 donne aussi le contrat agent au login `prospection95_runtime` déjà utilisé en production ; elle ne crée donc aucun mot de passe supplémentaire.
 
 Créer avec Neon un rôle LOGIN distinct pour le backend, puis :
 
@@ -74,7 +74,9 @@ SELECT pg_has_role(current_user, 'prospection95_app', 'member');
 SELECT NOT has_schema_privilege(current_user, 'agent_api', 'CREATE');
 ```
 
-Pour les planifications ChatGPT, créer un autre rôle LOGIN :
+Les planifications peuvent se connecter avec le même login `prospection95_runtime`. Il hérite de `prospection95_agent`, mais les écritures commerciales restent limitées aux fonctions contrôlées de `agent_api` ; la proposition directe qui contournerait les itérations est révoquée.
+
+Pour une installation qui exige une séparation physique des identifiants, il reste possible de créer un autre rôle LOGIN :
 
 ```sql
 GRANT prospection95_agent TO prospection95_chatgpt;
@@ -227,7 +229,7 @@ Retour arrière applicatif : republier le dernier déploiement Netlify sain ou r
 
 ## Checklist de recette finale
 
-- [ ] dix-huit migrations et toutes les assertions `db/verify.sql` sur la branche principale ;
+- [ ] dix-neuf migrations et toutes les assertions `db/verify.sql` sur la branche principale ;
 - [ ] `DATABASE_URL` du rôle runtime restreint ;
 - [ ] aucun jeton d'administration dans le runtime Netlify ;
 - [ ] coffre Netlify Blobs initialisé et ajout Gmail disponible ;

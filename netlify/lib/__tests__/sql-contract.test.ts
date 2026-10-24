@@ -7,9 +7,9 @@ const migrationsDirectory = join(process.cwd(), "db", "migrations");
 describe("database safety contract", () => {
   it("keeps a contiguous additive migration set", () => {
     const files = readdirSync(migrationsDirectory).filter((name) => name.endsWith(".sql")).sort();
-    expect(files).toHaveLength(18);
+    expect(files).toHaveLength(19);
     expect(files.map((name) => name.slice(0, 3))).toEqual([
-      "001", "002", "003", "004", "005", "006", "007", "008", "009", "010", "011", "012", "013", "014", "015", "016", "017", "018",
+      "001", "002", "003", "004", "005", "006", "007", "008", "009", "010", "011", "012", "013", "014", "015", "016", "017", "018", "019",
     ]);
   });
 
@@ -100,5 +100,19 @@ describe("database safety contract", () => {
     expect(sql).toContain("agent_api.fail_campaign_iteration");
     expect(sql).toContain("iteration_state.status = 'completed'");
     expect(sql).toContain("FROM PUBLIC, prospection95_agent");
+  });
+
+  it("archives one writing pass per prospect and assigned A/B variant", () => {
+    const sql = readFileSync(join(migrationsDirectory, "019_prospect_variant_iteration_workflow.sql"), "utf8");
+    expect(sql).toContain("CREATE TABLE IF NOT EXISTS app.prospect_iteration_states");
+    expect(sql).toContain("CREATE TABLE IF NOT EXISTS app.prospect_iteration_runs");
+    expect(sql).toContain("experiment_assignments_stable_context_uq");
+    expect(sql).toContain("NULLS NOT DISTINCT");
+    expect(sql).toContain("agent_api.assign_prospect_variant");
+    expect(sql).toContain("agent_api.claim_prospect_iteration");
+    expect(sql).toContain("agent_api.complete_prospect_iteration");
+    expect(sql).toContain("agent_api.propose_completed_sequence");
+    expect(sql).toContain("REVOKE EXECUTE ON FUNCTION agent_api.propose_sequence");
+    expect(sql).toContain("GRANT prospection95_agent TO prospection95_runtime");
   });
 });

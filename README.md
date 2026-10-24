@@ -31,7 +31,7 @@ Netlify Functions ─── Neon PostgreSQL
 - `src/` : interface React et client API ;
 - `netlify/functions/` : API authentifiée et traitements serveur ;
 - `netlify/lib/` : authentification, SQL, coffre, planification et import ;
-- `db/migrations/` : dix-huit migrations PostgreSQL additives et rejouables ;
+- `db/migrations/` : dix-neuf migrations PostgreSQL additives et rejouables ;
 - `docs/` : contrats des agents et procédures d’exploitation.
 
 Contrats et exploitation : [agent de prospection](AGENT_PROSPECTION.md), [agent de délivrabilité](AGENT_DELIVRABILITE.md) et [guide d’exploitation](docs/OPERATIONS.md).

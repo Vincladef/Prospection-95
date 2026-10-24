@@ -49,20 +49,6 @@ function resizeDraftPasses(passes: string[], requestedCount: number): string[] {
   return Array.from({ length: count }, (_, index) => passes[index] ?? defaultDraftPasses[index] ?? "");
 }
 
-function writingIterationProgress(campaign: Campaign): string {
-  const completed = Math.min(campaign.writingIterationsCompleted, campaign.writingIterationsTotal);
-  if (campaign.writingIterationStatus === "completed") {
-    return `✓ Révisions terminées · ${completed}/${campaign.writingIterationsTotal}`;
-  }
-  if (campaign.writingIterationStatus === "running") {
-    return `Itération ${Math.min(completed + 1, campaign.writingIterationsTotal)}/${campaign.writingIterationsTotal} en cours`;
-  }
-  if (campaign.writingIterationStatus === "cancelled") {
-    return `Révisions suspendues · ${completed}/${campaign.writingIterationsTotal}`;
-  }
-  return `Prochaine activation : itération ${Math.min(completed + 1, campaign.writingIterationsTotal)}/${campaign.writingIterationsTotal}`;
-}
-
 type VariantGroupKey = "search" | "iterations" | "subject" | "initial" | "followup0" | "followup1" | "followup2" | "followup3" | "followup4" | "reply";
 type VariantOverrides = Partial<Record<VariantGroupKey, Record<string, unknown>>>;
 
@@ -481,11 +467,11 @@ function CampaignEditor({
             const nextPasses = resizeDraftPasses(iterationsGroup.draftPasses, event.currentTarget.valueAsNumber);
             if (isReferenceVariant) setDraft((current) => ({ ...current, aiInstructions: encodeDraftPasses(nextPasses) }));
             else updateVariantGroup("iterations", { ...iterationsGroup, draftPasses: nextPasses });
-          }} /></label><span className="target-pill">{iterationsGroup.draftPasses.length} itération{iterationsGroup.draftPasses.length > 1 ? "s" : ""} successive{iterationsGroup.draftPasses.length > 1 ? "s" : ""}</span></div>{isReferenceVariant ? <div className={`v54-iteration-progress ${campaign.writingIterationStatus ?? "pending"}`} role="status">{writingIterationProgress(campaign)}</div> : null}<div className="v23-pass-list">{iterationsGroup.draftPasses.map((pass, index) => <label className="v23-pass-step" key={index}><strong>Itération {index + 1}</strong><small>{index === 0 ? "Prépare une première version de la séquence : objet, premier email et relances." : "Améliore la version précédente en appliquant les consignes ci-dessous."}</small><textarea value={pass} onChange={(event) => {
+          }} /></label><span className="target-pill">{iterationsGroup.draftPasses.length} itération{iterationsGroup.draftPasses.length > 1 ? "s" : ""} successive{iterationsGroup.draftPasses.length > 1 ? "s" : ""}</span></div><div className="v23-pass-list">{iterationsGroup.draftPasses.map((pass, index) => <label className="v23-pass-step" key={index}><strong>Itération {index + 1}</strong><small>{index === 0 ? "Prépare une première version de la séquence : objet, premier email et relances." : "Améliore la version précédente en appliquant les consignes ci-dessous."}</small><textarea value={pass} onChange={(event) => {
             const nextPasses = iterationsGroup.draftPasses.map((currentPass, passIndex) => passIndex === index ? event.target.value : currentPass);
             if (isReferenceVariant) setDraft((current) => ({ ...current, aiInstructions: encodeDraftPasses(nextPasses) }));
             else updateVariantGroup("iterations", { ...iterationsGroup, draftPasses: nextPasses });
-          }} /></label>)}<InstructionAttachments attachments={attachments} scope="campaign" campaignId={campaign.id} fieldKey={attachmentField("iterations")} /></div><p className="v23-pass-help">Une activation planifiée traite une seule itération. La suivante reprend la version archivée dans Neon jusqu’à la dernière passe.</p></div>)}
+          }} /></label>)}<InstructionAttachments attachments={attachments} scope="campaign" campaignId={campaign.id} fieldKey={attachmentField("iterations")} /></div><p className="v23-pass-help">Chaque prospect et sa version A/B suivent séparément ces itérations. Une activation planifiée traite une seule passe puis reprend la version archivée dans Neon au passage suivant.</p></div>)}
         </section>
 
         <section className="target-section">
