@@ -5,6 +5,7 @@ import { CampaignsView } from "./CampaignsView";
 
 const apiMocks = vi.hoisted(() => ({
   addExperimentVariant: vi.fn(),
+  createCampaign: vi.fn(),
   updateExperimentVariant: vi.fn(),
   updateCampaign: vi.fn(),
 }));
@@ -74,6 +75,7 @@ function renderCampaigns(experiments: Experiment[] = []) {
 describe("CampaignsView V53", () => {
   beforeEach(() => {
     vi.clearAllMocks();
+    apiMocks.createCampaign.mockResolvedValue({ campaign: { id: campaign.id, version: 1 } });
     apiMocks.addExperimentVariant.mockResolvedValue({ variant: { id: "cccccccc-cccc-4ccc-8ccc-cccccccccccc", label: "C", name: "Version C" } });
     apiMocks.updateCampaign.mockResolvedValue({ campaign: { id: campaign.id, version: 2 } });
   });
@@ -120,6 +122,20 @@ describe("CampaignsView V53", () => {
 
     await waitFor(() => expect(apiMocks.addExperimentVariant).toHaveBeenCalledWith(experiment.id));
     expect(onMutated).toHaveBeenCalledOnce();
+  });
+
+  it("starts new campaigns with three meaningful AI revision passes", async () => {
+    renderCampaigns();
+    fireEvent.click(screen.getByRole("button", { name: "+ Ajouter" }));
+
+    await waitFor(() => expect(apiMocks.createCampaign).toHaveBeenCalledOnce());
+    const payload = apiMocks.createCampaign.mock.calls[0][0];
+    expect(payload.aiInstructions).toContain("### Itération 1");
+    expect(payload.aiInstructions).toContain("### Itération 2");
+    expect(payload.aiInstructions).toContain("### Itération 3");
+    expect(payload.aiInstructions).toContain("Relecture critique");
+    expect(payload.aiInstructions).toContain("Révision finale");
+    expect(payload.aiInstructions).not.toContain("### Itération 4");
   });
 
   it("changes and persists the number of successive AI writing iterations", async () => {
