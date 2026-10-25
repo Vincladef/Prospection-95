@@ -6,7 +6,7 @@ SELECT to_regnamespace('app') IS NOT NULL
    AND to_regnamespace('agent_api') IS NOT NULL
    AND to_regnamespace('audit') IS NOT NULL AS all_schemas_exist;
 
-SELECT count(*) = 20 AS all_migrations_registered
+SELECT count(*) = 22 AS all_migrations_registered
 FROM app.schema_migrations
 WHERE version IN (
   '001_foundation',
@@ -28,7 +28,9 @@ WHERE version IN (
   '017_crm_campaign_ai_instructions',
   '018_campaign_iteration_workflow',
   '019_prospect_variant_iteration_workflow',
-  '020_register_prospect_conflict_target'
+  '020_register_prospect_conflict_target',
+  '021_targeted_reliability_fixes',
+  '022_sequence_validation_and_send_distribution'
 );
 
 SELECT NOT has_schema_privilege('prospection95_agent', 'vault', 'USAGE')
@@ -212,3 +214,43 @@ SELECT position(
          'EXECUTE'
        )
    AS prospect_registration_conflict_target_is_unambiguous;
+
+SELECT to_regclass('app.campaign_prospects_one_active_campaign_uq') IS NOT NULL
+   AND to_regclass('app.outbox_one_active_j0_per_prospect_uq') IS NOT NULL
+   AS cross_campaign_j0_guards_are_installed;
+
+SELECT attnotnull
+   AND atttypid = 'text'::regtype
+   AS writing_input_hash_is_persistent
+FROM pg_attribute
+WHERE attrelid = 'app.prospect_iteration_states'::regclass
+  AND attname = 'writing_input_hash'
+  AND NOT attisdropped;
+
+SELECT has_table_privilege(
+         'prospection95_agent',
+         'agent_api.experiment_metrics',
+         'SELECT'
+       )
+   AND has_table_privilege(
+         'prospection95_app',
+         'agent_api.experiment_metrics',
+         'SELECT'
+       )
+   AS direct_experiment_metrics_are_available;
+
+SELECT has_function_privilege(
+         'prospection95_app',
+         'app.next_account_send_at(uuid,timestamptz,text)',
+         'EXECUTE'
+       )
+   AND NOT has_function_privilege(
+         'prospection95_agent',
+         'app.next_account_send_at(uuid,timestamptz,text)',
+         'EXECUTE'
+       )
+   AND position(
+         'app.next_account_send_at'
+         IN pg_get_functiondef('app.schedule_due_messages(integer)'::regprocedure)
+       ) > 0
+   AS variable_send_distribution_is_active;

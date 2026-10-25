@@ -38,7 +38,7 @@ const campaign: Campaign = {
     stepInstructions: ["", "", "", "", "", ""],
   },
   updatedAt: "2026-10-22T00:00:00.000Z",
-  stats: { sent: 0, contacted: 0, opened: 0, clicked: 0, replied: 0, openRate: 0, clickRate: 0, firstSentAt: null, lastSentAt: null },
+  stats: { sent: 0, contacted: 0, opened: 0, clicked: 0, replied: 0, unclassifiedReplies: 2, openRate: 0, clickRate: 0, firstSentAt: null, lastSentAt: null },
 };
 
 const experiment: Experiment = {
@@ -49,8 +49,8 @@ const experiment: Experiment = {
   thresholdContactsPerVariant: 40,
   thresholdReplies: 20,
   variants: [
-    { id: "aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa", label: "A", name: "Référence", allocationWeight: 1, overrides: {}, assignedCount: 12, sentCount: 10, humanReplyCount: 2, positiveReplyCount: 1, confirmedMeetingCount: 1, openCount: 6, clickCount: 3 },
-    { id: "bbbbbbbb-bbbb-4bbb-8bbb-bbbbbbbbbbbb", label: "B", name: "Version B", allocationWeight: 1, overrides: { search: { criteria: "Recherche propre à la version B" } }, assignedCount: 11, sentCount: 10, humanReplyCount: 3, positiveReplyCount: 2, confirmedMeetingCount: 1, openCount: 7, clickCount: 4 },
+    { id: "aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa", label: "A", name: "Référence", allocationWeight: 1, overrides: {}, assignedCount: 12, sentCount: 10, humanReplyCount: 2, unclassifiedReplyCount: 1, positiveReplyCount: 1, confirmedMeetingCount: 1, openCount: 6, clickCount: 3 },
+    { id: "bbbbbbbb-bbbb-4bbb-8bbb-bbbbbbbbbbbb", label: "B", name: "Version B", allocationWeight: 1, overrides: { search: { criteria: "Recherche propre à la version B" } }, assignedCount: 11, sentCount: 10, humanReplyCount: 3, unclassifiedReplyCount: 0, positiveReplyCount: 2, confirmedMeetingCount: 1, openCount: 7, clickCount: 4 },
   ],
 };
 
@@ -175,5 +175,7 @@ describe("CampaignsView V53", () => {
     expect(screen.getByText("60 %")).toBeInTheDocument();
     expect(screen.getByText("70 %")).toBeInTheDocument();
     expect(screen.getByText("Version B")).toBeInTheDocument();
+    expect(screen.getByText("réponses à classer")).toBeInTheDocument();
+    expect(screen.getByRole("columnheader", { name: "À classer" })).toBeInTheDocument();
   });
 });

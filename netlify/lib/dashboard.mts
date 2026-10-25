@@ -261,17 +261,17 @@ export async function loadDashboard(): Promise<Record<string, unknown>> {
     sqlQuery(`select * from app.experiments order by created_at desc`),
     sqlQuery(`
       select v.*,
-        count(distinct a.id)::int as assigned_count,
-        count(distinct e.id) filter (where e.event_type = 'smtp_accepted')::int as sent_count,
-        count(distinct e.id) filter (where e.event_type = 'human_reply')::int as human_reply_count,
-        count(distinct e.id) filter (where e.event_type = 'positive_reply')::int as positive_reply_count,
-        count(distinct e.id) filter (where e.event_type = 'confirmed_meeting')::int as confirmed_meeting_count,
-        count(distinct e.id) filter (where e.event_type = 'open')::int as open_count,
-        count(distinct e.id) filter (where e.event_type = 'click')::int as click_count
+             coalesce(metrics.assigned_prospects, 0)::int as assigned_count,
+             coalesce(metrics.smtp_accepted, 0)::int as sent_count,
+             coalesce(metrics.human_replies, 0)::int as human_reply_count,
+             coalesce(metrics.positive_replies, 0)::int as positive_reply_count,
+             coalesce(metrics.confirmed_meetings, 0)::int as confirmed_meeting_count,
+             coalesce(metrics.measured_opens, 0)::int as open_count,
+             coalesce(metrics.measured_clicks, 0)::int as click_count,
+             coalesce(metrics.unclassified_responses, 0)::int as unclassified_reply_count
       from app.experiment_variants v
-      left join app.experiment_assignments a on a.variant_id = v.id
-      left join app.experiment_events e on e.variant_id = v.id and e.measured
-      group by v.id
+      left join agent_api.experiment_metrics metrics
+        on metrics.experiment_id = v.experiment_id and metrics.variant_id = v.id
       order by v.experiment_id, v.code
     `),
     sqlQuery(`
@@ -281,6 +281,7 @@ export async function loadDashboard(): Promise<Record<string, unknown>> {
              coalesce(outbound.opened, 0)::int as opened,
              coalesce(outbound.clicked, 0)::int as clicked,
              coalesce(inbound.replied, 0)::int as replied,
+             coalesce(inbound.unclassified_replies, 0)::int as unclassified_replies,
              outbound.first_sent_at,
              outbound.last_sent_at
       from app.campaigns c
@@ -301,13 +302,19 @@ export async function loadDashboard(): Promise<Record<string, unknown>> {
         where conversation.campaign_id = c.id
       ) outbound on true
       left join lateral (
-        select count(distinct conversation.prospect_id) as replied
+        select
+          count(distinct conversation.prospect_id) filter (
+            where analysis.classification in ('positive','negative','information','meeting','ambiguous','opposition')
+          ) as replied,
+          count(distinct reply.id) filter (where analysis.id is null) as unclassified_replies
         from app.conversations conversation
-        where conversation.campaign_id = c.id and exists (
-          select 1 from app.email_messages reply
-          where reply.conversation_id = conversation.id and reply.direction = 'inbound'
-            and reply.status = 'received'
-        )
+        join app.email_messages reply
+          on reply.conversation_id = conversation.id
+         and reply.direction = 'inbound'
+         and reply.kind = 'reply'
+         and reply.status = 'received'
+        left join app.inbound_analyses analysis on analysis.message_id = reply.id
+        where conversation.campaign_id = c.id
       ) inbound on true
     `),
     sqlQuery(`
@@ -383,6 +390,7 @@ export async function loadDashboard(): Promise<Record<string, unknown>> {
         opened: numberValue(stats.opened),
         clicked: numberValue(stats.clicked),
         replied: numberValue(stats.replied),
+        unclassifiedReplies: numberValue(stats.unclassified_replies),
         openRate: sent ? Math.round(numberValue(stats.opened) * 10_000 / sent) / 100 : 0,
         clickRate: sent ? Math.round(numberValue(stats.clicked) * 10_000 / sent) / 100 : 0,
         firstSentAt: isoValue(stats.first_sent_at),
@@ -509,6 +517,7 @@ export async function loadDashboard(): Promise<Record<string, unknown>> {
       assignedCount: numberValue(row.assigned_count),
       sentCount: numberValue(row.sent_count),
       humanReplyCount: numberValue(row.human_reply_count),
+      unclassifiedReplyCount: numberValue(row.unclassified_reply_count),
       positiveReplyCount: numberValue(row.positive_reply_count),
       confirmedMeetingCount: numberValue(row.confirmed_meeting_count),
       openCount: numberValue(row.open_count),

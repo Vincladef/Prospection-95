@@ -52,6 +52,7 @@ export interface CampaignStats {
   opened: number;
   clicked: number;
   replied: number;
+  unclassifiedReplies: number;
   openRate: number;
   clickRate: number;
   firstSentAt: string | null;
@@ -193,6 +194,7 @@ export interface ExperimentVariant {
   assignedCount: number;
   sentCount: number;
   humanReplyCount: number;
+  unclassifiedReplyCount: number;
   positiveReplyCount: number;
   confirmedMeetingCount: number;
   openCount: number;

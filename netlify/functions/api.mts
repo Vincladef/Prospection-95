@@ -387,10 +387,9 @@ async function updateProspect(request: Request, id: string, identity: AdminIdent
 
 async function setProspectStatus(ids: string[], status: z.infer<typeof editableMessageStatus>, expectedVersion?: number): Promise<number> {
   const row = await sqlOne<{ count: number }>(
-    `with targets as (
+    `with eligible_conversations as (
        select conv.prospect_id, conv.id as conversation_id,
-              conv.campaign_id, conv.sender_account_id, current_message.id as message_id,
-              current_message.step, current_message.subject, current_message.body_text
+              conv.campaign_id, conv.sender_account_id
        from app.conversations conv
        join app.prospects p on p.id = conv.prospect_id
        join app.prospect_iteration_states iteration_state
@@ -399,37 +398,62 @@ async function setProspectStatus(ids: string[], status: z.infer<typeof editableM
         and iteration_state.experiment_assignment_id is not distinct from conv.experiment_assignment_id
         and iteration_state.status = 'completed'
         and iteration_state.completed_iterations = iteration_state.total_iterations
-       join lateral (
-         select m.id, m.step, m.subject, m.body_text
-         from app.email_messages m
-         where m.conversation_id = conv.id and m.direction = 'outbound'
-           and not m.technical_confirmation
-           and m.status not in ('cancelled','failed','uncertain')
-           and not exists (
-             select 1 from app.email_messages newer
-             where newer.conversation_id = m.conversation_id and newer.step = m.step
-               and newer.direction = 'outbound' and newer.content_version > m.content_version
-           )
-         order by case m.step
-           when 'J0' then 0 when 'R1' then 1 when 'R2' then 2
-           when 'R3' then 3 when 'R4' then 4 when 'R5' then 5 else 6 end
-         limit 1
-       ) current_message on true
        where conv.prospect_id = any($1::uuid[])
          and ($3::bigint is null or p.version = $3)
+     ), latest_messages as (
+       select eligible.*, m.id as message_id, m.step, m.subject, m.body_text,
+              m.status as message_status
+       from eligible_conversations eligible
+       join app.email_messages m on m.conversation_id = eligible.conversation_id
+       where m.direction = 'outbound' and m.kind = 'prospection'
+         and not m.technical_confirmation
+         and m.status not in ('reserved','sending','smtp_accepted','sent_manually','cancelled','failed','uncertain')
+         and not exists (
+           select 1 from app.email_messages newer
+           where newer.conversation_id = m.conversation_id and newer.step = m.step
+             and newer.direction = 'outbound' and newer.content_version > m.content_version
+         )
+     ), targets as (
+       select candidate.*
+       from latest_messages candidate
+       where (
+           ($2 = 'approved' and candidate.message_status in ('draft','prepared','pending_approval'))
+           or
+           ($2 <> 'approved' and candidate.message_id = (
+             select current_message.message_id
+             from latest_messages current_message
+             where current_message.conversation_id = candidate.conversation_id
+             order by case current_message.step
+               when 'J0' then 0 when 'R1' then 1 when 'R2' then 2
+               when 'R3' then 3 when 'R4' then 4 when 'R5' then 5 else 6 end
+             limit 1
+           ) and candidate.message_status is distinct from $2::app.message_status)
+         )
+         and not exists (
+           select 1 from app.outbox_jobs in_flight
+           where in_flight.message_id = candidate.message_id
+             and in_flight.status in ('reserved','running')
+         )
      ), changed_messages as (
        update app.email_messages m set status = $2::app.message_status
-       from targets t where m.id = t.message_id returning m.id
+       from targets t
+       where m.id = t.message_id
+         and m.status not in ('reserved','sending','smtp_accepted','sent_manually','uncertain')
+       returning m.id
      ), changed_prospects as (
        update app.prospects p set version = version + 1
-       from targets t where p.id = t.prospect_id returning p.id
+       from targets t
+       join changed_messages changed on changed.id = t.message_id
+       where p.id = t.prospect_id returning p.id
      ), approvals as (
        insert into app.message_approvals
          (message_id, approved, actor, message_content_hash, reason)
        select t.message_id, true, 'application-user',
               encode(digest(t.subject || chr(31) || t.body_text, 'sha256'), 'hex'),
               'Validation depuis la grille'
-       from targets t where $2 in ('approved','scheduled')
+       from targets t
+       join changed_messages changed on changed.id = t.message_id
+       where $2 in ('approved','scheduled')
        returning id
      ), scheduled as (
        insert into app.outbox_jobs
@@ -437,21 +461,28 @@ async function setProspectStatus(ids: string[], status: z.infer<typeof editableM
           status, approval_required, approved_at, due_at, idempotency_key)
        select t.message_id, t.conversation_id, t.campaign_id, t.prospect_id,
               t.sender_account_id, t.step, 'scheduled', true, clock_timestamp(),
-              clock_timestamp(), 'ui-schedule:' || t.message_id::text
+              app.next_account_send_at(t.sender_account_id, clock_timestamp(), t.message_id::text),
+              'ui-schedule:' || t.message_id::text
        from targets t
+       join changed_messages changed on changed.id = t.message_id
        join app.prospects p on p.id = t.prospect_id
        where $2 = 'scheduled' and p.contact_kind = 'email' and p.normalized_email is not null
          and not app.is_excluded(p.normalized_email)
        on conflict (idempotency_key) do update
          set status = case when app.outbox_jobs.status in ('completed','uncertain') then app.outbox_jobs.status else 'scheduled' end,
-             due_at = case when app.outbox_jobs.status in ('completed','uncertain') then app.outbox_jobs.due_at else clock_timestamp() end,
+             due_at = case when app.outbox_jobs.status in ('completed','uncertain') then app.outbox_jobs.due_at else excluded.due_at end,
              updated_at = clock_timestamp()
        returning id
-     ), cancelled as (
+     ), cancelled_jobs as (
        update app.outbox_jobs j set status = 'cancelled', cancelled_at = clock_timestamp(),
-         cancel_reason = 'user_cancelled', updated_at = clock_timestamp()
-       from targets t where $2 = 'cancelled' and j.message_id = t.message_id
-         and j.status in ('requested','pending','scheduled','deferred','reserved') returning j.id
+         cancel_reason = case when $2 = 'cancelled' then 'user_cancelled' else 'approval_withdrawn' end,
+         updated_at = clock_timestamp()
+       from targets t
+       join changed_messages changed on changed.id = t.message_id
+       where $2 in ('draft','prepared','pending_approval','cancelled')
+         and j.message_id = t.message_id
+         and j.status in ('requested','pending','scheduled','deferred')
+       returning j.id
      )
      select count(*)::int as count from changed_prospects`,
     [ids, status, expectedVersion ?? null],

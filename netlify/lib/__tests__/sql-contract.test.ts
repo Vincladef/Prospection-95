@@ -7,9 +7,9 @@ const migrationsDirectory = join(process.cwd(), "db", "migrations");
 describe("database safety contract", () => {
   it("keeps a contiguous additive migration set", () => {
     const files = readdirSync(migrationsDirectory).filter((name) => name.endsWith(".sql")).sort();
-    expect(files).toHaveLength(20);
+    expect(files).toHaveLength(22);
     expect(files.map((name) => name.slice(0, 3))).toEqual([
-      "001", "002", "003", "004", "005", "006", "007", "008", "009", "010", "011", "012", "013", "014", "015", "016", "017", "018", "019", "020",
+      "001", "002", "003", "004", "005", "006", "007", "008", "009", "010", "011", "012", "013", "014", "015", "016", "017", "018", "019", "020", "021", "022",
     ]);
   });
 
@@ -134,5 +134,76 @@ describe("database safety contract", () => {
     expect(api).toContain("prospect_preparation_incomplete");
     expect(api).toContain("iteration_state.completed_iterations = iteration_state.total_iterations");
     expect(api).toContain("iteration_state.experiment_assignment_id is not distinct from conv.experiment_assignment_id");
+  });
+
+  it("reconciles automatic Sent messages without stopping follow-ups", () => {
+    const sql = readFileSync(join(migrationsDirectory, "021_targeted_reliability_fixes.sql"), "utf8");
+    const worker = readFileSync(join(process.cwd(), "netlify", "functions", "dispatch-outbox.mts"), "utf8");
+    expect(worker).toContain("internet_message_id = coalesce(internet_message_id, $2)");
+    expect(worker.indexOf("message_id_persistence_failed")).toBeLessThan(worker.indexOf("const result = await sendGmailMessage"));
+    expect(sql).toContain("manual_outbound boolean := false");
+    expect(sql).toContain("IF manual_outbound THEN");
+    expect(sql).toContain("internet_message_id = coalesce(internet_message_id, p_internet_message_id)");
+  });
+
+  it("withdraws scheduling before SMTP without cancelling a running send", () => {
+    const api = readFileSync(join(process.cwd(), "netlify", "functions", "api.mts"), "utf8");
+    const sql = readFileSync(join(migrationsDirectory, "021_targeted_reliability_fixes.sql"), "utf8");
+    expect(api).toContain("in_flight.status in ('reserved','running')");
+    expect(api).toContain("$2 in ('draft','prepared','pending_approval','cancelled')");
+    expect(api).toContain("j.status in ('requested','pending','scheduled','deferred')");
+    expect(sql).toContain("message_status IS DISTINCT FROM 'scheduled'");
+    expect(sql).toContain("cancel_reason = 'message_not_scheduled'");
+  });
+
+  it("computes A/B outcomes from confirmed messages and AI analyses", () => {
+    const sql = readFileSync(join(migrationsDirectory, "021_targeted_reliability_fixes.sql"), "utf8");
+    const dashboard = readFileSync(join(process.cwd(), "netlify", "lib", "dashboard.mts"), "utf8");
+    expect(sql).toContain("m.status = 'smtp_accepted' AND m.technical_confirmation");
+    expect(sql).toContain("LEFT JOIN app.inbound_analyses analysis ON analysis.message_id = m.id");
+    expect(sql).toContain("analysis.meeting_confirmed");
+    expect(sql).toContain("unclassified_responses");
+    expect(dashboard).toContain("agent_api.experiment_metrics");
+    expect(dashboard).toContain("analysis.id is null");
+  });
+
+  it("prevents concurrent cross-campaign J0 work and rechecks before SMTP", () => {
+    const sql = readFileSync(join(migrationsDirectory, "021_targeted_reliability_fixes.sql"), "utf8");
+    expect(sql).toContain("campaign_prospects_one_active_campaign_uq");
+    expect(sql).toContain("outbox_one_active_j0_per_prospect_uq");
+    expect(sql).toContain("status NOT IN ('completed','failed','cancelled')");
+    expect(sql).toContain("SELECT 1 FROM app.contact_history h");
+    expect(sql).toContain("cancel_reason = 'already_contacted'");
+  });
+
+  it("hashes writing inputs without coupling them to operational versions", () => {
+    const sql = readFileSync(join(migrationsDirectory, "021_targeted_reliability_fixes.sql"), "utf8");
+    expect(sql).toContain("writing_input_hash");
+    expect(sql).toContain("generalWritingInstructions");
+    expect(sql).toContain("prospect-writing-input-v2");
+    expect(sql).toContain("attachment.field_key LIKE 'variant:' || p_variant_id::text");
+    expect(sql).not.toContain("prospect_row.version::text");
+    expect(sql).not.toContain("settings_version::text");
+    expect(sql).toContain("state_row.configuration_hash, next_iteration");
+  });
+
+  it("approves every remaining message in a completed sequence", () => {
+    const api = readFileSync(join(process.cwd(), "netlify", "functions", "api.mts"), "utf8");
+    expect(api).toContain("$2 = 'approved' and candidate.message_status in ('draft','prepared','pending_approval')");
+    expect(api).toContain("from latest_messages candidate");
+    expect(api).toContain("join changed_messages changed on changed.id = t.message_id");
+    expect(api).toContain("insert into app.message_approvals");
+  });
+
+  it("schedules each send at a stable variable time inside the account window", () => {
+    const sql = readFileSync(join(migrationsDirectory, "022_sequence_validation_and_send_distribution.sql"), "utf8");
+    const api = readFileSync(join(process.cwd(), "netlify", "functions", "api.mts"), "utf8");
+    expect(sql).toContain("CREATE OR REPLACE FUNCTION app.next_account_send_at");
+    expect(sql).toContain("account_row.randomize_send_times");
+    expect(sql).toContain("hashtextextended");
+    expect(sql).toContain("extract(isodow FROM day_value)::smallint = ANY(account_row.send_days)");
+    expect(sql).toContain("app.next_account_send_at(");
+    expect(sql).toContain("WHERE app.outbox_jobs.status = 'cancelled'");
+    expect(api).toContain("app.next_account_send_at(t.sender_account_id");
   });
 });

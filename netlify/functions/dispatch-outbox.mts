@@ -80,8 +80,30 @@ export default async function dispatchOutbox(_request: Request, _context: Contex
       await finishCertainFailure(job, "invalid_mail_envelope", false);
       return workerResult(worker, { ok: false, jobId: job.id, state: "failed", code: "invalid_mail_envelope" });
     }
-    await sqlOne(`select (app.start_outbox_attempt($1::uuid, $2::uuid)).id::text as id`, [job.id, job.lease_token]);
-    const messageId = job.internet_message_id || `<${job.message_id}@mail.prospection95.local>`;
+    const started = await sqlOne<{ id: string; status: string }>(
+      `select started.id::text, started.status::text
+       from app.start_outbox_attempt($1::uuid, $2::uuid) started`,
+      [job.id, job.lease_token],
+    );
+    if (!started || started.status !== "running") {
+      return workerResult(worker, {
+        ok: true,
+        scheduled: Number(scheduled?.count ?? 0),
+        jobId: job.id,
+        state: started?.status ?? "cancelled",
+      });
+    }
+    const deterministicMessageId = `<${job.message_id}@mail.prospection95.local>`;
+    const persistedMessage = await sqlOne<{ internet_message_id: string }>(
+      `update app.email_messages
+          set internet_message_id = coalesce(internet_message_id, $2),
+              updated_at = clock_timestamp()
+        where id = $1::uuid
+        returning internet_message_id`,
+      [job.message_id, deterministicMessageId],
+    );
+    if (!persistedMessage?.internet_message_id) throw new Error("message_id_persistence_failed");
+    const messageId = persistedMessage.internet_message_id;
     const prepared = await prepareTrackedMessage({
       messageId: job.message_id,
       text: job.body_text,
