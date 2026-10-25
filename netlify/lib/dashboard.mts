@@ -258,7 +258,12 @@ export async function loadDashboard(): Promise<Record<string, unknown>> {
           then (p.capabilities ->> 'catalogOrder')::int else 100000 end,
         p.name
     `),
-    sqlQuery(`select * from app.experiments order by created_at desc`),
+    sqlQuery(`
+      select experiment.*, winner.code as winner_variant_code
+      from app.experiments experiment
+      left join app.experiment_variants winner on winner.id = experiment.winner_variant_id
+      order by experiment.created_at desc
+    `),
     sqlQuery(`
       select v.*,
              coalesce(metrics.assigned_prospects, 0)::int as assigned_count,
@@ -532,6 +537,10 @@ export async function loadDashboard(): Promise<Record<string, unknown>> {
     status: textValue(row.status),
     thresholdContactsPerVariant: numberValue(row.contacts_per_variant_threshold),
     thresholdReplies: numberValue(row.total_responses_threshold),
+    winnerVariantId: nullableText(row.winner_variant_id),
+    winnerVariantLabel: nullableText(row.winner_variant_code),
+    decision: nullableText(row.decision),
+    matureAt: isoValue(row.mature_at),
     variants: variantsByExperiment.get(textValue(row.id)) ?? [],
   }));
 

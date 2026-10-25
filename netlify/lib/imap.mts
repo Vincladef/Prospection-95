@@ -25,6 +25,7 @@ export interface SyncedMessage {
   autoSubmitted: string | null;
   precedence: string | null;
   isBounce: boolean;
+  isPermanentBounce: boolean;
 }
 
 export interface MailboxDelta {
@@ -32,6 +33,15 @@ export interface MailboxDelta {
   lastUid: number;
   messages: SyncedMessage[];
   resetRequired: boolean;
+}
+
+export function isPermanentBounceDiagnostic(isBounce: boolean, subject: string, text: string): boolean {
+  if (!isBounce) return false;
+  const diagnostic = `${subject}\n${text}`;
+  return (
+    /(?:^|\n)\s*status\s*:\s*5\.\d{1,3}\.\d{1,3}\b/im.test(diagnostic) ||
+    /\b5\d\d[ -]+5\.\d{1,3}\.\d{1,3}\b/i.test(diagnostic)
+  );
 }
 
 async function mailboxPath(client: ImapFlow, requested: string): Promise<string> {
@@ -113,6 +123,9 @@ export async function fetchMailboxDelta(input: {
           : parsed.references
             ? [parsed.references]
             : [];
+        const isBounce =
+          /mailer-daemon|postmaster/i.test(parsed.from?.text ?? "") ||
+          /delivery status notification|undeliverable|mail delivery subsystem/i.test(parsed.subject ?? "");
         messages.push({
           uid: item.uid,
           uidValidity,
@@ -130,9 +143,14 @@ export async function fetchMailboxDelta(input: {
           date: parsed.date?.toISOString() ?? null,
           autoSubmitted: headers.get("auto-submitted")?.toString() ?? null,
           precedence: headers.get("precedence")?.toString() ?? null,
-          isBounce:
-            /mailer-daemon|postmaster/i.test(parsed.from?.text ?? "") ||
-            /delivery status notification|undeliverable|mail delivery subsystem/i.test(parsed.subject ?? ""),
+          isBounce,
+          // RFC 3463: la classe 5.x.x est un échec permanent. Les classes 4.x.x
+          // restent temporaires et ne doivent pas interrompre les relances.
+          isPermanentBounce: isPermanentBounceDiagnostic(
+            isBounce,
+            parsed.subject ?? "",
+            parsed.text ?? "",
+          ),
         });
         lastUid = Math.max(lastUid, item.uid);
       }

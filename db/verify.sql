@@ -6,7 +6,7 @@ SELECT to_regnamespace('app') IS NOT NULL
    AND to_regnamespace('agent_api') IS NOT NULL
    AND to_regnamespace('audit') IS NOT NULL AS all_schemas_exist;
 
-SELECT count(*) = 22 AS all_migrations_registered
+SELECT count(*) = 23 AS all_migrations_registered
 FROM app.schema_migrations
 WHERE version IN (
   '001_foundation',
@@ -30,7 +30,8 @@ WHERE version IN (
   '019_prospect_variant_iteration_workflow',
   '020_register_prospect_conflict_target',
   '021_targeted_reliability_fixes',
-  '022_sequence_validation_and_send_distribution'
+  '022_sequence_validation_and_send_distribution',
+  '023_final_prospecting_cycle'
 );
 
 SELECT NOT has_schema_privilege('prospection95_agent', 'vault', 'USAGE')
@@ -254,3 +255,26 @@ SELECT has_function_privilege(
          IN pg_get_functiondef('app.schedule_due_messages(integer)'::regprocedure)
        ) > 0
    AS variable_send_distribution_is_active;
+
+SELECT has_function_privilege('prospection95_runtime', 'agent_api.activate_experiment(uuid,uuid,text)', 'EXECUTE')
+   AND has_function_privilege('prospection95_runtime', 'agent_api.advance_experiment(uuid,uuid,text)', 'EXECUTE')
+   AND has_function_privilege('prospection95_runtime', 'agent_api.conclude_experiment(uuid,uuid,text,text,uuid,text)', 'EXECUTE')
+   AND NOT has_function_privilege('prospection95_agent', 'app.select_campaign_sender(uuid,uuid,uuid)', 'EXECUTE')
+   AND has_function_privilege('prospection95_app', 'app.select_campaign_sender(uuid,uuid,uuid)', 'EXECUTE')
+   AS autonomous_experiment_and_sender_contract_is_available;
+
+SELECT EXISTS (
+         SELECT 1 FROM information_schema.columns
+          WHERE table_schema = 'app' AND table_name = 'experiments'
+            AND column_name = 'winner_variant_id'
+       )
+   AND position('permanentBounce' IN pg_get_functiondef('app.stop_followups_on_inbound()'::regprocedure)) > 0
+   AND position('permanent_bounce' IN pg_get_functiondef('app.stop_followups_on_inbound()'::regprocedure)) > 0
+   AS permanent_bounce_and_experiment_winner_are_persistent;
+
+SELECT to_regclass('app.experiments_one_open_per_campaign_uq') IS NOT NULL
+   AND NOT EXISTS (
+     SELECT campaign_id FROM app.experiments
+      WHERE status IN ('recruiting','threshold_reached','awaiting_observations','mature')
+      GROUP BY campaign_id HAVING count(*) > 1
+   ) AS one_open_experiment_per_campaign_is_enforced;

@@ -1,7 +1,7 @@
 import { readFileSync } from "node:fs";
 import { join } from "node:path";
 import { describe, expect, it } from "vitest";
-import { classifyOperationalMessage, type SyncedMessage } from "../imap.mts";
+import { classifyOperationalMessage, isPermanentBounceDiagnostic, type SyncedMessage } from "../imap.mts";
 
 function message(overrides: Partial<SyncedMessage> = {}): SyncedMessage {
   return {
@@ -20,6 +20,7 @@ function message(overrides: Partial<SyncedMessage> = {}): SyncedMessage {
     autoSubmitted: null,
     precedence: null,
     isBounce: false,
+    isPermanentBounce: false,
     ...overrides,
   };
 }
@@ -32,6 +33,12 @@ describe("operational IMAP classification", () => {
   it("recognizes automatic and bounce signals without inventing a human reply", () => {
     expect(classifyOperationalMessage(message({ autoSubmitted: "auto-replied" }))).toBe("automatic_reply");
     expect(classifyOperationalMessage(message({ isBounce: true }))).toBe("bounce");
+  });
+
+  it("distinguishes permanent DSN failures from temporary bounces", () => {
+    expect(isPermanentBounceDiagnostic(true, "Delivery Status Notification", "Status: 5.1.1\n550 5.1.1 user unknown")).toBe(true);
+    expect(isPermanentBounceDiagnostic(true, "Delivery delayed", "Status: 4.2.0\nMailbox temporarily unavailable")).toBe(false);
+    expect(isPermanentBounceDiagnostic(false, "Regular reply", "550 5.1.1 quoted text")).toBe(false);
   });
 
   it("bounds mailbox synchronization to a small UID set and capped source", () => {

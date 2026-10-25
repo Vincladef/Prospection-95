@@ -94,12 +94,50 @@ export default async function dispatchOutbox(_request: Request, _context: Contex
       });
     }
     const deterministicMessageId = `<${job.message_id}@mail.prospection95.local>`;
-    const persistedMessage = await sqlOne<{ internet_message_id: string }>(
-      `update app.email_messages
-          set internet_message_id = coalesce(internet_message_id, $2),
+    const persistedMessage = await sqlOne<{
+      internet_message_id: string;
+      in_reply_to: string | null;
+      references_header: string[];
+    }>(
+      `with previous as (
+         select prior.internet_message_id, prior.references_header
+           from app.email_messages current
+           join app.email_messages prior
+             on prior.conversation_id = current.conversation_id
+            and prior.direction = 'outbound'
+            and prior.kind = 'prospection'
+            and prior.technical_confirmation
+            and prior.internet_message_id is not null
+          where current.id = $1::uuid
+            and current.step <> 'J0'
+            and array_position(
+                  array['J0','R1','R2','R3','R4','R5']::app.sequence_step[],
+                  prior.step
+                ) < array_position(
+                  array['J0','R1','R2','R3','R4','R5']::app.sequence_step[],
+                  current.step
+                )
+          order by array_position(
+                     array['J0','R1','R2','R3','R4','R5']::app.sequence_step[],
+                     prior.step
+                   ) desc
+          limit 1
+       )
+       update app.email_messages message
+          set internet_message_id = coalesce(message.internet_message_id, $2),
+              in_reply_to = coalesce(message.in_reply_to, previous.internet_message_id),
+              references_header = case
+                when message.in_reply_to is null and previous.internet_message_id is not null
+                  then array_append(previous.references_header, previous.internet_message_id)
+                else message.references_header
+              end,
               updated_at = clock_timestamp()
-        where id = $1::uuid
-        returning internet_message_id`,
+         from (select null::text as internet_message_id, '{}'::text[] as references_header
+               where not exists (select 1 from previous)
+               union all
+               select internet_message_id, references_header from previous) previous
+        where message.id = $1::uuid
+        returning message.internet_message_id, message.in_reply_to, message.references_header`,
       [job.message_id, deterministicMessageId],
     );
     if (!persistedMessage?.internet_message_id) throw new Error("message_id_persistence_failed");
@@ -121,8 +159,8 @@ export default async function dispatchOutbox(_request: Request, _context: Contex
       text: prepared.text,
       html: prepared.html,
       messageId,
-      inReplyTo: job.in_reply_to,
-      references: job.references_header,
+      inReplyTo: persistedMessage.in_reply_to,
+      references: persistedMessage.references_header,
     });
     if (result.state === "accepted") {
       await sqlOne(`select (app.confirm_smtp_acceptance($1::uuid, $2::uuid, $3, clock_timestamp())).id::text as id`, [job.id, job.lease_token, result.response || result.messageId]);

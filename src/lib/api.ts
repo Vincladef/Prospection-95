@@ -52,6 +52,11 @@ export const api = {
       method: "PATCH",
       body: JSON.stringify(payload),
     }),
+  moveCampaignToFolder: (id: string, folderId: string | null, version: number) =>
+    request<{ campaign: Pick<Campaign, "id" | "version"> }>(`/campaigns/${encodeURIComponent(id)}/folder`, {
+      method: "PATCH",
+      body: JSON.stringify({ folderId, version }),
+    }),
   deleteCampaign: (id: string) =>
     request(`/campaigns/${encodeURIComponent(id)}`, { method: "DELETE" }),
   createExperiment: (payload: Record<string, unknown>) =>

@@ -7,9 +7,9 @@ const migrationsDirectory = join(process.cwd(), "db", "migrations");
 describe("database safety contract", () => {
   it("keeps a contiguous additive migration set", () => {
     const files = readdirSync(migrationsDirectory).filter((name) => name.endsWith(".sql")).sort();
-    expect(files).toHaveLength(22);
+    expect(files).toHaveLength(23);
     expect(files.map((name) => name.slice(0, 3))).toEqual([
-      "001", "002", "003", "004", "005", "006", "007", "008", "009", "010", "011", "012", "013", "014", "015", "016", "017", "018", "019", "020", "021", "022",
+      "001", "002", "003", "004", "005", "006", "007", "008", "009", "010", "011", "012", "013", "014", "015", "016", "017", "018", "019", "020", "021", "022", "023",
     ]);
   });
 
@@ -139,7 +139,7 @@ describe("database safety contract", () => {
   it("reconciles automatic Sent messages without stopping follow-ups", () => {
     const sql = readFileSync(join(migrationsDirectory, "021_targeted_reliability_fixes.sql"), "utf8");
     const worker = readFileSync(join(process.cwd(), "netlify", "functions", "dispatch-outbox.mts"), "utf8");
-    expect(worker).toContain("internet_message_id = coalesce(internet_message_id, $2)");
+    expect(worker).toContain("internet_message_id = coalesce(message.internet_message_id, $2)");
     expect(worker.indexOf("message_id_persistence_failed")).toBeLessThan(worker.indexOf("const result = await sendGmailMessage"));
     expect(sql).toContain("manual_outbound boolean := false");
     expect(sql).toContain("IF manual_outbound THEN");
@@ -205,5 +205,29 @@ describe("database safety contract", () => {
     expect(sql).toContain("app.next_account_send_at(");
     expect(sql).toContain("WHERE app.outbox_jobs.status = 'cancelled'");
     expect(api).toContain("app.next_account_send_at(t.sender_account_id");
+  });
+
+  it("keeps Gmail threads and stops only confirmed permanent bounces", () => {
+    const worker = readFileSync(join(process.cwd(), "netlify", "functions", "dispatch-outbox.mts"), "utf8");
+    const mailbox = readFileSync(join(process.cwd(), "netlify", "functions", "sync-mailboxes.mts"), "utf8");
+    const sql = readFileSync(join(migrationsDirectory, "023_final_prospecting_cycle.sql"), "utf8");
+    expect(worker).toContain("prior.internet_message_id");
+    expect(worker).toContain("array_append(previous.references_header, previous.internet_message_id)");
+    expect(mailbox).toContain("permanentBounce: message.isBounce ? message.isPermanentBounce : false");
+    expect(sql).toContain("NEW.raw_headers->>'permanentBounce'");
+    expect(sql).toContain("cancel_reason = 'permanent_bounce'");
+  });
+
+  it("exposes an autonomous A/B/C lifecycle and balances Gmail pools", () => {
+    const sql = readFileSync(join(migrationsDirectory, "023_final_prospecting_cycle.sql"), "utf8");
+    expect(sql).toContain("agent_api.activate_experiment");
+    expect(sql).toContain("agent_api.advance_experiment");
+    expect(sql).toContain("agent_api.conclude_experiment");
+    expect(sql).toContain("winner_variant_id");
+    expect(sql).toContain("experiments_one_open_per_campaign_uq");
+    expect(sql).toContain("NOT EXISTS (\n       SELECT 1 FROM app.experiment_assignments");
+    expect(sql).toContain("app.select_campaign_sender");
+    expect(sql).toContain("load.assigned_count / candidate.weight");
+    expect(sql).toContain("pg_advisory_xact_lock(hashtextextended('sender:'");
   });
 });

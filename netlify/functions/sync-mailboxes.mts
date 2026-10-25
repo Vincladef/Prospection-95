@@ -126,7 +126,11 @@ export default async function syncMailboxes(_request: Request, _context: Context
       `, [claimed.account_id, conversationId, kind, from, message.to, message.subject,
         message.text, message.html, message.internetMessageId, message.inReplyTo,
         message.references, message.mailbox, message.uidValidity, message.uid,
-        message.date ?? new Date().toISOString(), JSON.stringify({ autoSubmitted: message.autoSubmitted, precedence: message.precedence })]);
+        message.date ?? new Date().toISOString(), JSON.stringify({
+          autoSubmitted: message.autoSubmitted,
+          precedence: message.precedence,
+          permanentBounce: message.isBounce ? message.isPermanentBounce : false,
+        })]);
       recorded += 1;
     }
     await sqlQuery(`

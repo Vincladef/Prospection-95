@@ -3179,6 +3179,16 @@ input[type="radio"] {
   margin: 5px 0 7px;
 }
 
+.target-folder.drop-target {
+  outline: 2px dashed #000080;
+  outline-offset: -2px;
+  background: #eef4ff;
+}
+
+.target-item[aria-grabbed="true"] {
+  opacity: 0.55;
+}
+
 .target-folder > summary {
   list-style: none;
 }

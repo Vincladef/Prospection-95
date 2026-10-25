@@ -22,11 +22,12 @@ Les fonctions peuvent préparer du travail, mais seul le backend applique horair
 
 1. Créer/reprendre l'exécution avec `agent_api.begin_run`.
 2. Relire toutes les vues utiles ; ne pas réutiliser aveuglément l'état d'un passage précédent.
-3. Traiter d'abord les réponses non analysées, puis les prospects des campagnes actives.
-4. Réserver un prospect, lui attribuer si nécessaire une variante A/B stable, puis traiter au plus une passe de rédaction pour ce prospect et cette attribution pendant le run courant.
-5. Ne proposer J0–R5 qu'après la dernière passe archivée de ce prospect et de cette variante.
-6. Conserver les opérations asynchrones dans leur état réel.
-7. Terminer avec `agent_api.complete_run`, même en état `partial` ou `failed`.
+3. Traiter d'abord les réponses non analysées, puis faire avancer chaque expérience ouverte avec `agent_api.advance_experiment` et analyser celles devenues `mature`.
+4. Activer le prochain test `draft` lorsqu'aucun autre test de la campagne n'est ouvert.
+5. Réserver un prospect, lui attribuer si nécessaire une variante A/B/C stable, puis traiter au plus une passe de rédaction pour ce prospect et cette attribution pendant le run courant.
+6. Ne proposer J0–R5 qu'après la dernière passe archivée de ce prospect et de cette variante.
+7. Conserver les opérations asynchrones dans leur état réel.
+8. Terminer avec `agent_api.complete_run`, même en état `partial` ou `failed`.
 
 Exemple d'ouverture :
 
@@ -44,7 +45,7 @@ SELECT agent_api.begin_run(
 
 ### `agent_api.campaign_parameters`
 
-Configuration courante : cible, objectif, politique de validation, attribution Gmail, `allowed_sender_account_ids`, instructions, tracking, politique d'expérience et version. Une campagne importée désactivée n'apparaît jamais comme éligible dans les vues de prospects. Choisir le compte de `propose_completed_sequence` uniquement dans ce tableau ; l'attribution est ensuite figée sur la conversation.
+Configuration courante : cible, objectif, politique de validation, attribution Gmail, `allowed_sender_account_ids`, instructions, tracking, politique d'expérience et version. Une campagne importée désactivée n'apparaît jamais comme éligible dans les vues de prospects. Le paramètre compte de `propose_completed_sequence` reste requis pour compatibilité ; en mode pool, le backend choisit atomiquement le compte le moins chargé selon les poids configurés et fige cette identité pour toute la conversation.
 
 Les anciennes colonnes `writing_iteration_*` sont conservées pour compatibilité, mais ne pilotent plus la production. L'avancement fiable est celui de `agent_api.prospect_iteration_progress`.
 
@@ -71,7 +72,7 @@ Réponses entrantes pertinentes sans analyse : contexte de conversation, prospec
 
 ### `agent_api.experiments` et `agent_api.experiment_metrics`
 
-Définitions immuables, variantes, seuils et mesures confirmées. `smtp_accepted` ne signifie ni réception ni placement. Une ouverture/clic n'est exploitable que si `measured=true`.
+Définitions immuables, variantes, seuils, maturité, éventuelle variante gagnante et mesures confirmées. `smtp_accepted` ne signifie ni réception ni placement. Une ouverture/clic n'est exploitable que si `measured=true`. Les fonctions `activate_experiment`, `advance_experiment` et `conclude_experiment` constituent le cycle de vie autorisé ; ne jamais modifier directement un statut.
 
 ### `agent_api.account_restrictions`
 
@@ -152,7 +153,7 @@ Le nombre de passes est paramétrable dans l'éditeur (1 à 10), avec **trois pa
 Une activation planifiée exécute **au plus une passe par couple prospect + attribution A/B**. Elle ne doit jamais enchaîner les trois passes dans le même run : Neon avance durablement de `0/3` à `1/3`, puis `2/3`, puis `3/3` lors d'activations distinctes. Deux prospects de la même campagne ont donc des historiques indépendants ; deux variantes ont également des configurations et archives distinctes.
 
 1. Réserver d'abord le prospect avec `agent_api.reserve_prospect`.
-2. Lire les expériences `recruiting` ou `threshold_reached`. Si une expérience s'applique, créer ou retrouver son attribution stable :
+2. Lire l'expérience ouverte (`recruiting` ou `threshold_reached`). Si elle s'applique, créer ou retrouver son attribution stable. Si la campagne est en politique `stabilize` et possède une expérience `closed` avec `winner_variant_id`, utiliser également cette expérience : la fonction attribuera exclusivement la gagnante.
 
 ```sql
 SELECT * FROM agent_api.assign_prospect_variant(
@@ -292,6 +293,43 @@ SELECT agent_api.propose_experiment(
 ```
 
 Au moins deux variantes sont requises. Ne pas déclarer de gagnant au simple franchissement d'un seuil ; attendre la maturité, utiliser des dénominateurs comparables et documenter l'incertitude.
+
+### Cycle autonome A/B/C
+
+Un seul test peut être ouvert par campagne. Une activation suivante doit donc procéder dans cet ordre :
+
+1. Activer le premier test prêt, ou celui qui vient d'être proposé :
+
+```sql
+SELECT agent_api.activate_experiment(
+  $experiment_id, $run_id, 'activate:experiment-id:v1'
+);
+```
+
+2. À chaque exécution planifiée, faire avancer chaque test ouvert :
+
+```sql
+SELECT agent_api.advance_experiment(
+  $experiment_id, $run_id, 'advance:experiment-id:scheduled-run-id'
+);
+```
+
+Le backend passe en observation uniquement lorsque chaque variante a atteint le nombre d'envois SMTP confirmés configuré **et** que le total de réponses humaines confirmées atteint le second seuil. Il calcule ensuite la date de maturité. Ne pas continuer à recruter pendant l'observation.
+
+3. Quand le statut devient `mature`, relire `experiment_metrics`, comparer la métrique principale avec des dénominateurs cohérents et conserver les limites (volume, réponses non classées, tracking bruité). Choisir une variante uniquement avec une justification explicite, puis conclure :
+
+```sql
+SELECT agent_api.conclude_experiment(
+  $experiment_id,
+  $winner_variant_id,
+  'La variante B obtient le meilleur taux de réponses positives sur les envois confirmés.',
+  'Échantillon limité ; les ouvertures ne sont pas utilisées pour départager.',
+  $run_id,
+  'conclude:experiment-id:v1'
+);
+```
+
+4. Si `experiment_policy='stabilize'`, les nouveaux prospects restent sur cette expérience close et le backend leur attribue uniquement la gagnante. Si `experiment_policy='continue'`, proposer le test suivant à partir du gagnant, de `next_test_instructions` et des limites observées, puis l'activer. Ne jamais lancer deux tests ouverts simultanément et ne jamais réutiliser une attribution d'un test précédent.
 
 ## Fin d'exécution et erreurs
 

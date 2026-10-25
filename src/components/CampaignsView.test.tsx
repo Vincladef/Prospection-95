@@ -6,6 +6,7 @@ import { CampaignsView } from "./CampaignsView";
 const apiMocks = vi.hoisted(() => ({
   addExperimentVariant: vi.fn(),
   createCampaign: vi.fn(),
+  moveCampaignToFolder: vi.fn(),
   updateExperimentVariant: vi.fn(),
   updateCampaign: vi.fn(),
 }));
@@ -48,18 +49,22 @@ const experiment: Experiment = {
   status: "draft",
   thresholdContactsPerVariant: 40,
   thresholdReplies: 20,
+  winnerVariantId: null,
+  winnerVariantLabel: null,
+  decision: null,
+  matureAt: null,
   variants: [
     { id: "aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa", label: "A", name: "Référence", allocationWeight: 1, overrides: {}, assignedCount: 12, sentCount: 10, humanReplyCount: 2, unclassifiedReplyCount: 1, positiveReplyCount: 1, confirmedMeetingCount: 1, openCount: 6, clickCount: 3 },
     { id: "bbbbbbbb-bbbb-4bbb-8bbb-bbbbbbbbbbbb", label: "B", name: "Version B", allocationWeight: 1, overrides: { search: { criteria: "Recherche propre à la version B" } }, assignedCount: 11, sentCount: 10, humanReplyCount: 3, unclassifiedReplyCount: 0, positiveReplyCount: 2, confirmedMeetingCount: 1, openCount: 7, clickCount: 4 },
   ],
 };
 
-function renderCampaigns(experiments: Experiment[] = [], campaigns: Campaign[] = [campaign], selectedCampaignId: string | null = null) {
+function renderCampaigns(experiments: Experiment[] = [], campaigns: Campaign[] = [campaign], selectedCampaignId: string | null = null, folders: { id: string; name: string; position: number }[] = []) {
   const onMutated = vi.fn().mockResolvedValue(undefined);
   render(
     <CampaignsView
       campaigns={campaigns}
-      folders={[]}
+      folders={folders}
       accounts={[]}
       experiments={experiments}
       attachments={[]}
@@ -77,6 +82,7 @@ describe("CampaignsView V53", () => {
   beforeEach(() => {
     vi.clearAllMocks();
     apiMocks.createCampaign.mockResolvedValue({ campaign: { id: campaign.id, version: 1 } });
+    apiMocks.moveCampaignToFolder.mockResolvedValue({ campaign: { id: campaign.id, version: 2 } });
     apiMocks.addExperimentVariant.mockResolvedValue({ variant: { id: "cccccccc-cccc-4ccc-8ccc-cccccccccccc", label: "C", name: "Version C" } });
     apiMocks.updateCampaign.mockResolvedValue({ campaign: { id: campaign.id, version: 2 } });
   });
@@ -177,5 +183,18 @@ describe("CampaignsView V53", () => {
     expect(screen.getByText("Version B")).toBeInTheDocument();
     expect(screen.getByText("réponses à classer")).toBeInTheDocument();
     expect(screen.getByRole("columnheader", { name: "À classer" })).toBeInTheDocument();
+  });
+
+  it("moves a campaign to a folder by drag and drop", async () => {
+    const folder = { id: "44444444-4444-4444-8444-444444444444", name: "Concerts", position: 0 };
+    const { onMutated } = renderCampaigns([], [campaign], null, [folder]);
+    const campaignButton = screen.getByRole("button", { name: /Nouvelle campagne/ });
+    const folderDropZone = screen.getAllByText("Concerts").find((node) => node.classList.contains("folder-title"))!.closest("details")!;
+
+    fireEvent.dragStart(campaignButton, { dataTransfer: { effectAllowed: "move", setData: vi.fn() } });
+    fireEvent.drop(folderDropZone, { dataTransfer: { getData: () => campaign.id } });
+
+    await waitFor(() => expect(apiMocks.moveCampaignToFolder).toHaveBeenCalledWith(campaign.id, folder.id, campaign.version));
+    expect(onMutated).toHaveBeenCalledOnce();
   });
 });

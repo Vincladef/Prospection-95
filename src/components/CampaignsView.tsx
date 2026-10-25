@@ -1,4 +1,4 @@
-import { type FormEvent, type ReactNode, useEffect, useMemo, useState } from "react";
+import { type DragEvent, type FormEvent, type ReactNode, useEffect, useMemo, useState } from "react";
 import { api } from "../lib/api";
 import type { Campaign, CampaignFolder, Experiment, GmailAccount, InstructionAttachment, Prospect, SequenceContent } from "../types";
 import { InstructionAttachments } from "./InstructionAttachments";
@@ -305,7 +305,7 @@ function CampaignEditor({
       {showStats ? <div className="campaign-stats-backdrop" role="presentation" onMouseDown={(event) => { if (event.currentTarget === event.target) setShowStats(false); }}><section className="campaign-stats-dialog" role="dialog" aria-modal="true" aria-labelledby="campaign-stats-title"><header><div><h3 id="campaign-stats-title">Statistiques · {campaign.name}</h3><small>Données réelles enregistrées dans Neon</small></div><button type="button" aria-label="Fermer" onClick={() => setShowStats(false)}>×</button></header><div className="campaign-stats-grid"><div><strong>{campaign.stats.sent}</strong><span>emails envoyés</span></div><div><strong>{campaign.stats.contacted}</strong><span>prospects contactés</span></div><div><strong>{campaign.stats.opened}</strong><span>emails ouverts</span><small>{campaign.stats.openRate}% d’ouverture</small></div><div><strong>{campaign.stats.clicked}</strong><span>emails cliqués</span><small>{campaign.stats.clickRate}% de clic</small></div><div><strong>{campaign.stats.replied}</strong><span>prospects avec réponse humaine</span></div><div><strong>{campaign.stats.unclassifiedReplies}</strong><span>réponses à classer</span></div></div>
         <section className="campaign-ab-stats" aria-labelledby="campaign-ab-stats-title">
           <div className="campaign-ab-stats-heading"><strong id="campaign-ab-stats-title">Résultats des tests A/B</strong><span>{relatedExperiments.length ? `${relatedExperiments.length} test${relatedExperiments.length > 1 ? "s" : ""}` : "Aucun test configuré"}</span></div>
-          {relatedExperiments.map((experiment, experimentIndex) => <details key={experiment.id} open={experimentIndex === 0} className="campaign-ab-test"><summary><span>{experiment.name}</span><small>{experiment.status === "recruiting" ? "En cours" : experiment.status === "draft" ? "Préparé" : "Terminé"} · {experiment.variants.length} version{experiment.variants.length > 1 ? "s" : ""}</small></summary><div className="campaign-ab-table-wrap"><table className="campaign-ab-table"><thead><tr><th>Version</th><th>Attribués</th><th>Envoyés</th><th>Ouvertures</th><th>Clics</th><th>Réponses</th><th>À classer</th><th>Positives</th><th>RDV</th></tr></thead><tbody>{experiment.variants.map((variant) => {
+          {relatedExperiments.map((experiment, experimentIndex) => <details key={experiment.id} open={experimentIndex === 0} className="campaign-ab-test"><summary><span>{experiment.name}</span><small>{experiment.status === "recruiting" ? "En cours" : experiment.status === "draft" ? "Préparé" : experiment.status === "awaiting_observations" ? "Observation" : experiment.status === "mature" ? "À analyser" : "Terminé"} · {experiment.variants.length} version{experiment.variants.length > 1 ? "s" : ""}{experiment.winnerVariantLabel ? ` · gagnante ${experiment.winnerVariantLabel}` : ""}</small></summary><div className="campaign-ab-table-wrap"><table className="campaign-ab-table"><thead><tr><th>Version</th><th>Attribués</th><th>Envoyés</th><th>Ouvertures</th><th>Clics</th><th>Réponses</th><th>À classer</th><th>Positives</th><th>RDV</th></tr></thead><tbody>{experiment.variants.map((variant) => {
             const rate = (value: number) => variant.sentCount ? Math.round((value / variant.sentCount) * 100) : 0;
             return <tr key={variant.id}><th><span className="campaign-ab-letter">{variant.label}</span><small>{variant.name || (variant.label === "A" ? "Référence" : `Version ${variant.label}`)}</small></th><td>{variant.assignedCount}</td><td>{variant.sentCount}</td><td>{variant.openCount}<small>{rate(variant.openCount)} %</small></td><td>{variant.clickCount}<small>{rate(variant.clickCount)} %</small></td><td>{variant.humanReplyCount}<small>{rate(variant.humanReplyCount)} %</small></td><td>{variant.unclassifiedReplyCount}</td><td>{variant.positiveReplyCount}</td><td>{variant.confirmedMeetingCount}</td></tr>;
           })}</tbody></table></div></details>)}
@@ -541,6 +541,9 @@ export function CampaignsView({ campaigns, folders, accounts, experiments, attac
   const [selectedId, setSelectedId] = useState<string | null>(requestedCampaign?.id || campaigns[0]?.id || null);
   const [showArchived, setShowArchived] = useState(requestedCampaign?.status === "archived");
   const [creating, setCreating] = useState(false);
+  const [draggedCampaignId, setDraggedCampaignId] = useState<string | null>(null);
+  const [dropFolderId, setDropFolderId] = useState<string | null | undefined>(undefined);
+  const [movingCampaign, setMovingCampaign] = useState(false);
 
   const displayed = useMemo(
     () => campaigns.filter((campaign) => showArchived ? campaign.status === "archived" : campaign.status !== "archived"),
@@ -603,6 +606,28 @@ export function CampaignsView({ campaigns, folders, accounts, experiments, attac
     }
   }
 
+  function beginCampaignDrag(event: DragEvent<HTMLButtonElement>, campaignId: string) {
+    event.dataTransfer.effectAllowed = "move";
+    event.dataTransfer.setData("text/plain", campaignId);
+    setDraggedCampaignId(campaignId);
+  }
+
+  async function dropCampaign(event: DragEvent<HTMLElement>, folderId: string | null) {
+    event.preventDefault();
+    const campaignId = draggedCampaignId || event.dataTransfer.getData("text/plain");
+    const campaign = campaigns.find((candidate) => candidate.id === campaignId);
+    setDropFolderId(undefined);
+    setDraggedCampaignId(null);
+    if (!campaign || campaign.folderId === folderId || movingCampaign) return;
+    setMovingCampaign(true);
+    try {
+      await api.moveCampaignToFolder(campaign.id, folderId, campaign.version);
+      await onMutated();
+    } finally {
+      setMovingCampaign(false);
+    }
+  }
+
   const folderGroups = [...folders.map((folder) => ({ ...folder, folderId: folder.id as string | null })), { id: "unfiled", name: "Sans dossier", position: Number.MAX_SAFE_INTEGER, folderId: null }];
 
   return (
@@ -631,9 +656,15 @@ export function CampaignsView({ campaigns, folders, accounts, experiments, attac
           <div className="campaign-list target-list">
             {folderGroups.map((folder) => {
               const children = displayed.filter((campaign) => campaign.folderId === folder.folderId);
-              if (!children.length && folder.folderId === null) return null;
+              if (!children.length && folder.folderId === null && !draggedCampaignId) return null;
               return (
-                <details className="target-folder" key={folder.id}>
+                <details
+                  className={`target-folder ${dropFolderId === folder.folderId ? "drop-target" : ""}`}
+                  key={folder.id}
+                  onDragOver={(event) => { event.preventDefault(); event.dataTransfer.dropEffect = "move"; setDropFolderId(folder.folderId); }}
+                  onDragLeave={(event) => { if (!event.currentTarget.contains(event.relatedTarget as Node | null)) setDropFolderId(undefined); }}
+                  onDrop={(event) => void dropCampaign(event, folder.folderId)}
+                >
                   <summary className="target-folder-bar">
                     <span className="folder-chevron">▾</span><span className="folder-glyph">📁</span><span className="folder-title">{folder.name}</span><span className="folder-count">{children.length}</span>
                     <span className="folder-actions" onClick={(event) => event.preventDefault()}>
@@ -644,7 +675,16 @@ export function CampaignsView({ campaigns, folders, accounts, experiments, attac
                   </summary>
                   <div className="target-folder-items">
                     {children.map((campaign) => (
-                      <button className={`target-item ${selected?.id === campaign.id ? "active selected" : ""}`} type="button" key={campaign.id} onClick={() => setSelectedId(campaign.id)}>
+                      <button
+                        className={`target-item ${selected?.id === campaign.id ? "active selected" : ""}`}
+                        type="button"
+                        key={campaign.id}
+                        draggable={!movingCampaign}
+                        aria-grabbed={draggedCampaignId === campaign.id}
+                        onDragStart={(event) => beginCampaignDrag(event, campaign.id)}
+                        onDragEnd={() => { setDraggedCampaignId(null); setDropFolderId(undefined); }}
+                        onClick={() => setSelectedId(campaign.id)}
+                      >
                         <span className="target-item-title"><strong>{campaign.name}</strong><i className={`target-status-dot ${campaign.status === "active" ? "on" : ""}`} /></span>
                         <span className="target-meta">{campaign.dailyNewContactGoal} nouveaux/jour · {campaign.validationPolicy === "manual" ? "validation manuelle" : "validation automatique"}</span>
                       </button>
@@ -656,7 +696,7 @@ export function CampaignsView({ campaigns, folders, accounts, experiments, attac
             })}
           </div>
           {!displayed.length ? <p className="sidebar-empty">{showArchived ? "Aucune campagne archivée." : "Aucune campagne courante. Créez une campagne."}</p> : null}
-          <footer className="target-side-foot">Les dossiers classent les campagnes sans modifier leurs prospects.</footer>
+          <footer className="target-side-foot">Glisse une campagne vers un dossier pour la classer, sans modifier ses prospects.</footer>
         </aside>
         <div className="campaign-main target-editor">
           {selected ? (

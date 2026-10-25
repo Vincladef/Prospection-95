@@ -208,6 +208,10 @@ export interface Experiment {
   status: string;
   thresholdContactsPerVariant: number;
   thresholdReplies: number;
+  winnerVariantId: string | null;
+  winnerVariantLabel: string | null;
+  decision: string | null;
+  matureAt: string | null;
   variants: ExperimentVariant[];
 }
 

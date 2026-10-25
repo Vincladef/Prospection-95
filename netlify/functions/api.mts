@@ -265,6 +265,26 @@ async function archiveCampaign(id: string, identity: AdminIdentity, requestId: s
   return noContent();
 }
 
+async function moveCampaignToFolder(request: Request, id: string, identity: AdminIdentity, requestId: string): Promise<Response> {
+  requireMethod(request, "PATCH");
+  const value = await parseJson(request, z.object({ folderId: uuid.nullable(), version }));
+  const row = await sqlOne<{ id: string; version: number }>(
+    `update app.campaigns
+        set folder_id = $2::uuid, version = version + 1, updated_at = clock_timestamp()
+      where id = $1::uuid and version = $3
+      returning id::text, version::int`,
+    [id, value.folderId, value.version],
+  );
+  if (!row) throw new HttpError(409, "version_conflict", "La campagne a été modifiée ailleurs.");
+  await logMutation(identity, requestId, {
+    action: "campaign_moved_to_folder",
+    entityType: "campaign",
+    entityId: id,
+    metadata: { folderId: value.folderId },
+  });
+  return json({ campaign: row });
+}
+
 async function campaignFolders(request: Request, id: string | null, identity: AdminIdentity, requestId: string): Promise<Response> {
   if (!id) {
     requireMethod(request, "POST");
@@ -1004,6 +1024,9 @@ async function privateRoute(request: Request, parts: string[], identity: AdminId
   if (parts[0] === "settings" && parts.length === 1) { requireMethod(request, "PATCH"); return updateSettings(request, identity, requestId); }
   if (parts[0] === "emergency-stop" && parts.length === 1) { requireMethod(request, "POST"); return emergencyStop(request, identity, requestId); }
   if (parts[0] === "campaigns" && parts.length === 1) { requireMethod(request, "POST"); return createCampaign(request, identity, requestId); }
+  if (parts[0] === "campaigns" && parts.length === 3 && parts[2] === "folder") {
+    return moveCampaignToFolder(request, routeUuid(parts[1]), identity, requestId);
+  }
   if (parts[0] === "campaigns" && parts.length === 2) {
     const id = routeUuid(parts[1]);
     if (request.method === "PATCH") return updateCampaign(request, id, identity, requestId);
