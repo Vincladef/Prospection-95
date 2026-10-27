@@ -7,9 +7,9 @@ const migrationsDirectory = join(process.cwd(), "db", "migrations");
 describe("database safety contract", () => {
   it("keeps a contiguous additive migration set", () => {
     const files = readdirSync(migrationsDirectory).filter((name) => name.endsWith(".sql")).sort();
-    expect(files).toHaveLength(24);
+    expect(files).toHaveLength(25);
     expect(files.map((name) => name.slice(0, 3))).toEqual([
-      "001", "002", "003", "004", "005", "006", "007", "008", "009", "010", "011", "012", "013", "014", "015", "016", "017", "018", "019", "020", "021", "022", "023", "024",
+      "001", "002", "003", "004", "005", "006", "007", "008", "009", "010", "011", "012", "013", "014", "015", "016", "017", "018", "019", "020", "021", "022", "023", "024", "025",
     ]);
   });
 
@@ -197,6 +197,18 @@ describe("database safety contract", () => {
     expect(sql).toContain("agent_api.assign_prospect_variant_v2");
     expect(sql).toContain("descriptive_variant_required");
     expect(sql).not.toContain("crm_requires_inactive");
+  });
+
+  it("supports more than ten structured writing iterations end to end", () => {
+    const sql = readFileSync(join(migrationsDirectory, "025_extended_writing_iterations.sql"), "utf8");
+    const api = readFileSync(join(process.cwd(), "netlify", "functions", "api.mts"), "utf8");
+    const dashboard = readFileSync(join(process.cwd(), "netlify", "lib", "dashboard.mts"), "utf8");
+    expect(sql).toContain("BETWEEN 1 AND 100");
+    expect(sql).toContain("app.prospect_iteration_states");
+    expect(sql).toContain("crm_api.crm_campaign_create_v2(jsonb,text)");
+    expect(api).toContain("writingIterations: z.array(z.string().max(200_000)).min(1).max(100)");
+    expect(dashboard).toContain("between 1 and 100");
+    expect(dashboard).toContain("Math.min(100, numberValue(row.writing_iterations_total))");
   });
 
   it("approves every remaining message in a completed sequence", () => {

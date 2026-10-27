@@ -136,11 +136,11 @@ export async function loadDashboard(): Promise<Record<string, unknown>> {
         select case
           when jsonb_typeof(progress_variant.overrides #> '{iterations,draftPasses}') = 'array' then
             case
-              when jsonb_array_length(progress_variant.overrides #> '{iterations,draftPasses}') between 1 and 10
+              when jsonb_array_length(progress_variant.overrides #> '{iterations,draftPasses}') between 1 and 100
               then jsonb_array_length(progress_variant.overrides #> '{iterations,draftPasses}')
-              else cardinality(app.extract_campaign_iteration_instructions(campaign.ai_instructions))
+              else cardinality(campaign.writing_iteration_instructions)
             end
-          else cardinality(app.extract_campaign_iteration_instructions(campaign.ai_instructions))
+          else cardinality(campaign.writing_iteration_instructions)
         end::int as total_iterations
         from app.campaigns campaign
         where campaign.id = selected.campaign_id
@@ -439,7 +439,7 @@ export async function loadDashboard(): Promise<Record<string, unknown>> {
       variantLabel: nullableText(row.variant_label),
       writingIterationStatus: textValue(row.writing_iteration_status, "pending"),
       writingIterationsCompleted: Math.max(0, numberValue(row.writing_iterations_completed)),
-      writingIterationsTotal: Math.max(1, Math.min(10, numberValue(row.writing_iterations_total))),
+      writingIterationsTotal: Math.max(1, Math.min(100, numberValue(row.writing_iterations_total))),
       hasOutboundMessages: Boolean(row.has_outbound_messages),
       subject: contentFor("J0")?.subject ?? "",
       messages: STEPS.map((step) => contentFor(step)?.body ?? ""),

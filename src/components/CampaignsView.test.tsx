@@ -171,6 +171,17 @@ describe("CampaignsView V53", () => {
     expect(onMutated).toHaveBeenCalledOnce();
   });
 
+  it("accepts more than ten successive AI writing iterations", () => {
+    renderCampaigns();
+    const iterationCount = screen.getByRole("spinbutton", { name: "Nombre d’itérations" });
+
+    fireEvent.change(iterationCount, { target: { value: "12" } });
+
+    expect(iterationCount).toHaveValue(12);
+    expect(screen.getByText("12 itérations successives")).toBeInTheDocument();
+    expect(screen.getByText("Itération 12")).toBeInTheDocument();
+  });
+
   it("shows discreet per-variant metrics in campaign statistics", () => {
     renderCampaigns([experiment]);
 

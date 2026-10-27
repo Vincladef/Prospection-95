@@ -23,7 +23,7 @@ const emptySequence: SequenceContent = {
   stepInstructions: ["", "", "", "", "", ""],
 };
 
-const maximumDraftPasses = 10;
+const maximumDraftPasses = 100;
 const defaultDraftPasses = [
   "Rédaction : analyse la cible, sa programmation et les sources vérifiées. Rédige l'objet et les six emails J0-R5 avec un angle pertinent pour ce destinataire et une demande simple. Respecte les instructions de campagne et n'invente aucun fait.",
   "Relecture critique : relis la première proposition comme un programmateur débordé. Vérifie l'intérêt pour lui, la pertinence des références, la clarté de l'offre, la charge cognitive, les répétitions, les objections et la facilité de répondre. Corrige chaque faiblesse repérée.",

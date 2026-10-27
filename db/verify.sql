@@ -6,7 +6,7 @@ SELECT to_regnamespace('app') IS NOT NULL
    AND to_regnamespace('agent_api') IS NOT NULL
    AND to_regnamespace('audit') IS NOT NULL AS all_schemas_exist;
 
-SELECT count(*) = 24 AS all_migrations_registered
+SELECT count(*) = 25 AS all_migrations_registered
 FROM app.schema_migrations
 WHERE version IN (
   '001_foundation',
@@ -32,7 +32,8 @@ WHERE version IN (
   '021_targeted_reliability_fixes',
   '022_sequence_validation_and_send_distribution',
   '023_final_prospecting_cycle',
-  '024_structured_campaign_editing'
+  '024_structured_campaign_editing',
+  '025_extended_writing_iterations'
 );
 
 SELECT EXISTS (
@@ -47,6 +48,20 @@ SELECT EXISTS (
    AND has_table_privilege('prospection95_crm','crm_api.experiments','SELECT')
    AND has_function_privilege('prospection95_runtime','agent_api.assign_prospect_variant_v2(uuid,uuid,uuid,uuid,text)','EXECUTE')
    AS structured_campaign_editor_is_available;
+
+SELECT (
+         SELECT pg_get_constraintdef(oid)
+         FROM pg_constraint
+         WHERE conrelid='app.campaigns'::regclass
+           AND conname='campaigns_writing_iterations_check'
+       ) LIKE '%<= 100%'
+   AND pg_get_functiondef('app.effective_variant_sequence(uuid,uuid)'::regprocedure)
+         ILIKE '%between 1 and 100%'
+   AND pg_get_functiondef('crm_api.crm_campaign_create_v2(jsonb,text)'::regprocedure)
+         ILIKE '%between 1 and 100%'
+   AND pg_get_functiondef('crm_api.crm_campaign_update(uuid,bigint,jsonb)'::regprocedure)
+         ILIKE '%between 1 and 100%'
+   AS extended_writing_iterations_are_available;
 
 SELECT NOT has_schema_privilege('prospection95_agent', 'vault', 'USAGE')
    AND NOT has_table_privilege('prospection95_agent', 'vault.credentials', 'SELECT')

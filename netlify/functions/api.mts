@@ -39,7 +39,7 @@ const campaignFields = {
   fixedSenderAccountId: uuid.nullable().optional(),
   senderAccountIds: z.array(uuid).max(100).default([]),
   aiInstructions: z.string().max(200_000).default(""),
-  writingIterations: z.array(z.string().max(200_000)).min(1).max(10).optional(),
+  writingIterations: z.array(z.string().max(200_000)).min(1).max(100).optional(),
   replyInstructions: z.string().max(200_000).default(""),
   trackingOpensEnabled: z.boolean().default(true),
   trackingClicksEnabled: z.boolean().default(true),

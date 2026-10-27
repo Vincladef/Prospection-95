@@ -136,7 +136,7 @@ SELECT * FROM agent_api.register_prospect(
 
 ## Révisions successives de rédaction IA
 
-La campagne expose directement `writing_iteration_instructions`, un tableau ordonné de 1 à 10 consignes. Chaque élément est exactement une passe : ne jamais découper soi-même `ai_instructions` ni exécuter plusieurs éléments pendant la même activation. `ai_instructions` ne contient plus que d'éventuelles règles communes à toutes les passes. Le backend n'appelle pas de LLM : la planification ChatGPT réalise uniquement la passe réclamée par Neon.
+La campagne expose directement `writing_iteration_instructions`, un tableau ordonné de 1 à 100 consignes. Chaque élément est exactement une passe : ne jamais découper soi-même `ai_instructions` ni exécuter plusieurs éléments pendant la même activation. `ai_instructions` ne contient plus que d'éventuelles règles communes à toutes les passes. Le backend n'appelle pas de LLM : la planification ChatGPT réalise uniquement la passe réclamée par Neon.
 
 Une activation planifiée exécute **au plus une passe par couple prospect + attribution A/B**. Elle ne doit jamais enchaîner plusieurs passes dans le même run : Neon avance durablement de `0/n` à `1/n`, puis `2/n`, jusqu'à `n/n` lors d'activations distinctes. Deux prospects de la même campagne ont donc des historiques indépendants ; deux variantes ont également des configurations et archives distinctes.
 
