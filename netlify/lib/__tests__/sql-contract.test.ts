@@ -7,9 +7,9 @@ const migrationsDirectory = join(process.cwd(), "db", "migrations");
 describe("database safety contract", () => {
   it("keeps a contiguous additive migration set", () => {
     const files = readdirSync(migrationsDirectory).filter((name) => name.endsWith(".sql")).sort();
-    expect(files).toHaveLength(23);
+    expect(files).toHaveLength(24);
     expect(files.map((name) => name.slice(0, 3))).toEqual([
-      "001", "002", "003", "004", "005", "006", "007", "008", "009", "010", "011", "012", "013", "014", "015", "016", "017", "018", "019", "020", "021", "022", "023",
+      "001", "002", "003", "004", "005", "006", "007", "008", "009", "010", "011", "012", "013", "014", "015", "016", "017", "018", "019", "020", "021", "022", "023", "024",
     ]);
   });
 
@@ -185,6 +185,18 @@ describe("database safety contract", () => {
     expect(sql).not.toContain("prospect_row.version::text");
     expect(sql).not.toContain("settings_version::text");
     expect(sql).toContain("state_row.configuration_hash, next_iteration");
+  });
+
+  it("stores campaign passes structurally and freezes work already started", () => {
+    const sql = readFileSync(join(migrationsDirectory, "024_structured_campaign_editing.sql"), "utf8");
+    expect(sql).toContain("writing_iteration_instructions text[]");
+    expect(sql).toContain("s.completed_iterations > 0 OR EXISTS");
+    expect(sql).toContain("prospect-writing-input-v3");
+    expect(sql).toContain("crm_api.crm_campaign_create_v2");
+    expect(sql).toContain("crm_api.crm_experiment_save");
+    expect(sql).toContain("agent_api.assign_prospect_variant_v2");
+    expect(sql).toContain("descriptive_variant_required");
+    expect(sql).not.toContain("crm_requires_inactive");
   });
 
   it("approves every remaining message in a completed sequence", () => {

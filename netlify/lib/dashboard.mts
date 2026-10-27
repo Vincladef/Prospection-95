@@ -373,6 +373,9 @@ export async function loadDashboard(): Promise<Record<string, unknown>> {
       fixedSenderAccountId: nullableText(row.fixed_sender_account_id),
       senderAccountIds: Array.isArray(row.sender_account_ids) ? row.sender_account_ids.map((value) => textValue(value)) : [],
       aiInstructions: textValue(row.ai_instructions),
+      writingIterations: Array.isArray(row.writing_iteration_instructions)
+        ? row.writing_iteration_instructions.map((value) => textValue(value))
+        : [textValue(row.ai_instructions)],
       replyInstructions: textValue(row.reply_instructions),
       trackingOpensEnabled: Boolean(row.tracking_opens_enabled),
       trackingClicksEnabled: Boolean(row.tracking_clicks_enabled),

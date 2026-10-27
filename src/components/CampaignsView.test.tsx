@@ -25,6 +25,7 @@ const campaign: Campaign = {
   fixedSenderAccountId: null,
   senderAccountIds: [],
   aiInstructions: "",
+  writingIterations: ["Prépare une première version."],
   replyInstructions: "",
   trackingOpensEnabled: false,
   trackingClicksEnabled: false,
@@ -145,12 +146,10 @@ describe("CampaignsView V53", () => {
 
     await waitFor(() => expect(apiMocks.createCampaign).toHaveBeenCalledOnce());
     const payload = apiMocks.createCampaign.mock.calls[0][0];
-    expect(payload.aiInstructions).toContain("### Itération 1");
-    expect(payload.aiInstructions).toContain("### Itération 2");
-    expect(payload.aiInstructions).toContain("### Itération 3");
-    expect(payload.aiInstructions).toContain("Relecture critique");
-    expect(payload.aiInstructions).toContain("Révision finale");
-    expect(payload.aiInstructions).not.toContain("### Itération 4");
+    expect(payload.writingIterations).toHaveLength(3);
+    expect(payload.writingIterations[1]).toContain("Relecture critique");
+    expect(payload.writingIterations[2]).toContain("Révision finale");
+    expect(payload.aiInstructions).toBe("");
   });
 
   it("changes and persists the number of successive AI writing iterations", async () => {
@@ -167,7 +166,8 @@ describe("CampaignsView V53", () => {
     fireEvent.click(screen.getAllByRole("button", { name: "Enregistrer" }).find((button) => !button.hasAttribute("disabled"))!);
 
     await waitFor(() => expect(apiMocks.updateCampaign).toHaveBeenCalledOnce());
-    expect(apiMocks.updateCampaign.mock.calls[0][1].aiInstructions).toContain("### Itération 3\nResserre le message");
+    expect(apiMocks.updateCampaign.mock.calls[0][1].writingIterations).toHaveLength(3);
+    expect(apiMocks.updateCampaign.mock.calls[0][1].writingIterations[2]).toContain("Resserre le message");
     expect(onMutated).toHaveBeenCalledOnce();
   });
 

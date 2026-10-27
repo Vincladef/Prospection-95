@@ -34,6 +34,7 @@ export interface Campaign {
   fixedSenderAccountId: string | null;
   senderAccountIds: string[];
   aiInstructions: string;
+  writingIterations: string[];
   replyInstructions: string;
   trackingOpensEnabled: boolean;
   trackingClicksEnabled: boolean;

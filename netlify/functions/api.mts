@@ -39,6 +39,7 @@ const campaignFields = {
   fixedSenderAccountId: uuid.nullable().optional(),
   senderAccountIds: z.array(uuid).max(100).default([]),
   aiInstructions: z.string().max(200_000).default(""),
+  writingIterations: z.array(z.string().max(200_000)).min(1).max(10).optional(),
   replyInstructions: z.string().max(200_000).default(""),
   trackingOpensEnabled: z.boolean().default(true),
   trackingClicksEnabled: z.boolean().default(true),
@@ -153,10 +154,11 @@ async function createCampaign(request: Request, identity: AdminIdentity, request
        insert into app.campaigns
          (folder_id, name, status, target_description, daily_new_contact_goal,
           validation_policy, sender_strategy, fixed_sender_account_id, ai_instructions,
-          reply_instructions, tracking_opens_enabled, tracking_clicks_enabled,
+          writing_iteration_instructions, reply_instructions, tracking_opens_enabled, tracking_clicks_enabled,
           experiment_policy, next_test_instructions)
        values ($1::uuid, $2, $3::app.campaign_status, $4, $5,
                $6::app.validation_policy, $7::app.sender_strategy, $8::uuid, $9,
+               coalesce($19::text[], app.extract_campaign_iteration_instructions($9)),
                $10, $11, $12, $13, $14)
        returning id, version
      ), inserted_templates as (
@@ -184,7 +186,7 @@ async function createCampaign(request: Request, identity: AdminIdentity, request
           ? JSON.stringify({ subject: value.sequence.subjectInstructions, body: value.sequence.stepInstructions[index] })
           : value.sequence.stepInstructions[index],
       }))), identity.email,
-      value.senderStrategy === "pool" ? value.senderAccountIds : []],
+      value.senderStrategy === "pool" ? value.senderAccountIds : [], value.writingIterations ?? null],
   );
   if (!row) throw new HttpError(500, "campaign_create_failed", "La campagne n’a pas pu être créée.");
   await logMutation(identity, requestId, { action: "campaign_created", entityType: "campaign", entityId: row.id, after: value });
@@ -200,7 +202,9 @@ async function updateCampaign(request: Request, id: string, identity: AdminIdent
        update app.campaigns set folder_id = $2::uuid, name = $3, status = $4::app.campaign_status,
          target_description = $5, daily_new_contact_goal = $6,
          validation_policy = $7::app.validation_policy, sender_strategy = $8::app.sender_strategy,
-         fixed_sender_account_id = $9::uuid, ai_instructions = $10, reply_instructions = $11,
+         fixed_sender_account_id = $9::uuid, ai_instructions = $10,
+         writing_iteration_instructions = coalesce($21::text[], writing_iteration_instructions),
+         reply_instructions = $11,
          tracking_opens_enabled = $12, tracking_clicks_enabled = $13,
          experiment_policy = $14, next_test_instructions = $15,
          imported_disabled = case when $4 = 'active' then false else imported_disabled end,
@@ -250,7 +254,7 @@ async function updateCampaign(request: Request, id: string, identity: AdminIdent
           ? JSON.stringify({ subject: value.sequence.subjectInstructions, body: value.sequence.stepInstructions[index] })
           : value.sequence.stepInstructions[index],
       }))), identity.email,
-      value.senderStrategy === "pool" ? value.senderAccountIds : []],
+      value.senderStrategy === "pool" ? value.senderAccountIds : [], value.writingIterations ?? null],
   );
   if (!row) throw new HttpError(409, "version_conflict", "La campagne a été modifiée ailleurs.");
   await logMutation(identity, requestId, { action: "campaign_updated", entityType: "campaign", entityId: id, before, after: value });

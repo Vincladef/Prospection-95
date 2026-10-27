@@ -136,33 +136,24 @@ SELECT * FROM agent_api.register_prospect(
 
 ## Révisions successives de rédaction IA
 
-La campagne encode éventuellement plusieurs passes dans `ai_instructions` sous la forme :
+La campagne expose directement `writing_iteration_instructions`, un tableau ordonné de 1 à 10 consignes. Chaque élément est exactement une passe : ne jamais découper soi-même `ai_instructions` ni exécuter plusieurs éléments pendant la même activation. `ai_instructions` ne contient plus que d'éventuelles règles communes à toutes les passes. Le backend n'appelle pas de LLM : la planification ChatGPT réalise uniquement la passe réclamée par Neon.
 
-```text
-<!-- prospection-95:writing-iterations:v1 -->
-### Itération 1
-[consignes de rédaction]
-### Itération 2
-[consignes de relecture critique]
-### Itération 3
-[consignes de révision finale]
-```
-
-Le nombre de passes est paramétrable dans l'éditeur (1 à 10), avec **trois passes par défaut** pour les nouvelles campagnes. Le backend n'appelle pas de LLM : la planification ChatGPT réalise la passe demandée. Une instruction simple sans marqueur est traitée comme une unique passe historique.
-
-Une activation planifiée exécute **au plus une passe par couple prospect + attribution A/B**. Elle ne doit jamais enchaîner les trois passes dans le même run : Neon avance durablement de `0/3` à `1/3`, puis `2/3`, puis `3/3` lors d'activations distinctes. Deux prospects de la même campagne ont donc des historiques indépendants ; deux variantes ont également des configurations et archives distinctes.
+Une activation planifiée exécute **au plus une passe par couple prospect + attribution A/B**. Elle ne doit jamais enchaîner plusieurs passes dans le même run : Neon avance durablement de `0/n` à `1/n`, puis `2/n`, jusqu'à `n/n` lors d'activations distinctes. Deux prospects de la même campagne ont donc des historiques indépendants ; deux variantes ont également des configurations et archives distinctes.
 
 1. Réserver d'abord le prospect avec `agent_api.reserve_prospect`.
 2. Lire l'expérience ouverte (`recruiting` ou `threshold_reached`). Si elle s'applique, créer ou retrouver son attribution stable. Si la campagne est en politique `stabilize` et possède une expérience `closed` avec `winner_variant_id`, utiliser également cette expérience : la fonction attribuera exclusivement la gagnante.
 
 ```sql
-SELECT * FROM agent_api.assign_prospect_variant(
+SELECT * FROM agent_api.assign_prospect_variant_v2(
   $experiment_id,
   $prospect_id,
+  $requested_variant_id,
   $run_id,
   'variant:experiment-id:prospect-id'
 );
 ```
+
+Pour `allocation_method = balanced_random`, passer `NULL` comme `$requested_variant_id` : Neon équilibre les groupes. Pour `descriptive_groups`, choisir la variante dont les critères correspondent réellement aux preuves du prospect et passer son UUID. Si aucune variante descriptive ne correspond sans ambiguïté, ne rien attribuer et terminer le run en `partial`. Ne jamais tirer au hasard entre des populations différentes.
 
 Une conversation ne porte qu'une attribution. S'il existe plusieurs expériences ouvertes sur la même campagne, sélectionner exactement celle indiquée par la stratégie et les instructions de test ; ne jamais combiner arbitrairement leurs variantes. Si le choix est ambigu, terminer le run en `partial` sans proposer d'emails.
 
@@ -178,7 +169,7 @@ SELECT * FROM agent_api.claim_prospect_iteration(
 );
 ```
 
-La fonction retourne `iteration_run_id`, `iteration_state_id`, la variante stable, le numéro de passe, son instruction et `input_sequence`. Pour l'itération 1, l'entrée est la séquence de campagne avec les seuls blocs surchargés par cette variante. Pour les suivantes, c'est la sortie archivée de la passe précédente. Une modification de la campagne, de la variante, du prospect ou des consignes globales démarre un nouveau cycle sans supprimer l'ancien historique.
+La fonction retourne `iteration_run_id`, `iteration_state_id`, la variante stable, le numéro de passe, son instruction et `input_sequence`. Pour l'itération 1, l'entrée est la séquence de campagne avec les seuls blocs surchargés par cette variante. Pour les suivantes, c'est la sortie archivée de la passe précédente. La configuration est figée dès la première passe : les modifications ultérieures s'appliquent aux futurs prospects et aux cycles encore vierges, sans remettre à zéro un travail commencé ni supprimer son historique.
 
 4. Appliquer les consignes globales, le contexte vérifié du prospect et uniquement `instruction` à la séquence complète reçue : objet, instructions d'objet, J0, R1–R5 et leurs instructions. La critique doit produire une version effectivement révisée, pas un commentaire séparé. Ne jamais transférer une consigne ou un contenu d'une autre variante.
 5. Enregistrer la sortie complète :

@@ -23,27 +23,12 @@ const emptySequence: SequenceContent = {
   stepInstructions: ["", "", "", "", "", ""],
 };
 
-const iterationInstructionsMarker = "<!-- prospection-95:writing-iterations:v1 -->";
 const maximumDraftPasses = 10;
 const defaultDraftPasses = [
   "Rédaction : analyse la cible, sa programmation et les sources vérifiées. Rédige l'objet et les six emails J0-R5 avec un angle pertinent pour ce destinataire et une demande simple. Respecte les instructions de campagne et n'invente aucun fait.",
   "Relecture critique : relis la première proposition comme un programmateur débordé. Vérifie l'intérêt pour lui, la pertinence des références, la clarté de l'offre, la charge cognitive, les répétitions, les objections et la facilité de répondre. Corrige chaque faiblesse repérée.",
   "Révision finale : améliore la version précédente sans allonger inutilement les messages. Vérifie chaque affirmation et chaque lien, supprime les promesses non confirmées, conserve un seul appel à l'action par email et harmonise le ton des relances. Livre uniquement la version finale prête pour validation.",
 ];
-
-function decodeDraftPasses(value: string): string[] {
-  if (!value.startsWith(iterationInstructionsMarker)) return [value];
-  const matches = [...value.matchAll(/(?:^|\n)### Itération (\d+)\n([\s\S]*?)(?=\n### Itération \d+\n|$)/g)];
-  const passes = matches
-    .filter((match, index) => Number(match[1]) === index + 1)
-    .map((match) => match[2].trim());
-  return passes.length ? passes.slice(0, maximumDraftPasses) : [value];
-}
-
-function encodeDraftPasses(passes: string[]): string {
-  if (passes.length <= 1) return passes[0] ?? "";
-  return `${iterationInstructionsMarker}\n${passes.map((pass, index) => `### Itération ${index + 1}\n${pass.trim()}`).join("\n\n")}`;
-}
 
 function resizeDraftPasses(passes: string[], requestedCount: number): string[] {
   const count = Math.max(1, Math.min(maximumDraftPasses, Math.trunc(requestedCount) || 1));
@@ -74,6 +59,7 @@ function campaignPayload(campaign: Campaign) {
     fixedSenderAccountId: campaign.fixedSenderAccountId,
     senderAccountIds: campaign.senderAccountIds,
     aiInstructions: campaign.aiInstructions,
+    writingIterations: campaign.writingIterations,
     replyInstructions: campaign.replyInstructions,
     trackingOpensEnabled: campaign.trackingOpensEnabled,
     trackingClicksEnabled: campaign.trackingClicksEnabled,
@@ -231,7 +217,7 @@ function CampaignEditor({
 
   function baseVariantGroup(key: VariantGroupKey): Record<string, unknown> {
     if (key === "search") return { criteria: draft.targetDescription };
-    if (key === "iterations") return { draftPasses: decodeDraftPasses(draft.aiInstructions) };
+    if (key === "iterations") return { draftPasses: draft.writingIterations };
     if (key === "subject") return { subject: draft.sequence.subject, subjectInstructions: draft.sequence.subjectInstructions };
     if (key === "initial") return { body: draft.sequence.steps[0], bodyInstructions: draft.sequence.stepInstructions[0] };
     if (key === "reply") return { replyInstructions: draft.replyInstructions };
@@ -278,7 +264,7 @@ function CampaignEditor({
   }
 
   const searchGroup = variantGroup(selectedOverrides, "search", { criteria: draft.targetDescription });
-  const iterationsGroup = variantGroup(selectedOverrides, "iterations", { draftPasses: decodeDraftPasses(draft.aiInstructions) });
+  const iterationsGroup = variantGroup(selectedOverrides, "iterations", { draftPasses: draft.writingIterations });
   const subjectGroup = variantGroup(selectedOverrides, "subject", { subject: draft.sequence.subject, subjectInstructions: draft.sequence.subjectInstructions });
   const initialGroup = variantGroup(selectedOverrides, "initial", { body: draft.sequence.steps[0], bodyInstructions: draft.sequence.stepInstructions[0] });
   const replyGroup = variantGroup(selectedOverrides, "reply", { replyInstructions: draft.replyInstructions });
@@ -466,11 +452,11 @@ function CampaignEditor({
           <div className="target-section-title"><h3>Itérations de rédaction IA</h3><small>{isReferenceVariant ? "Configuration de référence" : `Version ${selectedVariant?.label}`}</small></div>
           {variantBlock("iterations", "Itérations", <div className="v23-pass-config"><div className="v23-pass-head"><label>Nombre d’itérations <input type="number" value={iterationsGroup.draftPasses.length} min={1} max={maximumDraftPasses} onChange={(event) => {
             const nextPasses = resizeDraftPasses(iterationsGroup.draftPasses, event.currentTarget.valueAsNumber);
-            if (isReferenceVariant) setDraft((current) => ({ ...current, aiInstructions: encodeDraftPasses(nextPasses) }));
+            if (isReferenceVariant) setDraft((current) => ({ ...current, writingIterations: nextPasses }));
             else updateVariantGroup("iterations", { ...iterationsGroup, draftPasses: nextPasses });
           }} /></label><span className="target-pill">{iterationsGroup.draftPasses.length} itération{iterationsGroup.draftPasses.length > 1 ? "s" : ""} successive{iterationsGroup.draftPasses.length > 1 ? "s" : ""}</span></div><div className="v23-pass-list">{iterationsGroup.draftPasses.map((pass, index) => <label className="v23-pass-step" key={index}><strong>Itération {index + 1}</strong><small>{index === 0 ? "Prépare une première version de la séquence : objet, premier email et relances." : "Améliore la version précédente en appliquant les consignes ci-dessous."}</small><textarea value={pass} onChange={(event) => {
             const nextPasses = iterationsGroup.draftPasses.map((currentPass, passIndex) => passIndex === index ? event.target.value : currentPass);
-            if (isReferenceVariant) setDraft((current) => ({ ...current, aiInstructions: encodeDraftPasses(nextPasses) }));
+            if (isReferenceVariant) setDraft((current) => ({ ...current, writingIterations: nextPasses }));
             else updateVariantGroup("iterations", { ...iterationsGroup, draftPasses: nextPasses });
           }} /></label>)}<InstructionAttachments attachments={attachments} scope="campaign" campaignId={campaign.id} fieldKey={attachmentField("iterations")} /></div><p className="v23-pass-help">Chaque prospect et sa version A/B suivent séparément ces itérations. Une activation planifiée traite une seule passe puis reprend la version archivée dans Neon au passage suivant.</p></div>)}
         </section>
@@ -597,7 +583,7 @@ export function CampaignsView({ campaigns, folders, accounts, experiments, attac
     if (creating) return;
     setCreating(true);
     try {
-      const result = await api.createCampaign({ name: "Nouvelle campagne", status: "inactive", folderId, validationPolicy: "manual", dailyNewContactGoal: 0, trackingOpensEnabled: true, trackingClicksEnabled: true, aiInstructions: encodeDraftPasses(defaultDraftPasses), sequence: emptySequence });
+      const result = await api.createCampaign({ name: "Nouvelle campagne", status: "inactive", folderId, validationPolicy: "manual", dailyNewContactGoal: 0, trackingOpensEnabled: true, trackingClicksEnabled: true, aiInstructions: "", writingIterations: defaultDraftPasses, sequence: emptySequence });
       setShowArchived(false);
       setSelectedId(result.campaign.id);
       await onMutated();
