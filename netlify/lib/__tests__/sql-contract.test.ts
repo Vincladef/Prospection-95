@@ -7,9 +7,9 @@ const migrationsDirectory = join(process.cwd(), "db", "migrations");
 describe("database safety contract", () => {
   it("keeps a contiguous additive migration set", () => {
     const files = readdirSync(migrationsDirectory).filter((name) => name.endsWith(".sql")).sort();
-    expect(files).toHaveLength(25);
+    expect(files).toHaveLength(26);
     expect(files.map((name) => name.slice(0, 3))).toEqual([
-      "001", "002", "003", "004", "005", "006", "007", "008", "009", "010", "011", "012", "013", "014", "015", "016", "017", "018", "019", "020", "021", "022", "023", "024", "025",
+      "001", "002", "003", "004", "005", "006", "007", "008", "009", "010", "011", "012", "013", "014", "015", "016", "017", "018", "019", "020", "021", "022", "023", "024", "025", "026",
     ]);
   });
 
@@ -209,6 +209,16 @@ describe("database safety contract", () => {
     expect(api).toContain("writingIterations: z.array(z.string().max(200_000)).min(1).max(100)");
     expect(dashboard).toContain("between 1 and 100");
     expect(dashboard).toContain("Math.min(100, numberValue(row.writing_iterations_total))");
+  });
+
+  it("treats population comparability as analysis metadata rather than a work blocker", () => {
+    const sql = readFileSync(join(migrationsDirectory, "026_flexible_experiment_populations.sql"), "utf8");
+    const agent = readFileSync(join(process.cwd(), "AGENT_PROSPECTION.md"), "utf8");
+    expect(sql).toContain("p_requested_variant_id IS NOT NULL");
+    expect(sql).toContain("selectionMode");
+    expect(sql).not.toContain("requested_variant_not_allowed_for_random_test");
+    expect(agent).toContain("jamais une autorisation de travailler");
+    expect(agent).toContain("ne doit ni bloquer la recherche");
   });
 
   it("approves every remaining message in a completed sequence", () => {

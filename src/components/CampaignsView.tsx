@@ -47,6 +47,19 @@ function variantGroup<T extends Record<string, unknown>>(overrides: VariantOverr
   return value && typeof value === "object" ? value as T : fallback;
 }
 
+function populationInterpretationWarning(experiment: Experiment): string | null {
+  const criteria = experiment.variants
+    .map((variant) => variant.overrides.search)
+    .filter((value): value is Record<string, unknown> => Boolean(value && typeof value === "object"))
+    .map((value) => typeof value.criteria === "string" ? value.criteria.trim() : "")
+    .filter(Boolean);
+  const distinctTargets = new Set(criteria).size > 1;
+  if (!experiment.comparablePopulation || distinctTargets) {
+    return "Publics différents : les résultats restent utiles pour décider, mais les écarts ne prouvent pas à eux seuls qu’une version du message en est la cause.";
+  }
+  return null;
+}
+
 function campaignPayload(campaign: Campaign) {
   return {
     name: campaign.name,
@@ -291,7 +304,7 @@ function CampaignEditor({
       {showStats ? <div className="campaign-stats-backdrop" role="presentation" onMouseDown={(event) => { if (event.currentTarget === event.target) setShowStats(false); }}><section className="campaign-stats-dialog" role="dialog" aria-modal="true" aria-labelledby="campaign-stats-title"><header><div><h3 id="campaign-stats-title">Statistiques · {campaign.name}</h3><small>Données réelles enregistrées dans Neon</small></div><button type="button" aria-label="Fermer" onClick={() => setShowStats(false)}>×</button></header><div className="campaign-stats-grid"><div><strong>{campaign.stats.sent}</strong><span>emails envoyés</span></div><div><strong>{campaign.stats.contacted}</strong><span>prospects contactés</span></div><div><strong>{campaign.stats.opened}</strong><span>emails ouverts</span><small>{campaign.stats.openRate}% d’ouverture</small></div><div><strong>{campaign.stats.clicked}</strong><span>emails cliqués</span><small>{campaign.stats.clickRate}% de clic</small></div><div><strong>{campaign.stats.replied}</strong><span>prospects avec réponse humaine</span></div><div><strong>{campaign.stats.unclassifiedReplies}</strong><span>réponses à classer</span></div></div>
         <section className="campaign-ab-stats" aria-labelledby="campaign-ab-stats-title">
           <div className="campaign-ab-stats-heading"><strong id="campaign-ab-stats-title">Résultats des tests A/B</strong><span>{relatedExperiments.length ? `${relatedExperiments.length} test${relatedExperiments.length > 1 ? "s" : ""}` : "Aucun test configuré"}</span></div>
-          {relatedExperiments.map((experiment, experimentIndex) => <details key={experiment.id} open={experimentIndex === 0} className="campaign-ab-test"><summary><span>{experiment.name}</span><small>{experiment.status === "recruiting" ? "En cours" : experiment.status === "draft" ? "Préparé" : experiment.status === "awaiting_observations" ? "Observation" : experiment.status === "mature" ? "À analyser" : "Terminé"} · {experiment.variants.length} version{experiment.variants.length > 1 ? "s" : ""}{experiment.winnerVariantLabel ? ` · gagnante ${experiment.winnerVariantLabel}` : ""}</small></summary><div className="campaign-ab-table-wrap"><table className="campaign-ab-table"><thead><tr><th>Version</th><th>Attribués</th><th>Envoyés</th><th>Ouvertures</th><th>Clics</th><th>Réponses</th><th>À classer</th><th>Positives</th><th>RDV</th></tr></thead><tbody>{experiment.variants.map((variant) => {
+          {relatedExperiments.map((experiment, experimentIndex) => <details key={experiment.id} open={experimentIndex === 0} className="campaign-ab-test"><summary><span>{experiment.name}</span><small>{experiment.status === "recruiting" ? "En cours" : experiment.status === "draft" ? "Préparé" : experiment.status === "awaiting_observations" ? "Observation" : experiment.status === "mature" ? "À analyser" : "Terminé"} · {experiment.variants.length} version{experiment.variants.length > 1 ? "s" : ""}{experiment.winnerVariantLabel ? ` · gagnante ${experiment.winnerVariantLabel}` : ""}</small></summary>{populationInterpretationWarning(experiment) ? <p className="campaign-ab-warning">⚠ {populationInterpretationWarning(experiment)}</p> : null}<div className="campaign-ab-table-wrap"><table className="campaign-ab-table"><thead><tr><th>Version</th><th>Attribués</th><th>Envoyés</th><th>Ouvertures</th><th>Clics</th><th>Réponses</th><th>À classer</th><th>Positives</th><th>RDV</th></tr></thead><tbody>{experiment.variants.map((variant) => {
             const rate = (value: number) => variant.sentCount ? Math.round((value / variant.sentCount) * 100) : 0;
             return <tr key={variant.id}><th><span className="campaign-ab-letter">{variant.label}</span><small>{variant.name || (variant.label === "A" ? "Référence" : `Version ${variant.label}`)}</small></th><td>{variant.assignedCount}</td><td>{variant.sentCount}</td><td>{variant.openCount}<small>{rate(variant.openCount)} %</small></td><td>{variant.clickCount}<small>{rate(variant.clickCount)} %</small></td><td>{variant.humanReplyCount}<small>{rate(variant.humanReplyCount)} %</small></td><td>{variant.unclassifiedReplyCount}</td><td>{variant.positiveReplyCount}</td><td>{variant.confirmedMeetingCount}</td></tr>;
           })}</tbody></table></div></details>)}
@@ -413,7 +426,7 @@ function CampaignEditor({
               </div>
               <details className="v40-rules">
                 <summary>⚙ Règles du test <span className="v40-rules-overview">{selectedExperiment.thresholdContactsPerVariant} prospects / variante · 4 indicateurs</span></summary>
-                <div className="v40-rules-body"><div className="v40-rules-grid"><label className="v40-rule"><span>Prospects par variante</span><input value={selectedExperiment.thresholdContactsPerVariant} readOnly /></label><label className="v40-rule"><span>Réponses minimales</span><input value={selectedExperiment.thresholdReplies} readOnly /></label><div className="v40-rule"><span>Indicateurs</span><small>Réponse humaine, réponse positive, rendez-vous confirmé et suivi disponible.</small></div></div></div>
+                <div className="v40-rules-body"><div className="v40-rules-grid"><label className="v40-rule"><span>Prospects par variante</span><input value={selectedExperiment.thresholdContactsPerVariant} readOnly /></label><label className="v40-rule"><span>Réponses minimales</span><input value={selectedExperiment.thresholdReplies} readOnly /></label><div className="v40-rule"><span>Indicateurs</span><small>Réponse humaine, réponse positive, rendez-vous confirmé et suivi disponible.</small></div></div>{populationInterpretationWarning(selectedExperiment) ? <p className="campaign-ab-warning">⚠ {populationInterpretationWarning(selectedExperiment)}</p> : null}</div>
               </details>
             </>
           ) : <p className="v37-testnav-note">Crée le premier test pour comparer une référence A à une autre version.</p>}

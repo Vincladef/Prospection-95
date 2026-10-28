@@ -6,7 +6,7 @@ SELECT to_regnamespace('app') IS NOT NULL
    AND to_regnamespace('agent_api') IS NOT NULL
    AND to_regnamespace('audit') IS NOT NULL AS all_schemas_exist;
 
-SELECT count(*) = 25 AS all_migrations_registered
+SELECT count(*) = 26 AS all_migrations_registered
 FROM app.schema_migrations
 WHERE version IN (
   '001_foundation',
@@ -33,7 +33,8 @@ WHERE version IN (
   '022_sequence_validation_and_send_distribution',
   '023_final_prospecting_cycle',
   '024_structured_campaign_editing',
-  '025_extended_writing_iterations'
+  '025_extended_writing_iterations',
+  '026_flexible_experiment_populations'
 );
 
 SELECT EXISTS (
@@ -291,6 +292,19 @@ SELECT has_function_privilege('prospection95_runtime', 'agent_api.activate_exper
    AND NOT has_function_privilege('prospection95_agent', 'app.select_campaign_sender(uuid,uuid,uuid)', 'EXECUTE')
    AND has_function_privilege('prospection95_app', 'app.select_campaign_sender(uuid,uuid,uuid)', 'EXECUTE')
    AS autonomous_experiment_and_sender_contract_is_available;
+
+SELECT has_function_privilege(
+         'prospection95_runtime',
+         'agent_api.assign_prospect_variant_v2(uuid,uuid,uuid,uuid,text)',
+         'EXECUTE'
+       )
+   AND pg_get_functiondef(
+         'agent_api.assign_prospect_variant_v2(uuid,uuid,uuid,uuid,text)'::regprocedure
+       ) NOT ILIKE '%requested_variant_not_allowed_for_random_test%'
+   AND pg_get_functiondef(
+         'agent_api.assign_prospect_variant_v2(uuid,uuid,uuid,uuid,text)'::regprocedure
+       ) ILIKE '%selectionMode%'
+   AS experiment_population_metadata_is_non_blocking;
 
 SELECT EXISTS (
          SELECT 1 FROM information_schema.columns

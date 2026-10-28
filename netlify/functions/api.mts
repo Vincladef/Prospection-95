@@ -909,6 +909,8 @@ async function experiments(request: Request, identity: AdminIdentity, requestId:
       campaignId: uuid, name: z.string().trim().min(1).max(180),
       scope: z.enum(["population", "subject", "step", "sequence", "instructions", "combined"]).default("sequence"),
       targetStep: z.enum(["J0", "R1", "R2", "R3", "R4", "R5"]).nullable().optional(),
+      comparablePopulation: z.boolean().default(true),
+      allocationMethod: z.enum(["balanced_random", "descriptive_groups"]).default("balanced_random"),
       thresholdContactsPerVariant: z.number().int().positive().default(40),
       thresholdReplies: z.number().int().positive().default(20),
       idempotencyKey: z.string().min(8).max(240),
@@ -917,19 +919,20 @@ async function experiments(request: Request, identity: AdminIdentity, requestId:
     const row = await sqlOne<{ id: string }>(
       `with created as (
          insert into app.experiments
-           (campaign_id, name, scope, target_step, contacts_per_variant_threshold,
-            total_responses_threshold, idempotency_key)
-         values ($1::uuid, $2, $3, $4::app.sequence_step, $5, $6, $7)
+           (campaign_id, name, scope, target_step, comparable_population, allocation_method,
+            contacts_per_variant_threshold, total_responses_threshold, idempotency_key)
+         values ($1::uuid, $2, $3, $4::app.sequence_step, $5, $6, $7, $8, $9)
          on conflict (campaign_id, idempotency_key) do update set idempotency_key = excluded.idempotency_key
          returning id
        ), variants as (
          insert into app.experiment_variants (experiment_id, code, name, weight, overrides)
          select created.id, value.label, value.name, value.weight, value.overrides
-         from created cross join jsonb_to_recordset($8::jsonb)
+         from created cross join jsonb_to_recordset($10::jsonb)
            as value(label text, name text, weight numeric, overrides jsonb)
          on conflict (experiment_id, code) do nothing returning id
        ) select id::text from created`,
       [value.campaignId, value.name, value.scope, value.targetStep ?? null,
+        value.comparablePopulation, value.allocationMethod,
         value.thresholdContactsPerVariant, value.thresholdReplies, value.idempotencyKey,
         JSON.stringify(value.variants.map((variant) => ({ label: variant.label, name: variant.name ?? null, weight: variant.allocationWeight, overrides: variant.overrides })))],
     );

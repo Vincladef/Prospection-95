@@ -153,7 +153,11 @@ SELECT * FROM agent_api.assign_prospect_variant_v2(
 );
 ```
 
-Pour `allocation_method = balanced_random`, passer `NULL` comme `$requested_variant_id` : Neon équilibre les groupes. Pour `descriptive_groups`, choisir la variante dont les critères correspondent réellement aux preuves du prospect et passer son UUID. Si aucune variante descriptive ne correspond sans ambiguïté, ne rien attribuer et terminer le run en `partial`. Ne jamais tirer au hasard entre des populations différentes.
+`comparable_population` est une indication d’interprétation statistique, jamais une autorisation de travailler : sa valeur ne doit ni bloquer la recherche, ni empêcher une attribution, ni provoquer à elle seule un run `partial`.
+
+Si les variantes portent des critères de recherche différents, choisir celle dont les critères correspondent aux preuves du prospect et passer son UUID, quel que soit `allocation_method`. Chercher en priorité pour les variantes les moins alimentées afin de conserver une répartition utile. Si aucune variante ne correspond, ignorer seulement ce prospect et poursuivre la recherche pour les autres variantes ; ne pas bloquer toute la campagne. Si les variantes ne définissent pas de publics distincts et que `allocation_method = balanced_random`, passer `NULL` : Neon équilibre alors les groupes.
+
+Lors de l’analyse, des publics différents doivent être signalés comme une limite : les résultats restent utilisables pour une décision commerciale ou une optimisation, mais ne démontrent pas à eux seuls qu’une variante de message cause l’écart observé.
 
 Une conversation ne porte qu'une attribution. S'il existe plusieurs expériences ouvertes sur la même campagne, sélectionner exactement celle indiquée par la stratégie et les instructions de test ; ne jamais combiner arbitrairement leurs variantes. Si le choix est ambigu, terminer le run en `partial` sans proposer d'emails.
 

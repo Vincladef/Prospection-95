@@ -48,6 +48,9 @@ const experiment: Experiment = {
   campaignId: campaign.id,
   name: "Test 1",
   status: "draft",
+  scope: "sequence",
+  comparablePopulation: true,
+  allocationMethod: "balanced_random",
   thresholdContactsPerVariant: 40,
   thresholdReplies: 20,
   winnerVariantId: null,
@@ -194,6 +197,21 @@ describe("CampaignsView V53", () => {
     expect(screen.getByText("Version B")).toBeInTheDocument();
     expect(screen.getByText("réponses à classer")).toBeInTheDocument();
     expect(screen.getByRole("columnheader", { name: "À classer" })).toBeInTheDocument();
+  });
+
+  it("warns about interpretation without blocking variants with different targets", () => {
+    const segmented = {
+      ...experiment,
+      scope: "population",
+      variants: experiment.variants.map((variant, index) => ({
+        ...variant,
+        overrides: { search: { criteria: index === 0 ? "Salles folk" : "Festivals internationaux" } },
+      })),
+    };
+    renderCampaigns([segmented]);
+
+    expect(screen.getByText(/Publics différents : les résultats restent utiles/)).toBeInTheDocument();
+    expect(screen.getByRole("button", { name: /^B1/ })).toBeEnabled();
   });
 
   it("moves a campaign to a folder by drag and drop", async () => {

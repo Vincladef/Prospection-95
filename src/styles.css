@@ -4550,6 +4550,16 @@ input[type="radio"] {
   font-weight: 400;
 }
 
+.campaign-ab-warning {
+  margin: 0;
+  padding: 7px 10px;
+  color: #5f4300;
+  background: #fff8dc;
+  border-top: 1px solid #d8c27a;
+  font-size: 9.5px;
+  line-height: 1.4;
+}
+
 .campaign-ab-table-wrap {
   overflow-x: auto;
   background: #fff;

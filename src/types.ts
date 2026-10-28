@@ -207,6 +207,9 @@ export interface Experiment {
   campaignId: string;
   name: string;
   status: string;
+  scope: string;
+  comparablePopulation: boolean;
+  allocationMethod: "balanced_random" | "descriptive_groups";
   thresholdContactsPerVariant: number;
   thresholdReplies: number;
   winnerVariantId: string | null;

@@ -1,6 +1,6 @@
 # Schéma Lakebase Postgres
 
-Le dossier contient vingt-cinq migrations additives, rejouables et sans données métier embarquées. Elles doivent être appliquées dans l’ordre lexical.
+Le dossier contient vingt-six migrations additives, rejouables et sans données métier embarquées. Elles doivent être appliquées dans l’ordre lexical.
 
 1. `001_foundation.sql` : rôles, schémas, paramètres, campagnes, comptes publics, prospects, anti-recontact et coffre chiffré.
 2. `002_messaging.sql` : versions de messages, conversations, SMTP/IMAP, file d’envoi, baux et brouillons.
@@ -27,6 +27,7 @@ Le dossier contient vingt-cinq migrations additives, rejouables et sans données
 23. `023_final_prospecting_cycle.sql` : continuité des fils Gmail, arrêt sur rebond permanent, cycle autonome A/B/C et répartition pondérée des comptes expéditeurs.
 24. `024_structured_campaign_editing.sql` : itérations structurées, instantanés immuables par prospect et édition CRM versionnée des campagnes actives et tests A/B/C.
 25. `025_extended_writing_iterations.sql` : étend de 10 à 100 le nombre d’itérations structurées, y compris pour les variantes et les suivis historiques, sans changer la règle d’une passe par exécution.
+26. `026_flexible_experiment_populations.sql` : rend la comparabilité purement informative et autorise l’attribution explicite à une variante lorsque les publics A/B/C sont différents.
 
 ## Principes de sécurité
 
