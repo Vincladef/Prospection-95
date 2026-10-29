@@ -96,6 +96,23 @@ describe("MessagesView statuses", () => {
     await waitFor(()=>expect(apiMocks.bulkStatus).toHaveBeenCalledWith(["3","2","1"],"prepared",[{id:"3",version:1},{id:"2",version:1},{id:"1",version:1}]));
   });
 
+  it("deselects on outside clicks while preserving status controls and the fill handle", () => {
+    const {cells}=renderSheet();
+    const selectCell=()=>{ fireEvent.pointerDown(cells()[0],{button:0}); fireEvent.pointerUp(window); };
+    selectCell();
+    fireEvent.pointerDown(screen.getByLabelText("Statut de la sélection"),{button:0});
+    expect(cells()[0]).toHaveClass("sheet-selected");
+    fireEvent.pointerDown(screen.getByRole("button",{name:"Recopier le statut de Ligne 3"}),{button:0});
+    fireEvent.pointerUp(window);
+    expect(cells()[0]).toHaveClass("sheet-selected");
+    fireEvent.pointerDown(screen.getByRole("heading",{name:"Messages"}),{button:0});
+    expect(cells()[0]).not.toHaveClass("sheet-selected");
+    selectCell();
+    fireEvent.pointerDown(screen.getByLabelText("Rechercher dans le CRM"),{button:0});
+    expect(cells().some(c=>c.classList.contains("sheet-selected"))).toBe(false);
+    expect(apiMocks.bulkStatus).not.toHaveBeenCalled();
+  });
+
   it("previews handle fill without saving until release, then supports undo and redo", async () => {
     const {cells}=renderSheet();
     // The default descending sort places the approved source last.

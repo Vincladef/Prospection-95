@@ -27,6 +27,26 @@ export function useStatusSheet(rows: Prospect[], scroll: RefObject<HTMLDivElemen
   const current = useRef({ rows, range }); current.current = { rows, range };
   const signature = rows.map(p => p.id).join(",");
   useEffect(() => { drag.current = null; setRange(null); setPreview(null); }, [signature]);
+  useEffect(() => {
+    function deselectOutside(event: PointerEvent) {
+      const target = event.target;
+      if (!(target instanceof Element)) return;
+      const workspace = scroll.current?.closest(".sheet-window");
+      const control = target.closest("[data-status-index], .status-sheet-toolbar, .scroll-rail");
+      if (control && workspace?.contains(control)) return;
+      // Keep the range while using the table's native scrollbars.
+      const table = scroll.current;
+      if (target === table && table) {
+        const rect = table.getBoundingClientRect();
+        if (event.clientX >= rect.left + table.clientWidth || event.clientY >= rect.top + table.clientHeight) return;
+      }
+      drag.current = null;
+      setPreview(null);
+      setRange(null);
+    }
+    document.addEventListener("pointerdown", deselectOutside, true);
+    return () => document.removeEventListener("pointerdown", deselectOutside, true);
+  }, [scroll]);
   const indices = (r: [number, number]) => [Math.min(...r), Math.max(...r)];
   function selected() { if (!range) return []; const [a,b] = indices(range); return rows.slice(a,b+1); }
 
