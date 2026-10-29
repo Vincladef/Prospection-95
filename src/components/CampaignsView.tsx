@@ -1,4 +1,4 @@
-import { type DragEvent, type FormEvent, type ReactNode, useEffect, useMemo, useState } from "react";
+import { type DragEvent, type FormEvent, type ReactNode, useEffect, useMemo, useRef, useState } from "react";
 import { api } from "../lib/api";
 import type { Campaign, CampaignFolder, Experiment, GmailAccount, InstructionAttachment, Prospect, SequenceContent } from "../types";
 import { InstructionAttachments } from "./InstructionAttachments";
@@ -536,10 +536,12 @@ function CampaignEditor({
 }
 
 export function CampaignsView({ campaigns, folders, accounts, experiments, attachments, prospects, totals, selectedCampaignId = null, onOpenSettings, onMutated }: CampaignsViewProps) {
+  const handledRequest = useRef<string | null>(null);
   const requestedCampaign = campaigns.find((campaign) => campaign.id === selectedCampaignId);
   const [selectedId, setSelectedId] = useState<string | null>(requestedCampaign?.id || campaigns[0]?.id || null);
   const [showArchived, setShowArchived] = useState(requestedCampaign?.status === "archived");
   const [creating, setCreating] = useState(false);
+  const [creationError, setCreationError] = useState<string | null>(null);
   const [draggedCampaignId, setDraggedCampaignId] = useState<string | null>(null);
   const [dropFolderId, setDropFolderId] = useState<string | null | undefined>(undefined);
   const [movingCampaign, setMovingCampaign] = useState(false);
@@ -565,9 +567,10 @@ export function CampaignsView({ campaigns, folders, accounts, experiments, attac
   }, [selected]);
 
   useEffect(() => {
-    if (!selectedCampaignId) return;
+    if (!selectedCampaignId || handledRequest.current === selectedCampaignId) return;
     const requested = campaigns.find((campaign) => campaign.id === selectedCampaignId);
     if (!requested) return;
+    handledRequest.current = selectedCampaignId;
     setShowArchived(requested.status === "archived");
     setSelectedId(requested.id);
   }, [campaigns, selectedCampaignId]);
@@ -595,11 +598,19 @@ export function CampaignsView({ campaigns, folders, accounts, experiments, attac
   async function createCampaign(folderId: string | null = null) {
     if (creating) return;
     setCreating(true);
+    setCreationError(null);
+    const names = new Set(campaigns.map((campaign) => campaign.name.toLocaleLowerCase("fr")));
+    let name = "Nouvelle campagne";
+    for (let suffix = 2; names.has(name.toLocaleLowerCase("fr")); suffix++) {
+      name = `Nouvelle campagne (${suffix})`;
+    }
     try {
-      const result = await api.createCampaign({ name: "Nouvelle campagne", status: "inactive", folderId, validationPolicy: "manual", dailyNewContactGoal: 0, trackingOpensEnabled: true, trackingClicksEnabled: true, aiInstructions: "", writingIterations: defaultDraftPasses, sequence: emptySequence });
+      const result = await api.createCampaign({ name, status: "inactive", folderId, validationPolicy: "manual", dailyNewContactGoal: 0, trackingOpensEnabled: true, trackingClicksEnabled: true, aiInstructions: "", writingIterations: defaultDraftPasses, sequence: emptySequence });
       setShowArchived(false);
       setSelectedId(result.campaign.id);
       await onMutated();
+    } catch (error) {
+      setCreationError(error instanceof Error ? error.message : "Création de la campagne impossible.");
     } finally {
       setCreating(false);
     }
@@ -635,11 +646,12 @@ export function CampaignsView({ campaigns, folders, accounts, experiments, attac
         <div><h1 id="campaigns-title">Campagnes</h1><p>Ciblage, validation, tests A/B et séquences d’emails.</p></div>
         <div className="metric-strip overview"><span><strong>{totals.pendingApproval}</strong> en attente</span><span><strong>{approvedCount}</strong> validés</span></div>
       </div>
+      {creationError ? <div className="win-alert error" role="alert">{creationError}</div> : null}
       <div className="campaign-layout target-layout">
         <aside className="campaign-sidebar target-side">
           <header className="target-side-head">
             <div><strong>📁 Campagnes</strong><small>{currentCount} courantes · {archivedCount} archivées</small></div>
-            <button className="target-add" disabled={creating} onClick={() => void createCampaign()}>+ Ajouter</button>
+            <button className="target-add" disabled={creating} onClick={() => void createCampaign()}>{creating ? "Création…" : "+ Ajouter"}</button>
           </header>
           <div className="target-view-switch" role="group" aria-label="Afficher les campagnes courantes ou archivées">
             <button className={`target-view-btn ${!showArchived ? "on" : ""}`} aria-pressed={!showArchived} onClick={() => setShowArchived(false)}>📁 Courantes <span>{currentCount}</span></button>

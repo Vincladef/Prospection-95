@@ -143,6 +143,36 @@ describe("CampaignsView V53", () => {
     expect(onMutated).toHaveBeenCalledOnce();
   });
 
+  it("chooses an unused name including archived campaigns and case variants", async () => {
+    renderCampaigns([], [campaign,
+      { ...campaign, id: "archived", status: "archived", name: "NOUVELLE CAMPAGNE (2)" },
+      { ...campaign, id: "other", name: "Nouvelle campagne (3)" },
+    ]);
+    fireEvent.click(screen.getByRole("button", { name: "+ Ajouter" }));
+    await waitFor(() => expect(apiMocks.createCampaign).toHaveBeenCalledWith(expect.objectContaining({ name: "Nouvelle campagne (4)", status: "inactive" })));
+  });
+
+  it("shows creation errors and allows retrying instead of failing silently", async () => {
+    apiMocks.createCampaign.mockRejectedValueOnce(new Error("Cette opération existe déjà."));
+    renderCampaigns();
+    fireEvent.click(screen.getByRole("button", { name: "+ Ajouter" }));
+    expect(await screen.findByRole("alert")).toHaveTextContent("Cette opération existe déjà.");
+    fireEvent.click(screen.getByRole("button", { name: "+ Ajouter" }));
+    await waitFor(() => expect(apiMocks.createCampaign).toHaveBeenCalledTimes(2));
+    expect(screen.queryByRole("alert")).not.toBeInTheDocument();
+  });
+
+  it("opens the created campaign after refresh even when another campaign was requested", async () => {
+    const created = { ...campaign, id: "33333333-3333-4333-8333-333333333333", name: "Nouvelle campagne (2)" };
+    apiMocks.createCampaign.mockResolvedValue({ campaign: { id: created.id, version: 1 } });
+    const props = { campaigns: [campaign], folders: [], accounts: [], experiments: [], attachments: [], prospects: [], totals: { pendingApproval: 0 }, selectedCampaignId: campaign.id, onOpenSettings: vi.fn(), onMutated: vi.fn().mockResolvedValue(undefined) };
+    const view = render(<CampaignsView {...props} />);
+    fireEvent.click(screen.getByRole("button", { name: "+ Ajouter" }));
+    await waitFor(() => expect(props.onMutated).toHaveBeenCalledOnce());
+    view.rerender(<CampaignsView {...props} campaigns={[created, campaign]} />);
+    expect(screen.getByLabelText("Choisir une campagne")).toHaveValue(created.id);
+  });
+
   it("starts new campaigns with three meaningful AI revision passes", async () => {
     renderCampaigns();
     fireEvent.click(screen.getByRole("button", { name: "+ Ajouter" }));
