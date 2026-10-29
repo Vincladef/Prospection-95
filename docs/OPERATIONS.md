@@ -6,6 +6,22 @@ Le système conserve trois commandes indépendantes : la variable serveur `OUTBO
 
 Un déploiement, un import ou une migration ne modifie jamais ces valeurs. Le bouton de pause reste disponible pour une décision manuelle ; les protections par quota, calendrier, exclusion, idempotence et incident sérieux continuent de s'appliquer.
 
+## Cadence d'envoi
+
+Le worker `dispatch-outbox` est appelé chaque minute. Chaque appel tire une
+opportunité d'envoi avec une probabilité de 1/5, puis attend entre 0 et 3 secondes
+avant d'interroger la file. Avec une file disponible, l'intervalle moyen reste
+proche de cinq minutes, mais les intervalles varient : des envois rapprochés ou
+des pauses plus longues sont possibles. Cette moyenne n'est ni un quota ni un
+délai maximal garanti. Les dates prévues restent des dates au plus tôt.
+
+Les appels sans opportunité quittent immédiatement, sans accès à la base. Aucun
+bail n'est détenu pendant l'attente. Les dates réparties dans les plages des
+comptes sont conservées ; la réservation existante vérifie ensuite les horaires,
+quotas journaliers et de chauffe, pauses, exclusions et validations, en donnant
+la priorité aux relances dues. Les protections contre les doublons et le rejeu
+d'un résultat SMTP incertain restent inchangées. Aucune migration n'est requise.
+
 ## Environnements distants
 
 - dépôt : `Vincladef/Prospection-95`, production sur `main` ;

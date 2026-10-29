@@ -1,4 +1,5 @@
-import { randomUUID } from "node:crypto";
+import { randomInt, randomUUID } from "node:crypto";
+import { setTimeout as delay } from "node:timers/promises";
 import type { Config, Context } from "@netlify/functions";
 import { isProductionOutboundEnabled } from "../lib/auth.mts";
 import { sqlOne, sqlQuery } from "../lib/db.mts";
@@ -58,6 +59,14 @@ export default async function dispatchOutbox(_request: Request, _context: Contex
     return workerResult(worker, { ok: true, skipped: "outbound_disabled" });
   }
   try {
+    // One independent opportunity in five each minute keeps the previous
+    // average throughput without imposing a fixed five-minute rhythm.
+    // Wait BEFORE leasing: no quota slot or expiring lease is held while idle,
+    // and the database checks windows, exclusions and pauses after the delay.
+    if (randomInt(5) !== 0) {
+      return workerResult(worker, { ok: true, skipped: "random_pacing" });
+    }
+    await delay(randomInt(3_001));
     const scheduled = await sqlOne<{ count: number }>(
       `select app.schedule_due_messages(50) as count`,
     );
@@ -175,4 +184,4 @@ export default async function dispatchOutbox(_request: Request, _context: Contex
   }
 }
 
-export const config: Config = { schedule: "*/5 * * * *" };
+export const config: Config = { schedule: "* * * * *" };
