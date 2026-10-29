@@ -395,27 +395,36 @@ async function updateProspect(request: Request, id: string, identity: AdminIdent
     throw new HttpError(409, "prospect_preparation_incomplete", "La séquence doit terminer toutes ses itérations avant validation ou planification.");
   }
 
-  const updated = await setProspectStatus([id], value.status, value.version);
+  const { updated } = await setProspectStatus([id], value.status, value.version);
   if (!updated) throw new HttpError(409, "version_conflict", "Le prospect a été modifié ailleurs ou ne possède aucun message.");
   await logMutation(identity, requestId, { action: "prospect_status_updated", entityType: "prospect", entityId: id, metadata: { status: value.status } });
   return json({ updated });
 }
 
-async function setProspectStatus(ids: string[], status: z.infer<typeof editableMessageStatus>, expectedVersion?: number): Promise<number> {
-  const row = await sqlOne<{ count: number }>(
-    `with eligible_conversations as (
+async function setProspectStatus(ids: string[], status: z.infer<typeof editableMessageStatus>, expectedVersion?: number, expectedVersions?: Array<{ id: string; version: number }>): Promise<{ updated: number; prospects: Array<{ id: string; version: number }> }> {
+  const row = await sqlOne<{ count: number; prospects: Array<{ id: string; version: number }> }>(
+    `with locked_prospects as materialized (
+       select p.* from app.prospects p
+       where p.id = any($1::uuid[])
+         and ($3::bigint is null or p.version = $3)
+         and ($4::jsonb is null or exists (
+           select 1 from jsonb_to_recordset($4::jsonb) as expected(id uuid, version bigint)
+           where expected.id=p.id and expected.version=p.version
+         ))
+       order by p.id for update
+     ), eligible_conversations as (
        select conv.prospect_id, conv.id as conversation_id,
               conv.campaign_id, conv.sender_account_id
        from app.conversations conv
-       join app.prospects p on p.id = conv.prospect_id
+       join locked_prospects p on p.id = conv.prospect_id
        join app.prospect_iteration_states iteration_state
          on iteration_state.campaign_id = conv.campaign_id
         and iteration_state.prospect_id = conv.prospect_id
         and iteration_state.experiment_assignment_id is not distinct from conv.experiment_assignment_id
         and iteration_state.status = 'completed'
         and iteration_state.completed_iterations = iteration_state.total_iterations
-       where conv.prospect_id = any($1::uuid[])
-         and ($3::bigint is null or p.version = $3)
+       where true
+         and p.contact_state <> 'do_not_contact' and not app.is_excluded(p.email)
      ), latest_messages as (
        select eligible.*, m.id as message_id, m.step, m.subject, m.body_text,
               m.status as message_status
@@ -423,7 +432,7 @@ async function setProspectStatus(ids: string[], status: z.infer<typeof editableM
        join app.email_messages m on m.conversation_id = eligible.conversation_id
        where m.direction = 'outbound' and m.kind = 'prospection'
          and not m.technical_confirmation
-         and m.status not in ('reserved','sending','smtp_accepted','sent_manually','cancelled','failed','uncertain')
+         and m.status not in ('reserved','sending','smtp_accepted','sent_manually','failed','uncertain')
          and not exists (
            select 1 from app.email_messages newer
            where newer.conversation_id = m.conversation_id and newer.step = m.step
@@ -433,9 +442,9 @@ async function setProspectStatus(ids: string[], status: z.infer<typeof editableM
        select candidate.*
        from latest_messages candidate
        where (
-           ($2 = 'approved' and candidate.message_status in ('draft','prepared','pending_approval'))
+           ($2 = 'approved' and candidate.message_status in ('draft','prepared','pending_approval','cancelled'))
            or
-           ($2 <> 'approved' and candidate.message_id = (
+           ($2 <> 'approved' and ($2 <> 'scheduled' or candidate.message_id = (
              select current_message.message_id
              from latest_messages current_message
              where current_message.conversation_id = candidate.conversation_id
@@ -443,11 +452,11 @@ async function setProspectStatus(ids: string[], status: z.infer<typeof editableM
                when 'J0' then 0 when 'R1' then 1 when 'R2' then 2
                when 'R3' then 3 when 'R4' then 4 when 'R5' then 5 else 6 end
              limit 1
-           ) and candidate.message_status is distinct from $2::app.message_status)
+           )) and candidate.message_status is distinct from $2::app.message_status)
          )
          and not exists (
            select 1 from app.outbox_jobs in_flight
-           where in_flight.message_id = candidate.message_id
+           where in_flight.conversation_id = candidate.conversation_id
              and in_flight.status in ('reserved','running')
          )
      ), changed_messages as (
@@ -460,7 +469,7 @@ async function setProspectStatus(ids: string[], status: z.infer<typeof editableM
        update app.prospects p set version = version + 1
        from targets t
        join changed_messages changed on changed.id = t.message_id
-       where p.id = t.prospect_id returning p.id
+       where p.id = t.prospect_id returning p.id, p.version
      ), approvals as (
        insert into app.message_approvals
          (message_id, approved, actor, message_content_hash, reason)
@@ -500,17 +509,18 @@ async function setProspectStatus(ids: string[], status: z.infer<typeof editableM
          and j.status in ('requested','pending','scheduled','deferred')
        returning j.id
      )
-     select count(*)::int as count from changed_prospects`,
-    [ids, status, expectedVersion ?? null],
+     select count(*)::int as count, coalesce(jsonb_agg(jsonb_build_object('id',id,'version',version)), '[]'::jsonb) as prospects from changed_prospects`,
+    [ids, status, expectedVersion ?? null, expectedVersions ? JSON.stringify(expectedVersions) : null],
   );
-  return Number(row?.count ?? 0);
+  return { updated: Number(row?.count ?? 0), prospects: row?.prospects ?? [] };
 }
 
 async function bulkProspectStatus(request: Request, identity: AdminIdentity, requestId: string): Promise<Response> {
-  const value = await parseJson(request, z.object({ ids: z.array(uuid).min(1).max(500), status: editableMessageStatus }));
-  const updated = await setProspectStatus([...new Set(value.ids)], value.status);
+  const value = await parseJson(request, z.object({ ids: z.array(uuid).min(1).max(500), status: editableMessageStatus, versions: z.array(z.object({ id: uuid, version })).max(500).optional() }));
+  const result = await setProspectStatus([...new Set(value.ids)], value.status, undefined, value.versions);
+  const updated = result.updated;
   await logMutation(identity, requestId, { action: "prospects_bulk_status_updated", entityType: "prospect", metadata: { requested: value.ids.length, updated, status: value.status } });
-  return json({ updated });
+  return json(result);
 }
 
 async function createExclusion(request: Request, identity: AdminIdentity, requestId: string): Promise<Response> {

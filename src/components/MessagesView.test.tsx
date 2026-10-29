@@ -5,6 +5,7 @@ import { MessagesView } from "./MessagesView";
 
 const apiMocks = vi.hoisted(() => ({
   updateProspect: vi.fn(),
+  bulkStatus: vi.fn(),
 }));
 
 vi.mock("../lib/api", () => ({ api: apiMocks }));
@@ -70,9 +71,93 @@ describe("MessagesView statuses", () => {
   beforeEach(() => {
     vi.clearAllMocks();
     apiMocks.updateProspect.mockResolvedValue({ updated: 1 });
+    vi.stubGlobal("PointerEvent", MouseEvent);
+    apiMocks.bulkStatus.mockImplementation(async (ids: string[], _status: string, versions: Array<{ id: string; version: number }>) => ({ updated: ids.length, prospects: ids.map(id => ({ id, version:(versions.find(v => v.id===id)?.version ?? 1)+1 })) }));
   });
 
   afterEach(cleanup);
+
+  function renderSheet() {
+    const rows = ["1", "2", "3"].map((id,i) => ({ ...baseProspect, id, name: `Ligne ${id}`, messageStatus: (i===0 ? "approved" : "draft") as Prospect["messageStatus"], writingIterationStatus: "completed" as const, writingIterationsCompleted: 3, hasOutboundMessages: true }));
+    const props = { campaigns: [], prospects: rows, totals:{prospects:3,pendingApproval:2,scheduled:0,sent:0,replied:0,excluded:0}, onOpenCampaign:vi.fn(), onMutated:vi.fn().mockResolvedValue(undefined) };
+    const view=render(<MessagesView {...props} />);
+    const cells=()=>Array.from(view.container.querySelectorAll<HTMLElement>("[data-status-index]"));
+    return {rows,props,view,cells};
+  }
+
+  it("selects consecutive cells by dragging and applies one bulk operation", async () => {
+    const {cells}=renderSheet();
+    fireEvent.pointerDown(cells()[0], {button:0});
+    fireEvent.pointerMove(cells()[2], {buttons:1});
+    fireEvent.pointerUp(window);
+    expect(cells().every(c=>c.classList.contains("sheet-selected"))).toBe(true);
+    expect(apiMocks.bulkStatus).not.toHaveBeenCalled();
+    fireEvent.change(screen.getByLabelText("Statut de la sélection"),{target:{value:"prepared"}});
+    await waitFor(()=>expect(apiMocks.bulkStatus).toHaveBeenCalledWith(["3","2","1"],"prepared",[{id:"3",version:1},{id:"2",version:1},{id:"1",version:1}]));
+  });
+
+  it("previews handle fill without saving until release, then supports undo and redo", async () => {
+    const {cells}=renderSheet();
+    // The default descending sort places the approved source last.
+    fireEvent.pointerDown(cells()[2],{button:0}); fireEvent.pointerUp(window);
+    fireEvent.pointerDown(screen.getByRole("button",{name:"Recopier le statut de Ligne 1"}),{button:0});
+    fireEvent.pointerMove(cells()[0],{buttons:1});
+    expect(cells()[0]).toHaveClass("sheet-preview");
+    expect(apiMocks.bulkStatus).not.toHaveBeenCalled();
+    fireEvent.pointerUp(window);
+    await waitFor(()=>expect(apiMocks.bulkStatus).toHaveBeenCalledTimes(1));
+    expect(apiMocks.bulkStatus.mock.calls[0][0]).toEqual(["3","2"]);
+    await waitFor(()=>expect(screen.getByRole("button",{name:"Annuler"})).toBeEnabled());
+    fireEvent.click(screen.getByRole("button",{name:"Annuler"}));
+    await waitFor(()=>expect(apiMocks.bulkStatus).toHaveBeenCalledWith(["3","2"],"draft",[{id:"3",version:2},{id:"2",version:2}]));
+    await waitFor(()=>expect(screen.getByRole("button",{name:"Rétablir"})).toBeEnabled());
+    fireEvent.click(screen.getByRole("button",{name:"Rétablir"}));
+    await waitFor(()=>expect(apiMocks.bulkStatus).toHaveBeenCalledWith(["3","2"],"approved",[{id:"3",version:3},{id:"2",version:3}]));
+  });
+
+  it("copies and pastes statuses, clears selection on sorting, and cancels previews", async () => {
+    const {cells,view}=renderSheet();
+    fireEvent.pointerDown(cells()[2],{button:0}); fireEvent.pointerUp(window);
+    const table=view.container.querySelector(".table-scroll")!;
+    const clipboardData={setData:vi.fn(), getData:()=>"Validé"};
+    fireEvent.copy(table,{clipboardData}); expect(clipboardData.setData).toHaveBeenCalledWith("text/plain","Validé");
+    fireEvent.pointerDown(cells()[0],{button:0}); fireEvent.pointerUp(window);
+    fireEvent.paste(table,{clipboardData});
+    await waitFor(()=>expect(apiMocks.bulkStatus).toHaveBeenCalledTimes(1));
+    fireEvent.change(screen.getByLabelText("Trier les prospects"),{target:{value:"alpha"}});
+    expect(cells().some(c=>c.classList.contains("sheet-selected"))).toBe(false);
+    fireEvent.pointerDown(cells()[0],{button:0}); fireEvent.pointerUp(window);
+    fireEvent.pointerDown(screen.getByRole("button",{name:"Recopier le statut de Ligne 1"}),{button:0});
+    fireEvent.pointerMove(cells()[2]); fireEvent.keyDown(table,{key:"Escape"}); fireEvent.pointerUp(window);
+    expect(apiMocks.bulkStatus).toHaveBeenCalledTimes(1);
+  });
+
+  it("supports keyboard selection and fill-down while skipping locked rows", async () => {
+    const {cells,view,rows,props}=renderSheet();
+    view.rerender(<MessagesView {...props} prospects={rows.map(p=>p.id==="2"?{...p,excluded:true}:p)} />);
+    fireEvent.pointerDown(cells()[0],{button:0}); fireEvent.pointerUp(window);
+    const table=view.container.querySelector(".table-scroll")!;
+    fireEvent.keyDown(table,{key:"ArrowDown",shiftKey:true});
+    fireEvent.keyDown(table,{key:"ArrowDown",shiftKey:true});
+    fireEvent.change(screen.getByLabelText("Statut de la sélection"),{target:{value:"prepared"}});
+    await waitFor(()=>expect(apiMocks.bulkStatus).toHaveBeenCalledWith(["3","1"],"prepared",[{id:"3",version:1},{id:"1",version:1}]));
+  });
+
+  it("can undo successive edits of the same cell using the updated versions", async () => {
+    const {cells,view,rows,props}=renderSheet();
+    fireEvent.pointerDown(cells()[0],{button:0}); fireEvent.pointerUp(window);
+    fireEvent.change(screen.getByLabelText("Statut de la sélection"),{target:{value:"prepared"}});
+    await waitFor(()=>expect(screen.getByRole("button",{name:"Annuler"})).toBeEnabled());
+    view.rerender(<MessagesView {...props} prospects={rows.map(p=>p.id==="3"?{...p,messageStatus:"prepared",version:2}:p)} />);
+    fireEvent.change(screen.getByLabelText("Statut de la sélection"),{target:{value:"approved"}});
+    await waitFor(()=>expect(apiMocks.bulkStatus).toHaveBeenCalledTimes(2));
+    await waitFor(()=>expect(screen.getByRole("button",{name:"Annuler"})).toBeEnabled());
+    fireEvent.click(screen.getByRole("button",{name:"Annuler"}));
+    await waitFor(()=>expect(apiMocks.bulkStatus).toHaveBeenCalledTimes(3));
+    await waitFor(()=>expect(screen.getByRole("button",{name:"Annuler"})).toBeEnabled());
+    fireEvent.click(screen.getByRole("button",{name:"Annuler"}));
+    await waitFor(()=>expect(apiMocks.bulkStatus).toHaveBeenLastCalledWith(["3"],"draft",[{id:"3",version:4}]));
+  });
 
   it("keeps revised drafts in the pending list without restarting completed AI passes", () => {
     renderMessages({
@@ -84,19 +169,18 @@ describe("MessagesView statuses", () => {
     });
     fireEvent.click(screen.getByRole("button", { name: /En attente/ }));
     expect(screen.getByRole("combobox", { name: "Statut de Prospect Test" })).toHaveValue("draft");
-    expect(screen.getByRole("option", { name: "Brouillon" })).toBeInTheDocument();
+    expect(screen.getAllByRole("option", { name: "Brouillon" }).length).toBeGreaterThan(0);
     expect(screen.queryByRole("option", { name: "En attente… 0/3" })).not.toBeInTheDocument();
     expect(apiMocks.updateProspect).not.toHaveBeenCalled();
   });
 
-  it("shows the persisted per-prospect iteration progress without row selection controls", () => {
+  it("shows persisted progress and keeps unfinished rows locked", () => {
     renderMessages(baseProspect);
 
     const status = screen.getByRole("combobox", { name: "Statut de Prospect Test" });
     expect(status).toHaveValue("__preparing__");
     expect(screen.getByRole("option", { name: "En attente… 1/3" })).toBeInTheDocument();
-    expect(screen.queryByText(/ligne\(s\) sélectionnée\(s\)/i)).not.toBeInTheDocument();
-    expect(screen.queryByText(/Maj \+ clic/i)).not.toBeInTheDocument();
+
     expect(screen.queryByRole("button", { name: "1" })).not.toBeInTheDocument();
 
     fireEvent.change(status, { target: { value: "approved" } });
@@ -122,7 +206,7 @@ describe("MessagesView statuses", () => {
     expect(onOpenCampaign).toHaveBeenCalledWith(ready.campaignId);
     fireEvent.change(status, { target: { value: "approved" } });
 
-    await waitFor(() => expect(apiMocks.updateProspect).toHaveBeenCalledWith(ready.id, { status: "approved", version: 1 }));
+    await waitFor(() => expect(apiMocks.bulkStatus).toHaveBeenCalledWith([ready.id], "approved", [{id:ready.id,version:1}]));
     expect(onMutated).toHaveBeenCalledOnce();
   });
 

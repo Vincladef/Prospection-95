@@ -7,6 +7,7 @@ import {
   useState,
 } from "react";
 import { api } from "../lib/api";
+import { cellStatuses, canEditStatus, useStatusSheet } from "../hooks/useStatusSheet";
 import type { Campaign, MessageStatus, Prospect } from "../types";
 import { SequenceDrawer } from "./SequenceDrawer";
 import { statusLabel } from "./StatusBadge";
@@ -26,13 +27,7 @@ interface MessagesViewProps {
   onMutated: () => Promise<void>;
 }
 
-const editableStatuses: Array<[MessageStatus, string]> = [
-  ["prepared", "Préparé"],
-  ["pending_approval", "En attente…"],
-  ["approved", "Validé"],
-  ["scheduled", "Programmé"],
-  ["cancelled", "Annulé"],
-];
+const editableStatuses = cellStatuses;
 
 const statusFilters = [
   ["all", "Tous"],
@@ -76,12 +71,14 @@ const MessageRow = memo(function MessageRow({
   onOpen,
   onOpenCampaign,
   onStatus,
+  sheet,
 }: {
   rowNumber: number;
   prospect: Prospect;
   onOpen: () => void;
   onOpenCampaign: () => void;
   onStatus: (status: MessageStatus) => void;
+  sheet: ReturnType<typeof useStatusSheet>;
 }) {
   const preserved = prospect.messageStatus ? preservedStatuses.has(prospect.messageStatus) : false;
   const preparing = !prospect.excluded && !preserved
@@ -92,6 +89,9 @@ const MessageRow = memo(function MessageRow({
       ? "__preparing__"
       : prospect.messageStatus || "__preparing__";
   const statusLocked = prospect.excluded || preserved || preparing;
+  const index = rowNumber - 1;
+  const selected = !!sheet.range && index >= Math.min(...sheet.range) && index <= Math.max(...sheet.range);
+  const preview = !!sheet.preview && index >= Math.min(...sheet.preview) && index <= Math.max(...sheet.preview);
   return (
     <tr className={prospect.excluded ? "excluded-row" : ""}>
       <td className="sticky-col sticky-index pin-no">
@@ -115,16 +115,24 @@ const MessageRow = memo(function MessageRow({
           <button className="tiny-link sequence-link" type="button" onClick={onOpen}>Voir toute la séquence</button>
         </div>
       </td>
-      <td className="sticky-col sticky-status pin-status status-cell">
+      <td data-status-index={index} data-selection-top={selected && index === Math.min(...sheet.range!)} data-selection-bottom={selected && index === Math.max(...sheet.range!)} aria-selected={selected} className={`sticky-col sticky-status pin-status status-cell status-${prospect.excluded ? "failed" : preview && canEditStatus(prospect) ? sheet.previewStatus || prospect.messageStatus : prospect.messageStatus || "pending_approval"} ${selected ? "sheet-selected" : ""} ${preview ? "sheet-preview" : ""}`}
+        onPointerDown={(event) => {
+          if ((event.target as HTMLElement).closest(".fill-handle")) return;
+          if ((event.target as HTMLElement).tagName === "SELECT" && selected && !event.shiftKey) return;
+          sheet.start(index,event);
+        }}>
+        <span className="sheet-status-label">{prospect.excluded ? "Exclu" : preparing ? preparationLabel(prospect) : statusLabel(preview && canEditStatus(prospect) ? sheet.previewStatus : prospect.messageStatus)}</span>
         <select
           className={`status-select status-${prospect.messageStatus || "empty"}`}
           value={selectValue}
           onChange={(event) => {
-            if (!statusLocked) onStatus(event.target.value as MessageStatus);
+            if (!statusLocked) {
+              onStatus(event.target.value as MessageStatus);
+            }
           }}
           aria-label={`Statut de ${prospect.name}`}
           aria-disabled={statusLocked}
-          disabled={prospect.excluded || preserved}
+          disabled={prospect.excluded || preserved || sheet.busy}
         >
           {prospect.excluded ? <option value="__excluded__">Exclu</option> : null}
           {preparing ? <option value="__preparing__">{preparationLabel(prospect)}</option> : null}
@@ -137,7 +145,7 @@ const MessageRow = memo(function MessageRow({
             </option>
           ))}
         </select>
-        {prospect.excluded ? <span className="cell-warning">⚠ Exclu</span> : null}
+        {selected && sheet.range && index === Math.max(...sheet.range) && canEditStatus(prospect) ? <button className="fill-handle" type="button" aria-label={`Recopier le statut de ${prospect.name}`} onPointerDown={(event) => { event.stopPropagation(); sheet.start(index,event,true); }} /> : null}
       </td>
       <td className="subject-cell message-cell col-subject" onDoubleClick={onOpen}>{prospect.subject || <span className="muted">Sans objet</span>}</td>
       {prospect.messages.map((message, index) => (
@@ -157,8 +165,6 @@ export function MessagesView({ campaigns, prospects, totals, onOpenCampaign, onM
   const [sort, setSort] = useState("recent");
   const [compact, setCompact] = useState(false);
   const [editing, setEditing] = useState<Prospect | null>(null);
-  const [busy, setBusy] = useState(false);
-  const [notice, setNotice] = useState<string | null>(null);
   const tableScroll = useRef<HTMLDivElement>(null);
   const rail = useRef<HTMLDivElement>(null);
   const railInner = useRef<HTMLDivElement>(null);
@@ -182,6 +188,8 @@ export function MessagesView({ campaigns, prospects, totals, onOpenCampaign, onM
       return right.id.localeCompare(left.id);
     });
   }, [campaignId, deferredQuery, prospects, sort, statusFilter]);
+
+  const sheet = useStatusSheet(visible, tableScroll, onMutated);
 
   useEffect(() => {
     const source = tableScroll.current;
@@ -213,19 +221,6 @@ export function MessagesView({ campaigns, prospects, totals, onOpenCampaign, onM
     };
   }, [visible.length]);
 
-  async function updateStatus(prospect: Prospect, status: MessageStatus) {
-    setBusy(true);
-    setNotice(null);
-    try {
-      await api.updateProspect(prospect.id, { status, version: prospect.version });
-      await onMutated();
-      setNotice("Statut enregistré dans Neon.");
-    } catch (error) {
-      setNotice(error instanceof Error ? error.message : "Modification refusée");
-    } finally {
-      setBusy(false);
-    }
-  }
 
   return (
     <section className="view-stack" aria-labelledby="messages-title">
@@ -270,7 +265,14 @@ export function MessagesView({ campaigns, prospects, totals, onOpenCampaign, onM
             <button key={value} className={`chip ${statusFilter === value ? "active on" : ""}`} onClick={() => setStatusFilter(value)}>{label}</button>
           ))}
         </div>
-        <div className="table-scroll" ref={tableScroll} tabIndex={0}>
+        <div className="status-sheet-toolbar" aria-label="Actions sur les statuts">
+          <span>{sheet.selectedCount} cellule(s) sélectionnée(s)</span>
+          <select aria-label="Statut de la sélection" value="" disabled={!sheet.selectedCount || sheet.busy} onChange={(e) => sheet.apply(e.target.value as MessageStatus)}><option value="">Modifier les statuts…</option>{cellStatuses.map(([value,label]) => <option key={value} value={value}>{label}</option>)}</select>
+          <button type="button" disabled={!sheet.canUndo || sheet.busy} onClick={() => void sheet.undo()}>Annuler</button>
+          <button type="button" disabled={!sheet.canRedo || sheet.busy} onClick={() => void sheet.undo(true)}>Rétablir</button>
+          <small>Maj + clic / flèches · Ctrl/⌘ C, V, D, Z · poignée pour recopier</small>
+        </div>
+        <div className="table-scroll" ref={tableScroll} tabIndex={0} onKeyDown={sheet.keyDown} onCopy={sheet.copy} onPaste={sheet.paste}>
           <table className={`message-table data-grid ${compact ? "compact density-compact" : ""}`}>
             <colgroup><col className="col-no" /><col className="col-contact" /><col className="col-state" /><col className="col-subject" /><col className="col-initial" />{[1, 2, 3, 4, 5].map((item) => <col className="col-message" key={item} />)}</colgroup>
             <thead>
@@ -293,9 +295,10 @@ export function MessagesView({ campaigns, prospects, totals, onOpenCampaign, onM
                   key={prospect.id}
                   rowNumber={index + 1}
                   prospect={prospect}
+                  sheet={sheet}
                   onOpen={() => setEditing(prospect)}
                   onOpenCampaign={() => { if (prospect.campaignId) onOpenCampaign(prospect.campaignId); }}
-                  onStatus={(status) => void updateStatus(prospect, status)}
+                  onStatus={(status) => sheet.apply(status, index)}
                 />
               ))}
             </tbody>
@@ -306,8 +309,8 @@ export function MessagesView({ campaigns, prospects, totals, onOpenCampaign, onM
           <div ref={railInner} />
         </div>
         <footer className="statusbar footerline">
-          <span>{notice || "Double-cliquez sur un message pour ouvrir la séquence complète."}</span>
-          <span>{busy ? "Enregistrement…" : "Source : Neon PostgreSQL"}</span>
+          <span>{sheet.notice || "Double-cliquez sur un message pour ouvrir la séquence complète."}</span>
+          <span>{sheet.busy ? "Enregistrement…" : "Source : Neon PostgreSQL"}</span>
         </footer>
       </div>
 

@@ -223,7 +223,7 @@ describe("database safety contract", () => {
 
   it("approves every remaining message in a completed sequence", () => {
     const api = readFileSync(join(process.cwd(), "netlify", "functions", "api.mts"), "utf8");
-    expect(api).toContain("$2 = 'approved' and candidate.message_status in ('draft','prepared','pending_approval')");
+    expect(api).toContain("$2 = 'approved' and candidate.message_status in ('draft','prepared','pending_approval','cancelled')");
     expect(api).toContain("from latest_messages candidate");
     expect(api).toContain("join changed_messages changed on changed.id = t.message_id");
     expect(api).toContain("insert into app.message_approvals");

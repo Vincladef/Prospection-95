@@ -92,10 +92,10 @@ export const api = {
       method: "PATCH",
       body: JSON.stringify(payload),
     }),
-  bulkStatus: (ids: string[], status: string) =>
-    request("/prospects/bulk-status", {
+  bulkStatus: (ids: string[], status: string, versions?: Array<{ id: string; version: number }>) =>
+    request<{ updated: number; prospects: Array<{ id: string; version: number }> }>("/prospects/bulk-status", {
       method: "POST",
-      body: JSON.stringify({ ids, status }),
+      body: JSON.stringify({ ids, status, versions }),
     }),
   createExclusion: (payload: Record<string, unknown>) =>
     request("/exclusions", { method: "POST", body: JSON.stringify(payload) }),

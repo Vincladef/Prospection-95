@@ -5968,3 +5968,27 @@ body {
     left: 3px;
   }
 }
+
+/* Status cells behave as a one-column spreadsheet, including the sticky area. */
+.status-sheet-toolbar { display:flex; gap:12px; align-items:center; flex-wrap:wrap; padding:8px 12px; border-bottom:1px solid #bbb; background:#fafafa; }
+.status-sheet-toolbar small { color:#555; }
+.message-table.data-grid tbody td.status-cell { padding:0; position:sticky; user-select:none; touch-action:none; background:#fff0af; color:#4e3700; overflow:visible; }
+.message-table.data-grid tbody td.status-cell.status-approved,
+.message-table.data-grid tbody td.status-cell.status-scheduled { background:#d3f2e2; color:#085433; }
+.message-table.data-grid tbody td.status-cell.status-draft { background:#edf0f5; color:#303b52; }
+.message-table.data-grid tbody td.status-cell.status-smtp_accepted,
+.message-table.data-grid tbody td.status-cell.status-sent_manually { background:#dbeafa; color:#12476b; }
+.message-table.data-grid tbody td.status-cell.status-received { background:#dfe0ff; color:#242b88; }
+.message-table.data-grid tbody td.status-cell.status-failed,
+.message-table.data-grid tbody td.status-cell.status-uncertain { background:#ffcfcf; color:#7b2121; }
+.message-table.data-grid tbody td.status-cell.status-cancelled { background:#ededed; color:#333; }
+.sheet-status-label { display:block; padding:10px 22px 10px 8px; font-weight:650; }
+.status-cell .status-select { position:absolute; right:0; top:0; width:24px; min-width:0; height:100%; border:0; box-shadow:none; background:transparent; color:inherit; font-size:0; cursor:pointer; }
+.status-cell .status-select option { font-size:13px; color:#222; background:white; }
+.message-table.data-grid tbody td.sheet-selected { box-shadow:inset 2px 0 #1a73e8,inset -2px 0 #1a73e8; z-index:10; }
+.message-table.data-grid tbody td.sheet-selected::after { content:""; position:absolute; inset:0; border:2px solid #1a73e8; pointer-events:none; }
+.message-table.data-grid tbody td.sheet-preview::before { content:""; position:absolute; inset:0; background:rgb(26 115 232 / 18%); border:2px dashed #1a73e8; pointer-events:none; z-index:1; }
+.fill-handle { position:absolute; right:0; bottom:0; width:10px; height:10px; padding:0; border:1px solid white; background:#1a73e8; cursor:crosshair; z-index:3; min-height:0; border-radius:0; }
+.message-table.data-grid tbody td.sheet-selected::after { border-top:0; border-bottom:0; }
+.message-table.data-grid tbody td.sheet-selected[data-selection-top="true"]::after { border-top:2px solid #1a73e8; }
+.message-table.data-grid tbody td.sheet-selected[data-selection-bottom="true"]::after { border-bottom:2px solid #1a73e8; }

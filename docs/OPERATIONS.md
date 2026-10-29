@@ -243,3 +243,9 @@ Retour arrière applicatif : republier le dernier déploiement Netlify sain ou r
 - [ ] BobWork réel ou état explicitement inconnu ;
 - [ ] concurrence, quota, résultat SMTP incertain et arrêt d'urgence ;
 - [ ] autorisation serveur, autorisation Neon et pause générale cohérentes avec la décision actuelle du propriétaire.
+
+## Sélection des statuts dans Messages
+
+Cliquer puis glisser dans la colonne Statut sélectionne une plage des lignes visibles. Maj + clic et Maj + flèches étendent la sélection. Le menu « Statut de la sélection » applique un statut à la plage ; les lignes exclues, en préparation ou verrouillées restent protégées. La poignée bleue recopie le statut de la première cellule de la plage, vers le haut ou le bas, uniquement au relâchement. Échap annule le glissement.
+
+Quand le tableau a le focus : Ctrl/⌘ + A sélectionne les statuts visibles, C/V copie et colle une colonne de statuts, D recopie le premier statut vers le bas, Z annule et Maj + Z (ou Ctrl + Y) rétablit. L'historique garde les 20 dernières opérations de cette session. Les versions renvoyées par le serveur sont vérifiées lors des annulations ; un envoi engagé ou une modification concurrente peut empêcher certaines lignes de revenir en arrière. Une opération accepte au plus 500 lignes. Un changement de filtre ou de tri efface la sélection. Aucun texte d'email n'est modifié par ces commandes.
