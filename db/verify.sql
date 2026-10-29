@@ -6,7 +6,7 @@ SELECT to_regnamespace('app') IS NOT NULL
    AND to_regnamespace('agent_api') IS NOT NULL
    AND to_regnamespace('audit') IS NOT NULL AS all_schemas_exist;
 
-SELECT count(*) = 28 AS all_migrations_registered
+SELECT count(*) = 29 AS all_migrations_registered
 FROM app.schema_migrations
 WHERE version IN (
   '001_foundation',
@@ -36,7 +36,8 @@ WHERE version IN (
   '025_extended_writing_iterations',
   '026_flexible_experiment_populations',
   '027_crm_pending_sequence_revisions',
-  '028_crm_sequence_view_permissions'
+  '028_crm_sequence_view_permissions',
+  '029_crm_general_writing_instructions'
 );
 
 SELECT EXISTS (
@@ -333,3 +334,9 @@ SELECT has_table_privilege('prospection95_crm','crm_api.pending_sequences','SELE
 SET LOCAL ROLE prospection95_crm;
 SELECT count(*) >= 0 AS crm_can_read_pending_sequences FROM crm_api.pending_sequences;
 RESET ROLE;
+
+SET LOCAL ROLE prospection95_crm;
+SELECT count(*)=1 AS crm_can_read_writing_settings FROM crm_api.writing_settings;
+RESET ROLE;
+SELECT has_function_privilege('prospection95_crm','crm_api.crm_writing_instructions_update(bigint,text)','EXECUTE')
+ AND NOT has_table_privilege('prospection95_crm','app.settings','UPDATE') AS crm_writing_access_is_limited;

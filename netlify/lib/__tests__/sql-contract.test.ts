@@ -7,9 +7,9 @@ const migrationsDirectory = join(process.cwd(), "db", "migrations");
 describe("database safety contract", () => {
   it("keeps a contiguous additive migration set", () => {
     const files = readdirSync(migrationsDirectory).filter((name) => name.endsWith(".sql")).sort();
-    expect(files).toHaveLength(28);
+    expect(files).toHaveLength(29);
     expect(files.map((name) => name.slice(0, 3))).toEqual([
-      "001", "002", "003", "004", "005", "006", "007", "008", "009", "010", "011", "012", "013", "014", "015", "016", "017", "018", "019", "020", "021", "022", "023", "024", "025", "026", "027", "028",
+      "001", "002", "003", "004", "005", "006", "007", "008", "009", "010", "011", "012", "013", "014", "015", "016", "017", "018", "019", "020", "021", "022", "023", "024", "025", "026", "027", "028", "029",
     ]);
   });
 
