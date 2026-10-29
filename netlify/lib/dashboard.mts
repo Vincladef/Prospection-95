@@ -1,3 +1,4 @@
+import { sequenceStatus, type SequenceStatusRow } from "./sequence-status.mts";
 import { sqlQuery } from "./db.mts";
 import { credentialVaultConfigured } from "./credentials.mts";
 
@@ -79,8 +80,6 @@ export async function loadDashboard(): Promise<Record<string, unknown>> {
              iteration_output.output_sequence, iteration_output.completed_at as iteration_completed_at,
              selected.campaign_id::text, selected.campaign_name,
              conv.id::text as conversation_id, conv.current_step::text,
-             latest.status::text as message_status,
-             coalesce(latest.smtp_accepted_at, latest.sent_at) as last_sent_at,
              ga.email as sender_email,
              coalesce(interactions.open_observed, false) as open_observed,
              coalesce(interactions.click_observed, false) as click_observed,
@@ -156,21 +155,6 @@ export async function loadDashboard(): Promise<Record<string, unknown>> {
         where campaign.id = selected.campaign_id
       ) configured_iterations on true
       left join lateral (
-        select m.status, m.smtp_accepted_at, m.sent_at
-        from app.email_messages m
-        where m.conversation_id = conv.id and m.direction = 'outbound'
-          and not m.technical_confirmation
-        order by
-          case when not m.technical_confirmation and m.status not in ('cancelled','failed') then 0 else 1 end,
-          case m.step
-            when 'J0' then 0 when 'R1' then 1 when 'R2' then 2
-            when 'R3' then 3 when 'R4' then 4 when 'R5' then 5 else 6
-          end,
-          m.content_version desc,
-          coalesce(m.smtp_accepted_at, m.sent_at, m.updated_at) desc
-        limit 1
-      ) latest on true
-      left join lateral (
         select
           bool_or(observation.event_type = 'open') as open_observed,
           bool_or(observation.event_type = 'click') as click_observed,
@@ -200,7 +184,7 @@ export async function loadDashboard(): Promise<Record<string, unknown>> {
     sqlQuery(`
       select distinct on (conv.campaign_id, conv.prospect_id, m.step)
         conv.campaign_id::text, conv.prospect_id::text, m.step::text, m.subject, m.body_text,
-        m.created_at, m.technical_confirmation, m.sent_at, m.smtp_accepted_at, m.status::text
+        m.created_at, m.content_version, m.technical_confirmation, m.sent_at, m.smtp_accepted_at, m.status::text
       from app.conversations conv
       join app.email_messages m on m.conversation_id = conv.id
       where m.direction = 'outbound' and m.kind = 'prospection' and m.step is not null
@@ -417,6 +401,11 @@ export async function loadDashboard(): Promise<Record<string, unknown>> {
 
   const prospects = prospectRows.map((row) => {
     const campaignId = nullableText(row.campaign_id);
+    const savedSteps = STEPS.flatMap(step => {
+      const saved = messages.get(`${campaignId}:${row.id}:${step}`);
+      return saved ? [saved as unknown as SequenceStatusRow] : [];
+    });
+    const summary = sequenceStatus(savedSteps);
     const output = jsonObject(row.output_sequence);
     const outputSteps = Array.isArray(output.steps) ? output.steps : [];
     const outputTime = new Date(textValue(row.iteration_completed_at)).getTime();
@@ -442,9 +431,9 @@ export async function loadDashboard(): Promise<Record<string, unknown>> {
       contactRaw: nullableText(row.contact_raw),
       website: nullableText(row.website_url),
       contactState: textValue(row.contact_state),
-      messageStatus: nullableText(row.message_status),
+      messageStatus: summary.status,
       step: nullableText(row.current_step),
-      lastSentAt: isoValue(row.last_sent_at),
+      lastSentAt: isoValue(summary.lastSentAt),
       senderEmail: nullableText(row.sender_email),
       openObserved: Boolean(row.open_observed),
       clickObserved: Boolean(row.click_observed),

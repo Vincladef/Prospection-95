@@ -43,7 +43,7 @@ describe("prospect content displayed by dashboard", () => {
 
   it("keeps later manual or plugin revisions and the existing draft status", async () => {
     rows[0].message_status = "draft";
-    messages = sequence("révision").steps.map((body, i) => ({ campaign_id: "c1", prospect_id: "p1", step: ["J0", "R1", "R2", "R3", "R4", "R5"][i], subject: "Objet modifié", body_text: body, created_at: "2026-10-29T10:00:00Z", status: "draft" }));
+    messages = sequence("révision").steps.map((body, i) => ({ campaign_id: "c1", prospect_id: "p1", step: ["J0", "R1", "R2", "R3", "R4", "R5"][i], subject: "Objet modifié", body_text: body, created_at: "2026-10-29T10:00:00Z", content_version: 6, status: "draft" }));
     const [p] = await displayed();
     expect(p.subject).toBe("Objet modifié");
     expect(p.messages).toEqual(sequence("révision").steps);
@@ -58,6 +58,17 @@ describe("prospect content displayed by dashboard", () => {
     const [p] = await displayed();
     expect(p.subject).toBe("Objet passe 1");
     expect(p.messages).toEqual(sequence("passe 1").steps);
+  });
+
+  it("derives the displayed status from current step versions and retains the sent date", async () => {
+    rows[0].message_status = "draft";
+    messages = [
+      { campaign_id: "c1", prospect_id: "p1", step: "J0", content_version: 6, status: "smtp_accepted", technical_confirmation: true, smtp_accepted_at: "2026-10-29T15:25:12.158Z" },
+      { campaign_id: "c1", prospect_id: "p1", step: "R1", content_version: 6, status: "scheduled" },
+    ];
+    const [p] = await displayed();
+    expect(p.messageStatus).toBe("scheduled");
+    expect(p.lastSentAt).toBe("2026-10-29T15:25:12.158Z");
   });
 
   it("keeps sent and in-flight content authoritative even with a newer output", async () => {
