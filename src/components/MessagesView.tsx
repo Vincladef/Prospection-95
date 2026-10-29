@@ -313,7 +313,7 @@ export function MessagesView({ campaigns, prospects, totals, onOpenCampaign, onM
 
       {editing ? (
         <SequenceDrawer
-          prospect={editing}
+          prospect={prospects.find((prospect) => prospect.id === editing.id && prospect.campaignId === editing.campaignId) ?? editing}
           onClose={() => setEditing(null)}
           onSave={async (payload) => {
             await api.updateProspect(editing.id, payload);

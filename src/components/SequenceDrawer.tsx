@@ -14,6 +14,21 @@ const delays = ["J0", "J+3", "+7 jours", "+7 jours", "+14 jours", "+14 jours"];
 export function SequenceDrawer({ prospect, onClose, onSave }: SequenceDrawerProps) {
   const [subject, setSubject] = useState(prospect.subject);
   const [messages, setMessages] = useState<string[]>(prospect.messages);
+  const [baseline, setBaseline] = useState({ subject: prospect.subject, messages: prospect.messages, version: prospect.version });
+  const dirty = subject !== baseline.subject || messages.some((message, index) => message !== baseline.messages[index]);
+  const changedRemotely = prospect.version !== baseline.version || prospect.subject !== baseline.subject
+    || prospect.messages.some((message, index) => message !== baseline.messages[index]);
+
+  function loadLatest() {
+    setSubject(prospect.subject);
+    setMessages(prospect.messages);
+    setBaseline({ subject: prospect.subject, messages: prospect.messages, version: prospect.version });
+  }
+
+  useEffect(() => {
+    if (!dirty && changedRemotely) loadLatest();
+  }, [prospect, dirty, changedRemotely]);
+
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
@@ -30,7 +45,7 @@ export function SequenceDrawer({ prospect, onClose, onSave }: SequenceDrawerProp
     setSaving(true);
     setError(null);
     try {
-      await onSave({ subject, messages, version: prospect.version });
+      await onSave({ subject, messages, version: baseline.version });
       onClose();
     } catch (caught) {
       setError(caught instanceof Error ? caught.message : "Enregistrement impossible");
@@ -53,6 +68,9 @@ export function SequenceDrawer({ prospect, onClose, onSave }: SequenceDrawerProp
           {prospect.variantLabel ? <span>Variante {prospect.variantLabel}</span> : null}
         </div>
         <div className="drawer-body">
+          {dirty && changedRemotely ? <div className="win-alert info" role="status">Une nouvelle version est disponible. Votre saisie est conservée.
+            <button className="win-button" type="button" onClick={loadLatest}>Charger la dernière version</button>
+          </div> : null}
           {prospect.excluded ? (
             <div className="win-alert error">⚠ Cette adresse est exclue. Toute expédition est bloquée.</div>
           ) : null}
@@ -87,7 +105,7 @@ export function SequenceDrawer({ prospect, onClose, onSave }: SequenceDrawerProp
           {error ? <div className="win-alert error" role="alert">{error}</div> : null}
         </div>
         <footer className="drawer-actions">
-          <span>Version {prospect.version} · contrôle de concurrence actif</span>
+          <span>Version {baseline.version} · contrôle de concurrence actif</span>
           <div>
             <button className="win-button" type="button" onClick={onClose}>Annuler</button>
             <button className="win-button primary" type="submit" disabled={saving || !subject.trim() || !messages[0]?.trim()}>

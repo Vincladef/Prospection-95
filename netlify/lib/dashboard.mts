@@ -76,6 +76,7 @@ export async function loadDashboard(): Promise<Record<string, unknown>> {
     sqlQuery(`
       select p.id::text, p.full_name, p.email, p.contact_raw, p.website_url,
              p.contact_state::text, p.version, o.name as organization_name,
+             iteration_output.output_sequence, iteration_output.completed_at as iteration_completed_at,
              selected.campaign_id::text, selected.campaign_name,
              conv.id::text as conversation_id, conv.current_step::text,
              latest.status::text as message_status,
@@ -122,6 +123,15 @@ export async function loadDashboard(): Promise<Record<string, unknown>> {
         order by state.updated_at desc, state.created_at desc
         limit 1
       ) iteration_state on true
+      left join lateral (
+        select run.output_sequence, run.completed_at
+        from app.prospect_iteration_runs run
+        where run.state_id = iteration_state.id and run.status = 'completed'
+          and run.configuration_hash = iteration_state.configuration_hash
+          and run.experiment_assignment_id is not distinct from iteration_state.experiment_assignment_id
+        order by run.iteration_number desc, run.completed_at desc, run.id desc
+        limit 1
+      ) iteration_output on true
       left join lateral (
         select assignment.variant_id
         from app.experiment_assignments assignment
@@ -188,12 +198,13 @@ export async function loadDashboard(): Promise<Record<string, unknown>> {
       order by p.created_at desc
     `),
     sqlQuery(`
-      select distinct on (conv.prospect_id, m.step)
-        conv.prospect_id::text, m.step::text, m.subject, m.body_text
+      select distinct on (conv.campaign_id, conv.prospect_id, m.step)
+        conv.campaign_id::text, conv.prospect_id::text, m.step::text, m.subject, m.body_text,
+        m.created_at, m.technical_confirmation, m.sent_at, m.smtp_accepted_at, m.status::text
       from app.conversations conv
       join app.email_messages m on m.conversation_id = conv.id
-      where m.direction = 'outbound' and m.step is not null
-      order by conv.prospect_id, m.step, m.content_version desc, m.created_at desc
+      where m.direction = 'outbound' and m.kind = 'prospection' and m.step is not null
+      order by conv.campaign_id, conv.prospect_id, m.step, m.content_version desc, m.created_at desc, m.id desc
     `),
     sqlQuery(`
       select ga.*,
@@ -340,12 +351,9 @@ export async function loadDashboard(): Promise<Record<string, unknown>> {
       instructions: textValue(row.instructions),
     });
   }
-  const messages = new Map<string, { subject: string; body: string }>();
+  const messages = new Map<string, DbRow>();
   for (const row of messageRows) {
-    messages.set(`${row.prospect_id}:${row.step}`, {
-      subject: textValue(row.subject),
-      body: textValue(row.body_text),
-    });
+    messages.set(`${row.campaign_id}:${row.prospect_id}:${row.step}`, row);
   }
 
   const statsByCampaign = new Map(campaignStatsRows.map((row) => [textValue(row.campaign_id), row]));
@@ -409,8 +417,21 @@ export async function loadDashboard(): Promise<Record<string, unknown>> {
 
   const prospects = prospectRows.map((row) => {
     const campaignId = nullableText(row.campaign_id);
-    const contentFor = (step: typeof STEPS[number]) =>
-      messages.get(`${row.id}:${step}`) ?? (campaignId ? templates.get(`${campaignId}:${step}`) : undefined);
+    const output = jsonObject(row.output_sequence);
+    const outputSteps = Array.isArray(output.steps) ? output.steps : [];
+    const outputTime = new Date(textValue(row.iteration_completed_at)).getTime();
+    const contentFor = (step: typeof STEPS[number]) => {
+      const saved = messages.get(`${campaignId}:${row.id}:${step}`);
+      const sent = saved && (saved.technical_confirmation || saved.sent_at || saved.smtp_accepted_at
+        || ["smtp_accepted", "sent_manually", "sending", "reserved", "uncertain"].includes(textValue(saved.status)));
+      const body = outputSteps[STEPS.indexOf(step)];
+      // Saved revisions win ties. Sent/in-flight content always stays authoritative.
+      if (saved && (sent || typeof body !== "string" || !Number.isFinite(outputTime)
+        || new Date(textValue(saved.created_at)).getTime() >= outputTime)) {
+        return { subject: textValue(saved.subject), body: textValue(saved.body_text) };
+      }
+      return typeof body === "string" ? { subject: textValue(output.subject), body } : undefined;
+    };
     return {
       id: textValue(row.id),
       campaignId,

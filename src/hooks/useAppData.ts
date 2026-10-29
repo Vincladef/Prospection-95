@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useState } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
 import { api } from "../lib/api";
 import type { DashboardData } from "../types";
 
@@ -7,9 +7,13 @@ export function useAppData(enabled: boolean) {
   const [loading, setLoading] = useState(enabled);
   const [error, setError] = useState<string | null>(null);
 
-  const refresh = useCallback(async () => {
-    if (!enabled) return;
-    setLoading(true);
+  const requestId = useRef(0);
+  const activeRequests = useRef(0);
+  const refresh = useCallback(async (background = false) => {
+    if (!enabled || (background && activeRequests.current > 0)) return;
+    const current = ++requestId.current;
+    activeRequests.current++;
+    if (!background) setLoading(true);
     setError(null);
     try {
       let dashboard = await api.dashboard();
@@ -24,18 +28,34 @@ export function useAppData(enabled: boolean) {
             : "Application chargée, mais le coffre privé n’a pas pu être initialisé.";
         }
       }
-      setData(dashboard);
-      setError(warning);
+      if (current === requestId.current) {
+        setData(dashboard);
+        setError(warning);
+      }
     } catch (caught) {
-      setError(caught instanceof Error ? caught.message : "Chargement impossible");
+      if (current === requestId.current) setError(caught instanceof Error ? caught.message : "Chargement impossible");
     } finally {
-      setLoading(false);
+      activeRequests.current--;
+      if (current === requestId.current) setLoading(false);
     }
   }, [enabled]);
 
   useEffect(() => {
     void refresh();
-  }, [refresh]);
+    if (!enabled) return;
+    const update = () => {
+      if (document.visibilityState === "visible") void refresh(true);
+    };
+    const timer = window.setInterval(update, 30_000);
+    window.addEventListener("focus", update);
+    document.addEventListener("visibilitychange", update);
+    return () => {
+      requestId.current++;
+      window.clearInterval(timer);
+      window.removeEventListener("focus", update);
+      document.removeEventListener("visibilitychange", update);
+    };
+  }, [enabled, refresh]);
 
   return { data, setData, loading, error, refresh };
 }
