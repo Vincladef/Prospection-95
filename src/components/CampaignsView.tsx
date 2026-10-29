@@ -24,15 +24,10 @@ const emptySequence: SequenceContent = {
 };
 
 const maximumDraftPasses = 100;
-const defaultDraftPasses = [
-  "Rédaction : analyse la cible, sa programmation et les sources vérifiées. Rédige l'objet et les six emails J0-R5 avec un angle pertinent pour ce destinataire et une demande simple. Respecte les instructions de campagne et n'invente aucun fait.",
-  "Relecture critique : relis la première proposition comme un programmateur débordé. Vérifie l'intérêt pour lui, la pertinence des références, la clarté de l'offre, la charge cognitive, les répétitions, les objections et la facilité de répondre. Corrige chaque faiblesse repérée.",
-  "Révision finale : améliore la version précédente sans allonger inutilement les messages. Vérifie chaque affirmation et chaque lien, supprime les promesses non confirmées, conserve un seul appel à l'action par email et harmonise le ton des relances. Livre uniquement la version finale prête pour validation.",
-];
 
 function resizeDraftPasses(passes: string[], requestedCount: number): string[] {
   const count = Math.max(1, Math.min(maximumDraftPasses, Math.trunc(requestedCount) || 1));
-  return Array.from({ length: count }, (_, index) => passes[index] ?? defaultDraftPasses[index] ?? "");
+  return Array.from({ length: count }, (_, index) => passes[index] ?? "");
 }
 
 type VariantGroupKey = "search" | "iterations" | "subject" | "initial" | "followup0" | "followup1" | "followup2" | "followup3" | "followup4" | "reply";
@@ -626,7 +621,7 @@ export function CampaignsView({ campaigns, folders, accounts, experiments, attac
       name = `Nouvelle campagne (${suffix})`;
     }
     try {
-      const result = await api.createCampaign({ name, status: "inactive", folderId, validationPolicy: "manual", dailyNewContactGoal: 0, trackingOpensEnabled: true, trackingClicksEnabled: true, aiInstructions: "", writingIterations: defaultDraftPasses, sequence: emptySequence });
+      const result = await api.createCampaign({ name, status: "inactive", folderId, validationPolicy: "manual", dailyNewContactGoal: 0, trackingOpensEnabled: true, trackingClicksEnabled: true, aiInstructions: "", writingIterations: [""], targetDescription: "", replyInstructions: "", nextTestInstructions: "", sequence: emptySequence });
       setShowArchived(false);
       setSelectedId(result.campaign.id);
       await onMutated();

@@ -212,16 +212,30 @@ describe("CampaignsView V53", () => {
     expect(apiMocks.updateCampaign).toHaveBeenCalledWith(campaign.id, expect.objectContaining({ version: 2 }));
   });
 
-  it("starts new campaigns with three meaningful AI revision passes", async () => {
+  it("starts new campaigns with empty instructions and message models", async () => {
     renderCampaigns();
     fireEvent.click(screen.getByRole("button", { name: "+ Ajouter" }));
 
     await waitFor(() => expect(apiMocks.createCampaign).toHaveBeenCalledOnce());
     const payload = apiMocks.createCampaign.mock.calls[0][0];
-    expect(payload.writingIterations).toHaveLength(3);
-    expect(payload.writingIterations[1]).toContain("Relecture critique");
-    expect(payload.writingIterations[2]).toContain("Révision finale");
-    expect(payload.aiInstructions).toBe("");
+    expect(payload).toMatchObject({
+      writingIterations: [""], aiInstructions: "", targetDescription: "", replyInstructions: "", nextTestInstructions: "",
+      sequence: { subject: "", subjectInstructions: "", steps: ["", "", "", "", "", ""], stepInstructions: ["", "", "", "", "", ""] },
+    });
+  });
+
+  it("keeps every instruction field empty in a new campaign editor", () => {
+    renderCampaigns([], [{ ...campaign, writingIterations: [""], aiInstructions: "", targetDescription: "", replyInstructions: "", nextTestInstructions: "" }]);
+    expect(document.querySelectorAll("textarea").length).toBeGreaterThan(10);
+    document.querySelectorAll("textarea").forEach((field) => expect(field).toHaveValue(""));
+  });
+
+  it("adds empty iteration fields without altering existing instructions", () => {
+    renderCampaigns();
+    fireEvent.change(screen.getByRole("spinbutton", { name: "Nombre d’itérations" }), { target: { value: "3" } });
+    expect(screen.getByLabelText(/Itération 1/)).toHaveValue("Prépare une première version.");
+    expect(screen.getByLabelText(/Itération 2/)).toHaveValue("");
+    expect(screen.getByLabelText(/Itération 3/)).toHaveValue("");
   });
 
   it("changes and persists the number of successive AI writing iterations", async () => {
