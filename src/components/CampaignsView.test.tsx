@@ -173,6 +173,45 @@ describe("CampaignsView V53", () => {
     expect(screen.getByLabelText("Choisir une campagne")).toHaveValue(created.id);
   });
 
+  it("preserves campaign edits across automatic refreshes and saves the original version", async () => {
+    const props = { campaigns: [campaign], folders: [], accounts: [], experiments: [experiment], attachments: [], prospects: [], totals: { pendingApproval: 0 }, onOpenSettings: vi.fn(), onMutated: vi.fn().mockResolvedValue(undefined) };
+    const view = render(<CampaignsView {...props} />);
+    fireEvent.change(screen.getByRole("textbox", { name: /Nom de la campagne/ }), { target: { value: "Mon nouveau nom" } });
+    view.rerender(<CampaignsView {...props} campaigns={[{ ...campaign }]} experiments={[{ ...experiment, variants: experiment.variants.map((v) => ({ ...v })) }]} />);
+    expect(screen.getByRole("textbox", { name: /Nom de la campagne/ })).toHaveValue("Mon nouveau nom");
+    fireEvent.click(screen.getAllByRole("button", { name: "Enregistrer" })[0]);
+    await waitFor(() => expect(apiMocks.updateCampaign).toHaveBeenCalledWith(campaign.id, expect.objectContaining({ name: "Mon nouveau nom", version: 1 })));
+    await waitFor(() => expect(props.onMutated).toHaveBeenCalled());
+    expect(screen.getByRole("textbox", { name: /Nom de la campagne/ })).toHaveValue("Mon nouveau nom");
+  });
+
+  it("preserves variant edits across refreshes and resets them only on cancel", () => {
+    const props = { campaigns: [campaign], folders: [], accounts: [], experiments: [experiment], attachments: [], prospects: [], totals: { pendingApproval: 0 }, onOpenSettings: vi.fn(), onMutated: vi.fn() };
+    const view = render(<CampaignsView {...props} />);
+    fireEvent.click(screen.getByRole("button", { name: /^B1/ }));
+    fireEvent.change(screen.getByDisplayValue("Recherche propre à la version B"), { target: { value: "Ma recherche B" } });
+    view.rerender(<CampaignsView {...props} campaigns={[{ ...campaign }]} experiments={[{ ...experiment }]} />);
+    expect(screen.getByDisplayValue("Ma recherche B")).toBeInTheDocument();
+    fireEvent.click(screen.getByRole("button", { name: "Annuler" }));
+    expect(screen.getByDisplayValue("Recherche propre à la version B")).toBeInTheDocument();
+    expect(screen.getAllByRole("button", { name: "Enregistrer" }).every((b) => b.hasAttribute("disabled"))).toBe(true);
+  });
+
+  it("updates a pristine editor from the server but retains a dirty editor on conflict", async () => {
+    const props = { campaigns: [campaign], folders: [], accounts: [], experiments: [], attachments: [], prospects: [], totals: { pendingApproval: 0 }, onOpenSettings: vi.fn(), onMutated: vi.fn() };
+    const view = render(<CampaignsView {...props} />);
+    const refreshed = { ...campaign, name: "Nom distant", version: 2 };
+    view.rerender(<CampaignsView {...props} campaigns={[refreshed]} />);
+    expect(screen.getByRole("textbox", { name: /Nom de la campagne/ })).toHaveValue("Nom distant");
+    fireEvent.change(screen.getByRole("textbox", { name: /Nom de la campagne/ }), { target: { value: "Ma saisie" } });
+    view.rerender(<CampaignsView {...props} campaigns={[{ ...refreshed, name: "Encore distant", version: 3 }]} />);
+    apiMocks.updateCampaign.mockRejectedValueOnce(new Error("Conflit de version"));
+    fireEvent.click(screen.getAllByRole("button", { name: "Enregistrer" })[0]);
+    await screen.findByText("Conflit de version");
+    expect(screen.getByRole("textbox", { name: /Nom de la campagne/ })).toHaveValue("Ma saisie");
+    expect(apiMocks.updateCampaign).toHaveBeenCalledWith(campaign.id, expect.objectContaining({ version: 2 }));
+  });
+
   it("starts new campaigns with three meaningful AI revision passes", async () => {
     renderCampaigns();
     fireEvent.click(screen.getByRole("button", { name: "+ Ajouter" }));

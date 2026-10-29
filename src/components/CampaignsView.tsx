@@ -42,6 +42,12 @@ function cloneOverrides(value: Record<string, unknown>): VariantOverrides {
   return JSON.parse(JSON.stringify(value || {})) as VariantOverrides;
 }
 
+function variantSnapshot(experiments: Experiment[], campaignId: string): Record<string, VariantOverrides> {
+  return Object.fromEntries(experiments.filter((experiment) => experiment.campaignId === campaignId)
+    .flatMap((experiment) => experiment.variants)
+    .map((variant) => [variant.id, cloneOverrides(variant.overrides)]));
+}
+
 function variantGroup<T extends Record<string, unknown>>(overrides: VariantOverrides, key: VariantGroupKey, fallback: T): T {
   const value = overrides[key];
   return value && typeof value === "object" ? value as T : fallback;
@@ -105,27 +111,15 @@ function CampaignEditor({
   onSaved: () => Promise<void>;
 }) {
   const [draft, setDraft] = useState(campaign);
+  const [baseline, setBaseline] = useState(campaign);
   const [saving, setSaving] = useState(false);
   const [experimentBusy, setExperimentBusy] = useState(false);
   const [selectedExperimentId, setSelectedExperimentId] = useState<string | null>(null);
   const [selectedVariantId, setSelectedVariantId] = useState<string | null>(null);
-  const [variantDrafts, setVariantDrafts] = useState<Record<string, VariantOverrides>>({});
+  const [variantDrafts, setVariantDrafts] = useState(() => variantSnapshot(experiments, campaign.id));
+  const [variantBaseline, setVariantBaseline] = useState(() => variantSnapshot(experiments, campaign.id));
   const [message, setMessage] = useState<string | null>(null);
   const [showStats, setShowStats] = useState(false);
-
-  useEffect(() => {
-    setDraft(campaign);
-    setMessage(null);
-  }, [campaign]);
-
-  useEffect(() => {
-    const next: Record<string, VariantOverrides> = {};
-    experiments
-      .filter((experiment) => experiment.campaignId === campaign.id)
-      .flatMap((experiment) => experiment.variants)
-      .forEach((variant) => { next[variant.id] = cloneOverrides(variant.overrides); });
-    setVariantDrafts(next);
-  }, [campaign.id, experiments]);
 
   const senderAccounts = useMemo(
     () => accounts.filter((account) => account.role === "sender" && account.status !== "deleted"),
@@ -144,11 +138,30 @@ function CampaignEditor({
   const selectedOverrides = selectedVariant ? (variantDrafts[selectedVariant.id] ?? {}) : {};
   const isReferenceVariant = !selectedVariant || selectedVariant.label === "A";
   const attachmentField = (base: string) => isReferenceVariant ? base : `variant:${selectedVariant?.id}:${base}`;
-  const campaignDirty = JSON.stringify(campaignPayload(draft)) !== JSON.stringify(campaignPayload(campaign));
+  const campaignDirty = JSON.stringify(campaignPayload(draft)) !== JSON.stringify(campaignPayload(baseline));
   const dirtyVariants = relatedExperiments.flatMap((experiment) => experiment.variants).filter((variant) =>
-    variant.label !== "A" && JSON.stringify(variantDrafts[variant.id] ?? {}) !== JSON.stringify(cloneOverrides(variant.overrides)),
+    variant.label !== "A" && JSON.stringify(variantDrafts[variant.id] ?? {}) !== JSON.stringify(variantBaseline[variant.id] ?? {}),
   );
   const dirty = campaignDirty || dirtyVariants.length > 0;
+
+  useEffect(() => {
+    if (dirty || saving || campaign.version < baseline.version) return;
+    setDraft(campaign);
+    setBaseline(campaign);
+    const next = variantSnapshot(experiments, campaign.id);
+    setVariantDrafts(next);
+    setVariantBaseline(next);
+  }, [campaign, experiments, dirty, saving, baseline.version]);
+
+  function cancelEdits() {
+    setDraft(campaign);
+    setBaseline(campaign);
+    const next = variantSnapshot(experiments, campaign.id);
+    setVariantDrafts(next);
+    setVariantBaseline(next);
+    setMessage(null);
+  }
+
 
   async function save(event: FormEvent) {
     event.preventDefault();
@@ -156,11 +169,19 @@ function CampaignEditor({
     setSaving(true);
     setMessage(null);
     try {
-      if (campaignDirty) await api.updateCampaign(draft.id, campaignPayload(draft));
+      if (dirtyVariants.some((variant) => JSON.stringify(cloneOverrides(variant.overrides)) !== JSON.stringify(variantBaseline[variant.id] ?? {}))) {
+        throw new Error("Une variante a été modifiée ailleurs. Vos saisies sont conservées ; annulez pour charger la dernière version.");
+      }
+      const savedCampaign = campaignDirty
+        ? { ...draft, version: (await api.updateCampaign(draft.id, campaignPayload(draft))).campaign.version }
+        : draft;
       for (const variant of dirtyVariants) {
         await api.updateExperimentVariant(variant.id, { overrides: variantDrafts[variant.id] ?? {} });
       }
       await onSaved();
+      setDraft(savedCampaign);
+      setBaseline(savedCampaign);
+      setVariantBaseline(variantDrafts);
       setMessage(dirtyVariants.length ? "Campagne et versions A/B enregistrées dans Neon." : "Campagne enregistrée dans Neon.");
     } catch (error) {
       setMessage(error instanceof Error ? error.message : "Enregistrement impossible");
@@ -292,7 +313,7 @@ function CampaignEditor({
         <div className="target-actions">
           <span className={`target-notice ${dirty ? "dirty" : ""}`}>{saving ? "Enregistrement…" : message || (dirty ? "Modifications non enregistrées" : "Aucune modification")}</span>
           <button className="secondary campaign-stats-button" type="button" onClick={() => setShowStats(true)}>▥ Voir les statistiques</button>
-          <button className="secondary" type="button" disabled={!dirty || saving} onClick={() => setDraft(campaign)}>Annuler</button>
+          <button className="secondary" type="button" disabled={!dirty || saving} onClick={cancelEdits}>Annuler</button>
           <button className="target-save" type="submit" disabled={!dirty || saving || !draft.name.trim()}>Enregistrer</button>
           <details className="v16-more v16-target-more">
             <summary aria-label="Autres actions" title="Autres actions">⋯</summary>
@@ -712,6 +733,7 @@ export function CampaignsView({ campaigns, folders, accounts, experiments, attac
         <div className="campaign-main target-editor">
           {selected ? (
             <CampaignEditor
+              key={selected.id}
               campaign={selected}
               campaignNumber={campaigns.findIndex((campaign) => campaign.id === selected.id) + 1}
               prospectCount={prospectCounts.get(selected.id) || 0}

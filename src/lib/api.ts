@@ -50,7 +50,7 @@ export const api = {
   createCampaign: (payload: Record<string, unknown>) =>
     request<{ campaign: Pick<Campaign, "id" | "version"> }>("/campaigns", { method: "POST", body: JSON.stringify(payload) }),
   updateCampaign: (id: string, payload: Record<string, unknown>) =>
-    request(`/campaigns/${encodeURIComponent(id)}`, {
+    request<{ campaign: Pick<Campaign, "id" | "version"> }>(`/campaigns/${encodeURIComponent(id)}`, {
       method: "PATCH",
       body: JSON.stringify(payload),
     }),
