@@ -4,6 +4,7 @@ import { z } from "zod";
 import { requireAdmin, type AdminIdentity } from "../lib/auth.mts";
 import { auditEvent } from "../lib/audit.mts";
 import { syncBobworkAccounts } from "../lib/bobwork-sync.mts";
+import { loadBlacklist } from "../lib/blacklist.mts";
 import { initializeCredentialVault, retireCredential, storeCredential } from "../lib/credentials.mts";
 import { loadDashboard } from "../lib/dashboard.mts";
 import { pingDatabase, sqlOne, sqlQuery } from "../lib/db.mts";
@@ -349,35 +350,26 @@ async function updateProspect(request: Request, id: string, identity: AdminIdent
     if (!context.campaign_id || !context.sender_account_id || !context.sender_email) {
       throw new HttpError(409, "sender_not_assigned", "Aucun compte expéditeur n’est attribué à ce prospect.");
     }
-    const rows = ["J0", "R1", "R2", "R3", "R4", "R5"].map((step, index) => ({ step, body: value.messages[index] }));
-    const updated = await sqlOne<{ id: string; version: number }>(
-      `with updated as (
-         update app.prospects set version = version + 1
-         where id = $1::uuid and version = $2 returning id, version
-       ), conversation_row as (
-         insert into app.conversations
-           (campaign_id, prospect_id, sender_account_id, state)
-         select $3::uuid, updated.id, $4::uuid, 'prepared' from updated
-         on conflict (campaign_id, prospect_id) do update
-           set sender_account_id = excluded.sender_account_id, version = app.conversations.version + 1
-         returning id
-       ), incoming as (
-         select * from jsonb_to_recordset($8::jsonb) as value(step text, body text)
-       ), inserted as (
-         insert into app.email_messages
-           (conversation_id, direction, kind, step, sender_account_id, from_address,
-            to_addresses, subject, body_text, content_version, status, source)
-         select conversation_row.id, 'outbound', 'prospection', incoming.step::app.sequence_step,
-                $4::uuid, $5, array[$6]::text[], $7, incoming.body,
-                coalesce((select max(m.content_version) from app.email_messages m
-                          where m.conversation_id = conversation_row.id and m.step = incoming.step::app.sequence_step), 0) + 1,
-                'draft', 'application'
-         from conversation_row cross join incoming returning id
-       )
-       select id::text, version::int from updated`,
-      [id, value.version, context.campaign_id, context.sender_account_id, context.sender_email,
-        context.email, value.subject, JSON.stringify(rows)],
-    );
+    let updated: { id: string; version: number } | null;
+    try {
+      const row = await sqlOne<{ revision: { prospectId: string; prospectVersion: number } }>(
+        `select crm_api.crm_pending_sequence_revise($1::uuid, $2::uuid, $3::bigint, $4::jsonb) as revision`,
+        [context.campaign_id, id, value.version, JSON.stringify({ subject: value.subject, steps: value.messages })],
+      );
+      updated = row ? { id: row.revision.prospectId, version: row.revision.prospectVersion } : null;
+    } catch (error) {
+      const message = error instanceof Error ? error.message : "";
+      if (message.includes("crm_prospect_version_conflict")) {
+        throw new HttpError(409, "version_conflict", "Le prospect a été modifié ailleurs. Recharge la séquence.");
+      }
+      if (message.includes("crm_invalid_")) {
+        throw new HttpError(422, "invalid_sequence", "La séquence doit contenir un objet et six messages non vides.");
+      }
+      if (/crm_(sequence_|manual_validation_required|incomplete_sequence|conversation_not_found)/.test(message)) {
+        throw new HttpError(409, "sequence_not_editable", "Seules les séquences terminées, non validées et non envoyées en validation manuelle sont modifiables.");
+      }
+      throw error;
+    }
     if (!updated) throw new HttpError(409, "version_conflict", "Le prospect a été modifié ailleurs.");
     await logMutation(identity, requestId, { action: "prospect_sequence_updated", entityType: "prospect", entityId: id, metadata: { version: updated.version } });
     return json({ prospect: updated });
@@ -1044,7 +1036,19 @@ async function privateRoute(request: Request, parts: string[], identity: AdminId
   if (parts[0] === "campaign-folders" && parts.length === 2) return campaignFolders(request, routeUuid(parts[1]), identity, requestId);
   if (parts[0] === "prospects" && parts[1] === "bulk-status" && parts.length === 2) { requireMethod(request, "POST"); return bulkProspectStatus(request, identity, requestId); }
   if (parts[0] === "prospects" && parts.length === 2) { requireMethod(request, "PATCH"); return updateProspect(request, routeUuid(parts[1]), identity, requestId); }
-  if (parts[0] === "exclusions" && parts.length === 1) { requireMethod(request, "POST"); return createExclusion(request, identity, requestId); }
+  if (parts[0] === "exclusions" && parts.length === 1) {
+    if (request.method === "GET") {
+      const params = Object.fromEntries(new URL(request.url).searchParams);
+      const parsed = z.object({
+        q: z.string().trim().max(500).default(""),
+        page: z.coerce.number().int().min(1).max(1_000_000).default(1),
+      }).safeParse(params);
+      if (!parsed.success) throw new HttpError(400, "invalid_query", "Recherche ou page invalide.");
+      return json(await loadBlacklist(parsed.data.q, parsed.data.page));
+    }
+    requireMethod(request, "POST");
+    return createExclusion(request, identity, requestId);
+  }
   if (parts[0] === "exclusions" && parts.length === 2) { requireMethod(request, "DELETE"); return revokeExclusion(routeUuid(parts[1]), identity, requestId); }
   if (parts[0] === "gmail-accounts" && parts.length === 1) { requireMethod(request, "POST"); return createGmailAccount(request, identity, requestId); }
   if (parts[0] === "gmail-accounts" && parts.length === 3 && parts[2] === "test") { requireMethod(request, "POST"); return testGmailAccount(routeUuid(parts[1]), identity, requestId); }

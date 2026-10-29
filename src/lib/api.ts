@@ -1,5 +1,5 @@
 import { getAccessToken } from "./auth";
-import type { ApiErrorPayload, Campaign, DashboardData, GmailTestSendResult, GmailVerificationResult, ImportPreview } from "../types";
+import type { ApiErrorPayload, BlacklistPage, Campaign, DashboardData, GmailTestSendResult, GmailVerificationResult, ImportPreview } from "../types";
 
 export class ApiError extends Error {
   readonly status: number;
@@ -35,6 +35,8 @@ async function request<T>(path: string, init: RequestInit = {}): Promise<T> {
 
 export const api = {
   dashboard: () => request<DashboardData>("/dashboard"),
+  blacklist: (query: string, page: number, signal?: AbortSignal) =>
+    request<BlacklistPage>(`/exclusions?${new URLSearchParams({ q: query, page: String(page) })}`, { signal }),
   updateSettings: (payload: Record<string, unknown>) =>
     request<{ settings: DashboardData["settings"] }>("/settings", {
       method: "PATCH",

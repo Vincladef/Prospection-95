@@ -66,6 +66,19 @@ export interface CampaignFolder {
   position: number;
 }
 
+export interface BlacklistEntry {
+  id: string;
+  matchType: "email" | "domain";
+  matchValue: string;
+  reason: string | null;
+  createdAt: string;
+}
+
+export interface BlacklistPage {
+  entries: BlacklistEntry[];
+  total: number;
+}
+
 export interface Prospect {
   id: string;
   campaignId: string | null;

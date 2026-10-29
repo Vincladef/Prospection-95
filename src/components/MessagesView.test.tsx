@@ -74,6 +74,21 @@ describe("MessagesView statuses", () => {
 
   afterEach(cleanup);
 
+  it("keeps revised drafts in the pending list without restarting completed AI passes", () => {
+    renderMessages({
+      ...baseProspect,
+      messageStatus: "draft",
+      writingIterationStatus: "completed",
+      writingIterationsCompleted: 3,
+      hasOutboundMessages: true,
+    });
+    fireEvent.click(screen.getByRole("button", { name: /En attente/ }));
+    expect(screen.getByRole("combobox", { name: "Statut de Prospect Test" })).toHaveValue("draft");
+    expect(screen.getByRole("option", { name: "Brouillon" })).toBeInTheDocument();
+    expect(screen.queryByRole("option", { name: "En attente… 0/3" })).not.toBeInTheDocument();
+    expect(apiMocks.updateProspect).not.toHaveBeenCalled();
+  });
+
   it("shows the persisted per-prospect iteration progress without row selection controls", () => {
     renderMessages(baseProspect);
 

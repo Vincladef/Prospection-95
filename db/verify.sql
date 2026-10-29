@@ -6,7 +6,7 @@ SELECT to_regnamespace('app') IS NOT NULL
    AND to_regnamespace('agent_api') IS NOT NULL
    AND to_regnamespace('audit') IS NOT NULL AS all_schemas_exist;
 
-SELECT count(*) = 26 AS all_migrations_registered
+SELECT count(*) = 28 AS all_migrations_registered
 FROM app.schema_migrations
 WHERE version IN (
   '001_foundation',
@@ -34,7 +34,9 @@ WHERE version IN (
   '023_final_prospecting_cycle',
   '024_structured_campaign_editing',
   '025_extended_writing_iterations',
-  '026_flexible_experiment_populations'
+  '026_flexible_experiment_populations',
+  '027_crm_pending_sequence_revisions',
+  '028_crm_sequence_view_permissions'
 );
 
 SELECT EXISTS (
@@ -321,3 +323,13 @@ SELECT to_regclass('app.experiments_one_open_per_campaign_uq') IS NOT NULL
       WHERE status IN ('recruiting','threshold_reached','awaiting_observations','mature')
       GROUP BY campaign_id HAVING count(*) > 1
    ) AS one_open_experiment_per_campaign_is_enforced;
+
+SELECT has_table_privilege('prospection95_crm','crm_api.pending_sequences','SELECT')
+   AND has_function_privilege('prospection95_crm','crm_api.crm_pending_sequence_revise(uuid,uuid,bigint,jsonb)','EXECUTE')
+   AND has_function_privilege('prospection95_app','crm_api.crm_pending_sequence_revise(uuid,uuid,bigint,jsonb)','EXECUTE')
+   AND NOT has_table_privilege('prospection95_crm','app.email_messages','UPDATE')
+   AS individual_sequence_editor_is_available;
+
+SET LOCAL ROLE prospection95_crm;
+SELECT count(*) >= 0 AS crm_can_read_pending_sequences FROM crm_api.pending_sequences;
+RESET ROLE;

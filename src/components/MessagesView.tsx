@@ -47,6 +47,7 @@ function filterStatus(prospect: Prospect, filter: string) {
   if (filter === "pending") return !prospect.excluded && (
     !isPreparationComplete(prospect)
     || !prospect.hasOutboundMessages
+    || prospect.messageStatus === "draft"
     || prospect.messageStatus === "pending_approval"
     || prospect.messageStatus === "prepared"
   );
