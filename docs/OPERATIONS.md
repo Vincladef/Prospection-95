@@ -8,6 +8,12 @@ Un déploiement, un import ou une migration ne modifie jamais ces valeurs. Le bo
 
 ## Cadence d'envoi
 
+Dans le CRM, la cellule de statut affiche aussi la dernière étape envoyée
+(par exemple « J0 envoyé », puis « R1 · Validé »). Le menu agit toujours sur les
+messages restant à envoyer, sans modifier les étapes déjà expédiées. Le filtre
+« Expédiés / réponses » et le compteur d'envois incluent les séquences dont une
+étape est partie, même si les relances restent validées ou programmées.
+
 Le worker `dispatch-outbox` est appelé chaque minute. Chaque appel tire une
 opportunité d'envoi avec une probabilité de 1/5, puis attend entre 0 et 3 secondes
 avant d'interroger la file. Avec une file disponible, l'intervalle moyen reste

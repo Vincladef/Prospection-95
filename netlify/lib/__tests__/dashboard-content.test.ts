@@ -68,6 +68,8 @@ describe("prospect content displayed by dashboard", () => {
     ];
     const [p] = await displayed();
     expect(p.messageStatus).toBe("scheduled");
+    expect(p.statusStep).toBe("R1");
+    expect(p.lastSentStep).toBe("J0");
     expect(p.lastSentAt).toBe("2026-10-29T15:25:12.158Z");
   });
 

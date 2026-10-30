@@ -242,6 +242,27 @@ describe("MessagesView statuses", () => {
     expect(apiMocks.updateProspect).not.toHaveBeenCalled();
   });
 
+  it("shows the initial send alongside the actionable follow-up and includes it in sent results", () => {
+    renderMessages({ ...baseProspect, messageStatus: "approved", statusStep: "R1", lastSentStep: "J0",
+      lastSentAt: "2026-10-30T07:00:00Z", hasOutboundMessages: true,
+      writingIterationStatus: "completed", writingIterationsCompleted: 3 });
+    expect(screen.getByText("J0 envoyé")).toBeInTheDocument();
+    expect(screen.getByText("R1 · Validé")).toBeInTheDocument();
+    expect(screen.getByRole("combobox", { name: "Statut de Prospect Test" })).toBeEnabled();
+    fireEvent.click(screen.getByRole("button", { name: "Expédiés / réponses" }));
+    expect(screen.getByText("J0 envoyé")).toBeInTheDocument();
+    expect(apiMocks.bulkStatus).not.toHaveBeenCalled();
+  });
+
+  it("retains the confirmed progress when a follow-up is changed to draft or fails", () => {
+    renderMessages({ ...baseProspect, messageStatus: "failed", statusStep: "R2", lastSentStep: "R1",
+      lastSentAt: "2026-10-30T07:00:00Z", hasOutboundMessages: true,
+      writingIterationStatus: "completed", writingIterationsCompleted: 3 });
+    expect(screen.getByText("R1 envoyé")).toBeInTheDocument();
+    expect(screen.getByText("R2 · Erreur")).toBeInTheDocument();
+    expect(screen.getByRole("combobox", { name: "Statut de Prospect Test" })).toBeDisabled();
+  });
+
   it("keeps a confirmed sent status locked", () => {
     renderMessages({
       ...baseProspect,

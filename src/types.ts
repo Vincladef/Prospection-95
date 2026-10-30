@@ -90,6 +90,8 @@ export interface Prospect {
   website: string | null;
   contactState: string;
   messageStatus: MessageStatus | null;
+  statusStep?: string | null;
+  lastSentStep?: string | null;
   step: string | null;
   lastSentAt: string | null;
   senderEmail: string | null;

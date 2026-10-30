@@ -432,6 +432,8 @@ export async function loadDashboard(): Promise<Record<string, unknown>> {
       website: nullableText(row.website_url),
       contactState: textValue(row.contact_state),
       messageStatus: summary.status,
+      statusStep: summary.statusStep,
+      lastSentStep: summary.lastSentStep,
       step: nullableText(row.current_step),
       lastSentAt: isoValue(summary.lastSentAt),
       senderEmail: nullableText(row.sender_email),
@@ -607,7 +609,7 @@ export async function loadDashboard(): Promise<Record<string, unknown>> {
         )
       ).length,
       scheduled: prospects.filter((row) => ["approved", "scheduled", "reserved", "sending"].includes(row.messageStatus ?? "")).length,
-      sent: prospects.filter((row) => ["smtp_accepted", "sent_manually"].includes(row.messageStatus ?? "")).length,
+      sent: prospects.filter((row) => row.lastSentStep || ["smtp_accepted", "sent_manually"].includes(row.messageStatus ?? "")).length,
       replied: prospects.filter((row) => row.contactState === "replied" || row.messageStatus === "received").length,
       excluded: prospects.filter((row) => row.excluded).length,
     },

@@ -5983,6 +5983,8 @@ body {
 .message-table.data-grid tbody td.status-cell.status-uncertain { background:#ffcfcf; color:#7b2121; }
 .message-table.data-grid tbody td.status-cell.status-cancelled { background:#ededed; color:#333; }
 .sheet-status-label { display:block; padding:10px 22px 10px 8px; font-weight:650; }
+.sheet-delivery-label { display:block; padding:8px 22px 0 8px; font-weight:700; }
+.sheet-delivery-label + .sheet-status-label { padding-top:3px; font-size:11px; }
 .status-cell .status-select { position:absolute; right:0; top:0; width:24px; min-width:0; height:100%; border:0; box-shadow:none; background:transparent; color:inherit; font-size:0; cursor:pointer; }
 .status-cell .status-select option { font-size:13px; color:#222; background:white; }
 .message-table.data-grid tbody td.sheet-selected { box-shadow:inset 2px 0 #1a73e8,inset -2px 0 #1a73e8; z-index:10; }

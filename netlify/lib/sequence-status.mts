@@ -24,5 +24,7 @@ export function sequenceStatus(rows: SequenceStatusRow[]) {
   const timestamps = ordered.filter(sent).map(row => row.smtp_accepted_at || row.sent_at)
     .filter((value): value is string => !!value && Number.isFinite(Date.parse(value)));
   const lastSentAt = timestamps.sort((a,b) => Date.parse(b)-Date.parse(a))[0] ?? null;
-  return { status: current?.status ?? null, lastSentAt };
+  const lastSent = ordered.filter(sent).at(-1);
+  return { status: current?.status ?? null, lastSentAt,
+    statusStep: current?.step ?? null, lastSentStep: lastSent?.step ?? null };
 }

@@ -47,7 +47,7 @@ function filterStatus(prospect: Prospect, filter: string) {
     || prospect.messageStatus === "prepared"
   );
   if (filter === "ready") return prospect.messageStatus === "approved" || prospect.messageStatus === "scheduled";
-  if (filter === "sent") return ["smtp_accepted", "received", "sent_manually"].includes(prospect.messageStatus || "");
+  if (filter === "sent") return !!prospect.lastSentStep || ["smtp_accepted", "received", "sent_manually"].includes(prospect.messageStatus || "");
   return prospect.excluded || ["failed", "uncertain"].includes(prospect.messageStatus || "");
 }
 
@@ -121,7 +121,8 @@ const MessageRow = memo(function MessageRow({
           if ((event.target as HTMLElement).tagName === "SELECT" && selected && !event.shiftKey) return;
           sheet.start(index,event);
         }}>
-        <span className="sheet-status-label">{prospect.excluded ? "Exclu" : preparing ? preparationLabel(prospect) : statusLabel(preview && canEditStatus(prospect) ? sheet.previewStatus : prospect.messageStatus)}</span>
+        {prospect.lastSentStep ? <span className="sheet-delivery-label" title={prospect.lastSentAt ? `Envoi confirmé le ${new Date(prospect.lastSentAt).toLocaleString("fr-FR", { timeZone: "Europe/Paris" })}` : "Envoi confirmé"}>{prospect.lastSentStep} envoyé</span> : null}
+        <span className="sheet-status-label">{prospect.excluded ? "Exclu" : preparing ? preparationLabel(prospect) : <>{prospect.lastSentStep && prospect.statusStep && prospect.statusStep !== prospect.lastSentStep ? `${prospect.statusStep} · ` : ""}{statusLabel(preview && canEditStatus(prospect) ? sheet.previewStatus : prospect.messageStatus)}</>}</span>
         <select
           className={`status-select status-${prospect.messageStatus || "empty"}`}
           value={selectValue}

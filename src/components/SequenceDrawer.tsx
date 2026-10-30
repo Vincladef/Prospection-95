@@ -62,6 +62,8 @@ export function SequenceDrawer({ prospect, onClose, onSave }: SequenceDrawerProp
           <button type="button" className="window-close" aria-label="Fermer" onClick={onClose}>×</button>
         </header>
         <div className="drawer-toolbar">
+          {prospect.lastSentStep ? <span>{prospect.lastSentStep} envoyé</span> : null}
+          {prospect.lastSentStep && prospect.statusStep && prospect.statusStep !== prospect.lastSentStep ? <span>{prospect.statusStep}</span> : null}
           <StatusBadge status={prospect.messageStatus} />
           <span>Campagne : {prospect.campaignName || "Sans campagne"}</span>
           <span>Expéditeur : {prospect.senderEmail || "Non attribué"}</span>
