@@ -204,6 +204,15 @@ describe("MessagesView statuses", () => {
     expect(apiMocks.updateProspect).not.toHaveBeenCalled();
   });
 
+  it.each([3, 5])("shows the completed %i iterations in the actual status cell", (total) => {
+    const { container } = render(<MessagesView campaigns={[]} prospects={[{
+      ...baseProspect, messageStatus: "pending_approval", writingIterationStatus: "completed",
+      writingIterationsCompleted: total, writingIterationsTotal: total, hasOutboundMessages: true,
+    }]} totals={{prospects:1,pendingApproval:1,scheduled:0,sent:0,replied:0,excluded:0}}
+      onOpenCampaign={vi.fn()} onMutated={vi.fn()} />);
+    expect(container.querySelector(".sheet-status-label")).toHaveTextContent(`En attente… ${total}/${total}`);
+  });
+
   it("restores the individual menu after all passes and messages exist", async () => {
     const ready = {
       ...baseProspect,

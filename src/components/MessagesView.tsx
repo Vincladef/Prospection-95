@@ -92,6 +92,8 @@ const MessageRow = memo(function MessageRow({
   const index = rowNumber - 1;
   const selected = !!sheet.range && index >= Math.min(...sheet.range) && index <= Math.max(...sheet.range);
   const preview = !!sheet.preview && index >= Math.min(...sheet.preview) && index <= Math.max(...sheet.preview);
+  const displayedStatus = preview && canEditStatus(prospect) ? sheet.previewStatus : prospect.messageStatus;
+  const displayedLabel = displayedStatus === "pending_approval" ? preparationLabel(prospect) : statusLabel(displayedStatus);
   return (
     <tr className={prospect.excluded ? "excluded-row" : ""}>
       <td className="sticky-col sticky-index pin-no">
@@ -122,7 +124,7 @@ const MessageRow = memo(function MessageRow({
           sheet.start(index,event);
         }}>
         {prospect.lastSentStep ? <span className="sheet-delivery-label" title={prospect.lastSentAt ? `Envoi confirmé le ${new Date(prospect.lastSentAt).toLocaleString("fr-FR", { timeZone: "Europe/Paris" })}` : "Envoi confirmé"}>{prospect.lastSentStep} envoyé</span> : null}
-        <span className="sheet-status-label">{prospect.excluded ? "Exclu" : preparing ? preparationLabel(prospect) : <>{prospect.lastSentStep && prospect.statusStep && prospect.statusStep !== prospect.lastSentStep ? `${prospect.statusStep} · ` : ""}{statusLabel(preview && canEditStatus(prospect) ? sheet.previewStatus : prospect.messageStatus)}</>}</span>
+        <span className="sheet-status-label">{prospect.excluded ? "Exclu" : preparing ? preparationLabel(prospect) : <>{prospect.lastSentStep && prospect.statusStep && prospect.statusStep !== prospect.lastSentStep ? `${prospect.statusStep} · ` : ""}{displayedLabel}</>}</span>
         <select
           className={`status-select status-${prospect.messageStatus || "empty"}`}
           value={selectValue}
