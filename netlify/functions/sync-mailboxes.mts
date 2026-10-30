@@ -11,6 +11,7 @@ interface ClaimedMailbox {
   mailbox_name: string;
   uidvalidity: string | null;
   last_uid: number | null;
+  recent_since: string;
 }
 
 async function claimMailbox(): Promise<ClaimedMailbox | null> {
@@ -18,10 +19,13 @@ async function claimMailbox(): Promise<ClaimedMailbox | null> {
     with candidate as (
       select a.id as account_id, a.email, a.credential_id,
              box.mailbox_name,
-             c.uidvalidity, c.last_uid
+             c.uidvalidity, c.last_uid,
+             coalesce((select min(m.smtp_accepted_at) from app.email_messages m
+               where m.sender_account_id = a.id and m.technical_confirmation),
+               clock_timestamp() - interval '7 days') as recent_since
       from app.gmail_accounts a
       cross join lateral (
-        select mailbox_name from (values ('INBOX'), ('__SENT__')) boxes(mailbox_name)
+        select mailbox_name from (values ('INBOX'), ('__SENT__'), ('__LIVE_ALL__')) boxes(mailbox_name)
         where boxes.mailbox_name = 'INBOX' or a.role in ('sender','primary')
       ) box
       left join app.imap_cursors c on c.account_id = a.id and c.mailbox_name = box.mailbox_name
@@ -42,7 +46,7 @@ async function claimMailbox(): Promise<ClaimedMailbox | null> {
       returning account_id, mailbox_name, uidvalidity::text, last_uid
     )
     select claimed.account_id::text, candidate.email, candidate.credential_id::text,
-           claimed.mailbox_name, claimed.uidvalidity, claimed.last_uid
+           claimed.mailbox_name, claimed.uidvalidity, claimed.last_uid, candidate.recent_since
     from claimed join candidate on candidate.account_id = claimed.account_id
       and candidate.mailbox_name = claimed.mailbox_name
   `);
@@ -92,11 +96,15 @@ export default async function syncMailboxes(_request: Request, _context: Context
       email: claimed.email,
       credentialId: claimed.credential_id,
       cursor: { mailbox: claimed.mailbox_name, uidValidity: claimed.uidvalidity, lastUid: Number(claimed.last_uid ?? 0) },
-      maxMessages: 10,
+      maxMessages: claimed.mailbox_name === "__LIVE_ALL__" ? 50 : 10,
+      bootstrapSince: claimed.mailbox_name === "__LIVE_ALL__" ? new Date(claimed.recent_since) : undefined,
     });
     let recorded = 0;
     const sentMailbox = claimed.mailbox_name === "__SENT__";
     for (const message of delta.messages) {
+      // All Mail also contains our outbound copies. They belong to the Sent
+      // reconciler, never to inbound reply detection.
+      if (!sentMailbox && message.from.some(from => from.toLowerCase() === claimed!.email.toLowerCase())) continue;
       const conversationId = await matchingConversation(claimed.account_id, claimed.email, message, sentMailbox);
       if (sentMailbox) {
         if (!conversationId || !message.from.length || !message.to.length) continue;
@@ -169,4 +177,4 @@ export default async function syncMailboxes(_request: Request, _context: Context
   }
 }
 
-export const config: Config = { schedule: "*/10 * * * *", background: true };
+export const config: Config = { schedule: "* * * * *", background: true };

@@ -23,6 +23,17 @@ beforeEach(() => {
 });
 
 describe("prospect content displayed by dashboard", () => {
+  it("prioritizes a received reply over the next approved follow-up without hiding the sent initial", async () => {
+    rows[0].has_reply = true;
+    messages = [
+      { campaign_id: "c1", prospect_id: "p1", step: "J0", content_version: 6, status: "smtp_accepted", technical_confirmation: true, smtp_accepted_at: "2026-10-30T07:00:00Z" },
+      { campaign_id: "c1", prospect_id: "p1", step: "R1", content_version: 6, status: "approved" },
+    ];
+    const [p] = await displayed();
+    expect(p.messageStatus).toBe("received");
+    expect(p.statusStep).toBeNull();
+    expect(p.lastSentStep).toBe("J0");
+  });
   it("shows every intermediate pass before final messages exist", async () => {
     for (const pass of [1, 2, 3, 4, 5]) {
       rows[0].output_sequence = sequence(`passe ${pass}`);

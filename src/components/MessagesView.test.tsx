@@ -272,6 +272,13 @@ describe("MessagesView statuses", () => {
     expect(screen.getByRole("combobox", { name: "Statut de Prospect Test" })).toBeDisabled();
   });
 
+  it("shows a received reply and prevents bulk status changes from reviving follow-ups", () => {
+    renderMessages({ ...baseProspect, messageStatus: "received", lastSentStep: "J0", statusStep: null,
+      hasOutboundMessages: true, writingIterationStatus: "completed", writingIterationsCompleted: 3 });
+    expect(document.querySelector(".sheet-status-label")).toHaveTextContent("Répondu");
+    expect(screen.getByRole("combobox", { name: "Statut de Prospect Test" })).toBeDisabled();
+  });
+
   it("keeps a confirmed sent status locked", () => {
     renderMessages({
       ...baseProspect,

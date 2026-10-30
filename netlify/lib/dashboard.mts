@@ -80,6 +80,10 @@ export async function loadDashboard(): Promise<Record<string, unknown>> {
              iteration_output.output_sequence, iteration_output.completed_at as iteration_completed_at,
              selected.campaign_id::text, selected.campaign_name,
              conv.id::text as conversation_id, conv.current_step::text,
+             conv.state::text as conversation_state,
+             exists(select 1 from app.email_messages reply
+               where reply.conversation_id = conv.id and reply.direction = 'inbound'
+                 and reply.kind = 'reply' and reply.status = 'received') as has_reply,
              ga.email as sender_email,
              coalesce(interactions.open_observed, false) as open_observed,
              coalesce(interactions.click_observed, false) as click_observed,
@@ -431,8 +435,8 @@ export async function loadDashboard(): Promise<Record<string, unknown>> {
       contactRaw: nullableText(row.contact_raw),
       website: nullableText(row.website_url),
       contactState: textValue(row.contact_state),
-      messageStatus: summary.status,
-      statusStep: summary.statusStep,
+      messageStatus: row.has_reply || row.conversation_state === "replied" ? "received" : summary.status,
+      statusStep: row.has_reply || row.conversation_state === "replied" ? null : summary.statusStep,
       lastSentStep: summary.lastSentStep,
       step: nullableText(row.current_step),
       lastSentAt: isoValue(summary.lastSentAt),

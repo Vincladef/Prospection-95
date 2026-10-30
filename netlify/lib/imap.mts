@@ -45,6 +45,12 @@ export function isPermanentBounceDiagnostic(isBounce: boolean, subject: string, 
 }
 
 async function mailboxPath(client: ImapFlow, requested: string): Promise<string> {
+  if (requested === "__LIVE_ALL__") {
+    const mailboxes = await client.list();
+    const all = mailboxes.find((mailbox) => mailbox.specialUse === "\\All");
+    if (!all) throw new Error("gmail_all_mailbox_not_found");
+    return all.path;
+  }
   if (requested !== "__SENT__") return requested;
   const mailboxes = await client.list();
   const sent = mailboxes.find((mailbox) => mailbox.specialUse === "\\Sent");
@@ -57,6 +63,7 @@ export async function fetchMailboxDelta(input: {
   credentialId: string;
   cursor: MailboxCursor;
   maxMessages?: number;
+  bootstrapSince?: Date;
 }): Promise<MailboxDelta> {
   const credential = await readCredential(input.credentialId);
   if (!["gmail_sender", "gmail_primary", "test_inbox"].includes(credential.kind)) {
@@ -103,13 +110,15 @@ export async function fetchMailboxDelta(input: {
       // take longer than Netlify's scheduled-function request window. UIDNEXT is
       // part of the mailbox STATUS, so an empty delta can be returned
       // immediately and non-empty searches can be bounded to a real UID.
-      const found = await client.search({ uid: `${startUid}:${mailboxLastUid}` }, { uid: true });
+      const found = await client.search({ uid: `${startUid}:${mailboxLastUid}`,
+        ...(input.bootstrapSince && (resetRequired || !input.cursor.lastUid) ? { since: input.bootstrapSince } : {}),
+      }, { uid: true });
       const candidateUids = (Array.isArray(found) ? found : [])
         .filter((uid) => uid >= startUid && uid <= mailboxLastUid)
         .sort((left, right) => left - right)
         .slice(0, maxMessages);
       const messages: SyncedMessage[] = [];
-      if (!candidateUids.length) return { uidValidity, lastUid, messages, resetRequired };
+      if (!candidateUids.length) return { uidValidity, lastUid: mailboxLastUid, messages, resetRequired };
       for await (const item of client.fetch(
         candidateUids.join(","),
         { uid: true, source: { start: 0, maxLength: 512_000 } },

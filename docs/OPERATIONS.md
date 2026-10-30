@@ -8,6 +8,16 @@ Un déploiement, un import ou une migration ne modifie jamais ces valeurs. Le bo
 
 ## Cadence d'envoi
 
+Les réponses Gmail sont synchronisées chaque minute, en alternant les flux par
+compte. Un curseur `__LIVE_ALL__` indépendant lit les messages récents de
+« Tous les messages » depuis le premier envoi confirmé du compte ; le rattrapage
+historique INBOX et la réconciliation Envoyés conservent leurs propres curseurs.
+Les copies sortantes sont ignorées par le flux entrant, les doublons restent
+filtrés par les identifiants des messages. Une réponse normale liée à la
+conversation déclenche l'arrêt existant des relances et le statut « Répondu »
+prime alors sur celui du prochain email. Les réponses automatiques et les
+absences restent distinctes des réponses normales.
+
 Dans le CRM, la cellule de statut affiche aussi la dernière étape envoyée
 (par exemple « J0 envoyé », puis « R1 · Validé »). Le menu agit toujours sur les
 messages restant à envoyer, sans modifier les étapes déjà expédiées. Le filtre
