@@ -43,7 +43,8 @@ const campaignFields = {
   writingIterations: z.array(z.string().max(200_000)).min(1).max(100).optional(),
   replyInstructions: z.string().max(200_000).default(""),
   replyMode: z.enum(["draft", "automatic"]).optional(),
-  replyIterations: z.array(z.string().max(200_000)).min(1).max(100).optional(),
+  replyAutoScope: z.enum(["first", "all"]).optional(),
+  replyIterations: z.array(z.string().max(400_000)).min(1).max(100).optional(),
   trackingOpensEnabled: z.boolean().default(true),
   trackingClicksEnabled: z.boolean().default(true),
   experimentPolicy: z.enum(["continue", "stabilize"]).default("continue"),
@@ -158,11 +159,11 @@ async function createCampaign(request: Request, identity: AdminIdentity, request
          (folder_id, name, status, target_description, daily_new_contact_goal,
           validation_policy, sender_strategy, fixed_sender_account_id, ai_instructions,
           writing_iteration_instructions, reply_instructions, tracking_opens_enabled, tracking_clicks_enabled,
-          experiment_policy, next_test_instructions, reply_mode, reply_iteration_instructions)
+          experiment_policy, next_test_instructions, reply_mode, reply_iteration_instructions, reply_auto_scope)
        values ($1::uuid, $2, $3::app.campaign_status, $4, $5,
                $6::app.validation_policy, $7::app.sender_strategy, $8::uuid, $9,
                coalesce($19::text[], app.extract_campaign_iteration_instructions($9)),
-               $10, $11, $12, $13, $14, coalesce($20, 'draft'), coalesce($21::text[], ARRAY['']::text[]))
+               $10, $11, $12, $13, $14, coalesce($20, 'draft'), coalesce($21::text[], ARRAY['']::text[]), coalesce($22, 'first'))
        returning id, version
      ), inserted_templates as (
        insert into app.message_templates (campaign_id, step, iteration, version, subject, body, instructions, created_by)
@@ -189,7 +190,7 @@ async function createCampaign(request: Request, identity: AdminIdentity, request
           ? JSON.stringify({ subject: value.sequence.subjectInstructions, body: value.sequence.stepInstructions[index] })
           : value.sequence.stepInstructions[index],
       }))), identity.email,
-      value.senderStrategy === "pool" ? value.senderAccountIds : [], value.writingIterations ?? null, value.replyMode ?? null, value.replyIterations ?? null],
+      value.senderStrategy === "pool" ? value.senderAccountIds : [], value.writingIterations ?? null, value.replyMode ?? null, value.replyIterations ?? null, value.replyAutoScope ?? null],
   );
   if (!row) throw new HttpError(500, "campaign_create_failed", "La campagne n’a pas pu être créée.");
   await logMutation(identity, requestId, { action: "campaign_created", entityType: "campaign", entityId: row.id, after: value });
@@ -209,6 +210,7 @@ async function updateCampaign(request: Request, id: string, identity: AdminIdent
          writing_iteration_instructions = coalesce($21::text[], writing_iteration_instructions),
          reply_instructions = $11,
          reply_mode = coalesce($22, reply_mode),
+         reply_auto_scope = coalesce($24, reply_auto_scope),
          reply_iteration_instructions = coalesce($23::text[], reply_iteration_instructions),
          tracking_opens_enabled = $12, tracking_clicks_enabled = $13,
          experiment_policy = $14, next_test_instructions = $15,
@@ -259,7 +261,7 @@ async function updateCampaign(request: Request, id: string, identity: AdminIdent
           ? JSON.stringify({ subject: value.sequence.subjectInstructions, body: value.sequence.stepInstructions[index] })
           : value.sequence.stepInstructions[index],
       }))), identity.email,
-      value.senderStrategy === "pool" ? value.senderAccountIds : [], value.writingIterations ?? null, value.replyMode ?? null, value.replyIterations ?? null],
+      value.senderStrategy === "pool" ? value.senderAccountIds : [], value.writingIterations ?? null, value.replyMode ?? null, value.replyIterations ?? null, value.replyAutoScope ?? null],
   );
   if (!row) throw new HttpError(409, "version_conflict", "La campagne a été modifiée ailleurs.");
   await logMutation(identity, requestId, { action: "campaign_updated", entityType: "campaign", entityId: id, before, after: value });

@@ -6001,3 +6001,8 @@ body {
 .reply-work { background:#fffbed; }
 
 .status-cell .sheet-status-label { white-space:normal; overflow-wrap:anywhere; }
+
+.reply-auto-scope { display:flex; flex-wrap:wrap; align-items:center; gap:8px; margin:10px 0 16px; font-size:12px; }
+.reply-auto-scope select { max-width:100%; }
+.reply-auto-scope small { flex-basis:100%; color:#647084; }
+.reply-step-actions { display:flex; align-items:center; gap:10px; margin:10px 0; flex-wrap:wrap; }

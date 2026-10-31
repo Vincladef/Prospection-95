@@ -37,6 +37,7 @@ export interface Campaign {
   writingIterations: string[];
   replyInstructions: string;
   replyMode: "draft" | "automatic";
+  replyAutoScope: "first" | "all";
   replyIterations: string[];
   trackingOpensEnabled: boolean;
   trackingClicksEnabled: boolean;

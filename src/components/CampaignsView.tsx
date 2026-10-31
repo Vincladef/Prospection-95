@@ -76,6 +76,7 @@ function campaignPayload(campaign: Campaign) {
     writingIterations: campaign.writingIterations,
     replyInstructions: campaign.replyInstructions,
     replyMode: campaign.replyMode,
+    replyAutoScope: campaign.replyAutoScope,
     replyIterations: campaign.replyIterations,
     trackingOpensEnabled: campaign.trackingOpensEnabled,
     trackingClicksEnabled: campaign.trackingClicksEnabled,
@@ -251,7 +252,7 @@ function CampaignEditor({
     if (key === "iterations") return { draftPasses: draft.writingIterations };
     if (key === "subject") return { subject: draft.sequence.subject, subjectInstructions: draft.sequence.subjectInstructions };
     if (key === "initial") return { body: draft.sequence.steps[0], bodyInstructions: draft.sequence.stepInstructions[0] };
-    if (key === "reply") return { replyInstructions: draft.replyInstructions };
+    if (key === "reply") return { replyIterations: draft.replyIterations };
     const index = Number(key.replace("followup", "")) + 1;
     return { body: draft.sequence.steps[index], instructions: draft.sequence.stepInstructions[index] };
   }
@@ -298,7 +299,14 @@ function CampaignEditor({
   const iterationsGroup = variantGroup(selectedOverrides, "iterations", { draftPasses: draft.writingIterations });
   const subjectGroup = variantGroup(selectedOverrides, "subject", { subject: draft.sequence.subject, subjectInstructions: draft.sequence.subjectInstructions });
   const initialGroup = variantGroup(selectedOverrides, "initial", { body: draft.sequence.steps[0], bodyInstructions: draft.sequence.stepInstructions[0] });
-  const replyGroup = variantGroup(selectedOverrides, "reply", { replyInstructions: draft.replyInstructions });
+  const replyOverride = variantGroup<Record<string, unknown>>(selectedOverrides, "reply", { replyIterations: draft.replyIterations });
+  const replySteps = Array.isArray(replyOverride.replyIterations) ? replyOverride.replyIterations as string[]
+    : draft.replyIterations.map((text,index) => index === 0 && typeof replyOverride.replyInstructions === "string"
+      ? [replyOverride.replyInstructions,text].filter(Boolean).join("\n\n") : text);
+  function setReplySteps(steps: string[]) {
+    if (isReferenceVariant) setDraft(current => ({ ...current, replyIterations: steps }));
+    else updateVariantGroup("reply", { replyIterations: steps });
+  }
 
   return (
     <form className="campaign-editor target-editor" onSubmit={(event) => void save(event)}>
@@ -539,22 +547,21 @@ function CampaignEditor({
         </section>
 
         <section className="target-section">
-          <div className="target-section-title"><h3>Instructions pour les réponses</h3></div>
-          {variantBlock("reply", "Instructions de réponse", <div className="target-field target-reply"><span>Comment répondre aux prospects selon leur réaction ?</span><textarea rows={7} value={replyGroup.replyInstructions} onChange={(event) => {
-            if (isReferenceVariant) setDraft((current) => ({ ...current, replyInstructions: event.target.value }));
-            else updateVariantGroup("reply", { ...replyGroup, replyInstructions: event.target.value });
-          }} /><InstructionAttachments attachments={attachments} scope="campaign" campaignId={campaign.id} fieldKey={attachmentField("reply")} /></div>)}
-        </section>
-        <section className="target-section">
-          <div className="target-section-title"><h3>Gestion des réponses</h3><small>Un cycle distinct pour chaque nouveau message reçu</small></div>
+          <div className="target-section-title"><h3>Instructions de réponse</h3><small>Une étape = une itération IA, pour chaque nouveau message reçu</small></div>
           <div className="v21-approval-options">
-            <label className="v21-choice"><input type="radio" name="reply-mode" checked={draft.replyMode === "draft"} onChange={() => setDraft(current => ({ ...current, replyMode: "draft" }))} /><span><strong>Brouillon Gmail</strong><small>Après les itérations, prépare un brouillon à relire et envoyer dans Gmail.</small></span></label>
-            <label className="v21-choice"><input type="radio" name="reply-mode" checked={draft.replyMode === "automatic"} onChange={() => setDraft(current => ({ ...current, replyMode: "automatic" }))} /><span><strong>Réponse automatique</strong><small>Envoie après les itérations, sans brouillon Gmail, avec une attente variable d’au moins 10 minutes et dans les plages autorisées.</small></span></label>
+            <label className="v21-choice"><input type="radio" name="reply-mode" checked={draft.replyMode === "draft"} onChange={() => setDraft(current => ({ ...current, replyMode: "draft" }))} /><span><strong>Brouillon Gmail</strong><small>Prépare une réponse à relire et envoyer dans Gmail.</small></span></label>
+            <label className="v21-choice"><input type="radio" name="reply-mode" checked={draft.replyMode === "automatic"} onChange={() => setDraft(current => ({ ...current, replyMode: "automatic" }))} /><span><strong>Réponse automatique</strong><small>Envoie sans brouillon Gmail, après une attente variable d’au moins 10 minutes et dans les plages autorisées.</small></span></label>
           </div>
-          <div className="v23-pass-config"><div className="v23-pass-head"><label>Nombre d’itérations de réponse <input type="number" min={1} max={maximumDraftPasses} value={draft.replyIterations.length} onChange={event => { const count=event.currentTarget.valueAsNumber; setDraft(current => ({ ...current, replyIterations: resizeDraftPasses(current.replyIterations, count) })); }} /></label><span className="target-pill">{draft.replyIterations.length} itération{draft.replyIterations.length > 1 ? "s" : ""}</span></div>
-            <div className="v23-pass-list">{draft.replyIterations.map((instruction,index) => <label className="v23-pass-step" key={index}><strong>Itération de réponse {index+1}</strong><small>{index === 0 ? "Rédige une réponse adaptée à l’échange et aux instructions ci-dessus." : "Améliore la dernière réponse archivée."}</small><textarea value={instruction} onChange={event => { const value=event.target.value; setDraft(current => ({ ...current, replyIterations: current.replyIterations.map((text,i) => i===index ? value : text) })); }} /></label>)}</div>
-            <p className="v23-pass-help">Une passe par exécution de la planification. Les échanges et les versions précédentes sont conservés.</p>
-          </div>
+          {draft.replyMode === "automatic" ? <label className="reply-auto-scope">Automatique pour <select value={draft.replyAutoScope} onChange={event => { const value=event.target.value as Campaign["replyAutoScope"]; setDraft(current => ({ ...current, replyAutoScope: value })); }}>
+            <option value="first">Le premier échange uniquement</option><option value="all">Tous les échanges</option>
+          </select><small>Les échanges suivants seront préparés en brouillons Gmail si tu limites l’automatique au premier.</small></label> : null}
+          {variantBlock("reply", "Instructions de réponse", <div className="v23-pass-config">
+            <div className="v23-pass-list">{replySteps.map((instruction,index) => <label className="v23-pass-step" key={index}><strong>Instructions de réponse {index+1}</strong><small>{index === 0 ? "Rédige une réponse adaptée à l’échange." : "Améliore la réponse obtenue à l’étape précédente."}</small><textarea value={instruction} onChange={event => { const value=event.target.value; setReplySteps(replySteps.map((text,i) => i===index ? value : text)); }} /></label>)}</div>
+            <div className="reply-step-actions"><button className="plain-btn" type="button" disabled={replySteps.length >= maximumDraftPasses} onClick={() => setReplySteps([...replySteps, ""])}>+ Ajouter une étape</button>
+            {replySteps.length > 1 ? <button className="plain-btn" type="button" onClick={() => setReplySteps(replySteps.slice(0,-1))}>Retirer la dernière étape</button> : null}<small>{replySteps.length} étape{replySteps.length > 1 ? "s" : ""}</small></div>
+            <InstructionAttachments attachments={attachments} scope="campaign" campaignId={campaign.id} fieldKey={attachmentField("reply")} />
+            <p className="v23-pass-help">Une étape par passage horaire. Les cycles commencés gardent leurs consignes ; les fichiers joints servent de contexte aux étapes de réponse.</p>
+          </div>)}
         </section>
       </div>
 

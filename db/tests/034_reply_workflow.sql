@@ -9,8 +9,8 @@ BEGIN
  SELECT id INTO sender FROM app.gmail_accounts WHERE status='active' AND credential_id IS NOT NULL LIMIT 1;
  UPDATE app.campaigns SET status='inactive' WHERE status IN ('active','existing_only');
  UPDATE app.gmail_accounts SET timezone='UTC',send_days=ARRAY[1,2,3,4,5,6,7]::smallint[],send_start='00:00',send_end='23:59',daily_limit=100,warmup_daily_limit=100 WHERE id=sender;
- INSERT INTO app.campaigns(name,status,sender_strategy,fixed_sender_account_id,reply_iteration_instructions)
- VALUES(k,'existing_only','fixed',sender,ARRAY['Première réponse','Affiner la réponse']) RETURNING id INTO cid;
+ INSERT INTO app.campaigns(name,status,sender_strategy,fixed_sender_account_id,reply_iteration_instructions,reply_auto_scope)
+ VALUES(k,'existing_only','fixed',sender,ARRAY['Première réponse','Affiner la réponse'],'all') RETURNING id INTO cid;
  INSERT INTO app.prospects(full_name,email,contact_raw,contact_kind) VALUES('Fixture',k||'@example.test',k||'@example.test','email') RETURNING id INTO pid;
  INSERT INTO app.conversations(campaign_id,prospect_id,sender_account_id) VALUES(cid,pid,sender) RETURNING id INTO conv;
  INSERT INTO app.email_messages(conversation_id,direction,kind,from_address,to_addresses,subject,body_text,status,received_at,internet_message_id)

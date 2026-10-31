@@ -412,6 +412,7 @@ export async function loadDashboard(): Promise<Record<string, unknown>> {
         : [textValue(row.ai_instructions)],
       replyInstructions: textValue(row.reply_instructions),
       replyMode: textValue(row.reply_mode, "draft"),
+      replyAutoScope: textValue(row.reply_auto_scope, "first"),
       replyIterations: Array.isArray(row.reply_iteration_instructions) ? row.reply_iteration_instructions.map(value => textValue(value)) : [""],
       trackingOpensEnabled: Boolean(row.tracking_opens_enabled),
       trackingClicksEnabled: Boolean(row.tracking_clicks_enabled),

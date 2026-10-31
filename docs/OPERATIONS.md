@@ -332,3 +332,26 @@ ignorer. Une réponse automatique ne peut être réservée qu'après un passage
 complet des Envoyés postérieur à sa date prévue et datant de moins de cinq
 minutes. Cela permet de détecter une intervention manuelle durant l'attente ;
 un rattrapage incomplet ou une panne de synchronisation conserve le job en file.
+
+## Portée automatique et instructions de réponse unifiées
+
+`reply_auto_scope` vaut `first` pour les nouvelles campagnes et pour les
+campagnes jusque-là en brouillon. Les campagnes déjà automatiques conservent
+`all` lors de la migration. Avec `first`, seule la réponse au premier message
+humain de la conversation peut partir automatiquement ; les suivantes restent
+en brouillon. Les refus et exclusions restent bloquants. Restreindre la portée
+convertit en brouillons les réponses ultérieures encore en file, sans toucher
+aux messages envoyés ni à ceux dont le transport a déjà commencé.
+
+La section unique Instructions de réponse propose une ou plusieurs étapes et
+les pièces jointes communes à ces étapes. Les variantes A/B conservent leurs
+surcharges. La migration 036 regroupe les consignes générales et la première
+étape sans changer le nombre d'étapes ; les workflows déjà commencés conservent
+leurs instructions, leur texte, leur compteur et une copie de leur contexte.
+Les anciens clients qui écrivent `replyInstructions` sont normalisés vers la
+première étape. Les fichiers binaires sans extraction restent disponibles comme
+pièces jointes, sans contenu textuel inventé pour l'IA.
+
+Le suivi des ouvertures et clics était déjà activé par défaut dans l'interface ;
+la création CRM est alignée sur ce défaut. Un choix explicite de désactivation
+reste respecté et aucune campagne existante ne voit son suivi modifié.

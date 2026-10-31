@@ -9,6 +9,7 @@ const apiMocks = vi.hoisted(() => ({
   moveCampaignToFolder: vi.fn(),
   updateExperimentVariant: vi.fn(),
   updateCampaign: vi.fn(),
+  uploadInstructionAttachment: vi.fn(),
 }));
 
 vi.mock("../lib/api", () => ({ api: apiMocks }));
@@ -28,6 +29,7 @@ const campaign: Campaign = {
   writingIterations: ["Prépare une première version."],
   replyInstructions: "",
   replyMode: "draft",
+  replyAutoScope: "first",
   replyIterations: [""],
   trackingOpensEnabled: false,
   trackingClicksEnabled: false,
@@ -91,24 +93,40 @@ describe("CampaignsView V53", () => {
     apiMocks.moveCampaignToFolder.mockResolvedValue({ campaign: { id: campaign.id, version: 2 } });
     apiMocks.addExperimentVariant.mockResolvedValue({ variant: { id: "cccccccc-cccc-4ccc-8ccc-cccccccccccc", label: "C", name: "Version C" } });
     apiMocks.updateCampaign.mockResolvedValue({ campaign: { id: campaign.id, version: 2 } });
+    apiMocks.uploadInstructionAttachment.mockResolvedValue({attachment:{id:"file-036"}});
   });
 
   afterEach(cleanup);
 
+  it("saves first-exchange automation without broadening it to later replies", async () => {
+    renderCampaigns();
+    fireEvent.click(screen.getByRole("radio",{name:/Réponse automatique/}));
+    expect(screen.getByRole("combobox",{name:/Automatique pour/})).toHaveValue("first");
+    fireEvent.click(screen.getAllByRole("button",{name:"Enregistrer"})[0]);
+    await waitFor(()=>expect(apiMocks.updateCampaign).toHaveBeenCalledWith(campaign.id,
+      expect.objectContaining({replyMode:"automatic",replyAutoScope:"first"})));
+  });
+
   it("defaults replies to a Gmail draft and saves independent reply iterations and automatic mode", async () => {
     renderCampaigns();
     expect(screen.getByRole("radio", {name:/Brouillon Gmail/})).toBeChecked();
-    const section=screen.getByRole("heading",{name:"Gestion des réponses"}).closest("section")!;
-    const previous=screen.getByRole("heading",{name:"Instructions pour les réponses"});
-    expect(previous.compareDocumentPosition(section) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy();
+    expect(screen.queryByRole("combobox",{name:/Automatique pour/})).not.toBeInTheDocument();
+    const section=screen.getByRole("heading",{name:"Instructions de réponse"}).closest("section")!;
+    expect(screen.queryByRole("heading",{name:"Instructions pour les réponses"})).not.toBeInTheDocument();
     fireEvent.click(screen.getByRole("radio",{name:/Réponse automatique/}));
-    fireEvent.change(screen.getByRole("spinbutton",{name:"Nombre d’itérations de réponse"}),{target:{value:"3"}});
+    expect(screen.getByRole("combobox",{name:/Automatique pour/})).toHaveValue("first");
+    fireEvent.change(screen.getByRole("combobox",{name:/Automatique pour/}),{target:{value:"all"}});
+    fireEvent.click(screen.getByRole("button",{name:"+ Ajouter une étape"}));
+    fireEvent.click(screen.getByRole("button",{name:"+ Ajouter une étape"}));
+    const file=new File(["Contexte de réponse"],"reponses.txt",{type:"text/plain"});
+    fireEvent.change(section.querySelector('input[type="file"]')!,{target:{files:[file]}});
+    await waitFor(()=>expect(apiMocks.uploadInstructionAttachment).toHaveBeenCalledWith({file,scope:"campaign",campaignId:campaign.id,fieldKey:"reply"}));
     const inputs=section.querySelectorAll("textarea");
     expect(inputs).toHaveLength(3);
     expect(Array.from(inputs,el=>el.value)).toEqual(["","",""]);
     fireEvent.change(inputs[1],{target:{value:"Affiner la réponse avec le contexte de l’échange"}});
     fireEvent.click(screen.getAllByRole("button",{name:"Enregistrer"})[0]);
-    await waitFor(()=>expect(apiMocks.updateCampaign).toHaveBeenCalledWith(campaign.id,expect.objectContaining({replyMode:"automatic",replyIterations:["","Affiner la réponse avec le contexte de l’échange",""],writingIterations:campaign.writingIterations})));
+    await waitFor(()=>expect(apiMocks.updateCampaign).toHaveBeenCalledWith(campaign.id,expect.objectContaining({replyMode:"automatic",replyAutoScope:"all",replyIterations:["","Affiner la réponse avec le contexte de l’échange",""],writingIterations:campaign.writingIterations})));
   });
 
   it("saves the existing-only campaign mode without changing writing instructions or the daily goal", async () => {
@@ -132,7 +150,7 @@ describe("CampaignsView V53", () => {
       "Itérations de rédaction IA",
       "Premier email",
       "Relances",
-      "Instructions pour les réponses",
+      "Instructions de réponse",
     ].map((label) => screen.getByText(label));
     orderedSections.slice(0, -1).forEach((section, index) => {
       expect(section.compareDocumentPosition(orderedSections[index + 1]) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy();
@@ -246,6 +264,7 @@ describe("CampaignsView V53", () => {
     await waitFor(() => expect(apiMocks.createCampaign).toHaveBeenCalledOnce());
     const payload = apiMocks.createCampaign.mock.calls[0][0];
     expect(payload).toMatchObject({
+      trackingOpensEnabled: true, trackingClicksEnabled: true,
       writingIterations: [""], aiInstructions: "", targetDescription: "", replyInstructions: "", nextTestInstructions: "",
       sequence: { subject: "", subjectInstructions: "", steps: ["", "", "", "", "", ""], stepInstructions: ["", "", "", "", "", ""] },
     });

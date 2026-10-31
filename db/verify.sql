@@ -1,6 +1,12 @@
 -- Vérifications non destructives à lancer après toutes les migrations.
 -- Chaque ligne doit retourner true ou la valeur documentée.
 
+SELECT to_regprocedure('app.reply_source_is_first_exchange(uuid)') IS NOT NULL
+  AND to_regprocedure('app.reply_attachment_context(uuid,uuid)') IS NOT NULL
+  AND NOT EXISTS(SELECT 1 FROM app.campaigns WHERE reply_instructions<>'')
+  AND position('reply_auto_scope' IN pg_get_functiondef('app.reply_job_is_ready(uuid)'::regprocedure))>0
+  AS reply_scope_and_unified_instructions_available;
+
 SELECT EXISTS(SELECT 1 FROM pg_enum WHERE enumtypid='app.campaign_status'::regtype AND enumlabel='existing_only')
   AND position('existing_only' IN pg_get_functiondef('app.schedule_due_messages(integer)'::regprocedure)) > 0
   AND position('existing_only' IN pg_get_functiondef('app.lease_outbox_jobs(text,integer,integer)'::regprocedure)) > 0
@@ -13,7 +19,7 @@ SELECT to_regnamespace('app') IS NOT NULL
    AND to_regnamespace('agent_api') IS NOT NULL
    AND to_regnamespace('audit') IS NOT NULL AS all_schemas_exist;
 
-SELECT count(*) = 35 AS all_migrations_registered
+SELECT count(*) = 36 AS all_migrations_registered
 FROM app.schema_migrations
 WHERE version IN (
   '001_foundation',
@@ -50,7 +56,8 @@ WHERE version IN (
   '032_reply_iteration_workflow',
   '033_reply_dispatch_guards',
   '034_reply_campaign_settings',
-  '035_live_sent_reply_safety'
+  '035_live_sent_reply_safety',
+  '036_reply_scope_and_unified_instructions'
 );
 
 SELECT EXISTS (
