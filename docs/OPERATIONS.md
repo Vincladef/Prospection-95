@@ -364,3 +364,21 @@ Le lien ouvre `https://emailwarmup.bobwork.ai/app` dans un nouvel onglet. La cas
 `bobwork_setup_confirmed` et reste modifiable. Elle est facultative et ne change
 ni les quotas ni les autorisations d'envoi ; les mesures et l'état technique
 BobWork restent issus de la synchronisation réelle, indépendamment de cette case.
+
+## Délivrabilité et budget IA
+
+L'indice est une estimation ChatGPT documentée, basée sur les observations Neon
+(BobWork, tests externes et SMTP), pas une moyenne ni un score BobWork supposé.
+Sans évaluation, le CRM affiche Non évalué ; les mesures brutes restent visibles.
+Les dix dernières décisions et leurs raisons sont affichées sur chaque compte ;
+l'historique complet est immuable dans `app.deliverability_decisions`.
+
+Le budget IA est indépendant des plafonds utilisateur. Sans décision, les anciens
+plafonds continuent de s'appliquer. Les décisions sont sérialisées par compte,
+idempotentes et protégées par le dernier identifiant attendu. Les références
+aux preuves sont contrôlées et les derniers BobWork et rapport externe disponibles
+sont obligatoires dans le contexte fourni. Aucun seuil de décision n'est imposé.
+Le moteur applique les plafonds à la réservation et recontrôle le volume avant
+SMTP, sans lever les pauses manuelles ou globales. Une hausse peut reprendre
+une suspension budgétaire IA ; elle ne modifie pas les plafonds du propriétaire.
+La planification existante conserve sa fréquence et réévalue chaque compte.

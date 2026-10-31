@@ -233,7 +233,8 @@ export async function loadDashboard(): Promise<Record<string, unknown>> {
       order by conv.campaign_id, conv.prospect_id, m.step, m.content_version desc, m.created_at desc, m.id desc
     `),
     sqlQuery(`
-      select ga.*,
+      select ga.*, policy.effective_daily_limit, policy.decision_id, policy.score as ai_score, policy.rationale as ai_rationale, policy.action as ai_action, policy.decided_at, policy.ai_daily_limit,
+             decision_history.items as deliverability_decisions,
              bw.connected as bobwork_connected,
              bw.warmup_state as bobwork_warmup_state,
              bw.metrics as bobwork_metrics,
@@ -252,6 +253,9 @@ export async function loadDashboard(): Promise<Record<string, unknown>> {
         limit 1
       ) bw on true
       left join app.bobwork_connections bc on bc.singleton
+      left join agent_api.account_volume_policy policy on policy.account_id=ga.id
+      left join lateral (select jsonb_agg(jsonb_build_object('id',d.id,'action',d.action,'limit',d.daily_limit,'score',d.score,'rationale',d.rationale,'evidence',d.evidence,'at',d.created_at) order by d.created_at desc) as items
+        from (select * from app.deliverability_decisions where account_id=ga.id order by created_at desc,id desc limit 10) d) decision_history on true
       left join lateral (
         select
           coalesce(jsonb_agg(jsonb_build_object(
@@ -517,6 +521,10 @@ export async function loadDashboard(): Promise<Record<string, unknown>> {
       status: textValue(row.status),
       hasCredential: row.credential_id != null,
       dailyLimit: numberValue(row.daily_limit),
+      effectiveDailyLimit: row.effective_daily_limit == null ? Math.min(numberValue(row.daily_limit),row.warmup_daily_limit == null ? numberValue(row.daily_limit) : numberValue(row.warmup_daily_limit)) : numberValue(row.effective_daily_limit),
+      deliverabilityScore: nullableNumber(row.ai_score),
+      deliverabilityAssessedAt: isoValue(row.decided_at),
+      deliverabilityDecisions: Array.isArray(row.deliverability_decisions) ? row.deliverability_decisions : [],
       warmupDailyLimit: row.warmup_daily_limit == null ? null : numberValue(row.warmup_daily_limit),
       sendDays: Array.isArray(row.send_days) ? row.send_days.map(numberValue) : [],
       sendStart: timeValue(row.send_start),
@@ -541,7 +549,7 @@ export async function loadDashboard(): Promise<Record<string, unknown>> {
       bobworkReadyForOutbound: nullableBoolean(firstMetric(bobworkMetrics,
         "ready_for_outbound", "readyForOutbound", "is_ready_for_outbound", "isReadyForOutbound")),
       bobworkHealthScore: nullableNumber(firstMetric(bobworkMetrics,
-        "health_score", "healthScore", "deliverability_score", "deliverabilityScore", "score")),
+        "health_score", "healthScore", "deliverability_score", "deliverabilityScore")),
       bobworkSpamRate7d: nullableNumber(firstMetric(bobworkMetrics,
         "spam_rate_7d_pct", "spam_rate_7d", "spamRate7d", "seven_day_spam_rate", "sevenDaySpamRate")),
       verifierResults: Array.isArray(row.verifier_results) ? row.verifier_results.map((result) => {

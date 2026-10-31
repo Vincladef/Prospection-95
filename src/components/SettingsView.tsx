@@ -393,7 +393,7 @@ function GmailPanel({ accounts, vaultConfigured, onMutated, onOpenDeliverability
       {!editorId ? <div className="account-list v16-account-list">
         {accounts.map((account) => {
           const state = accountState(account);
-          const score = account.bobworkHealthScore;
+          const score = account.deliverabilityScore ?? null;
           return (
             <article className={`v19-account-entry ${verifiedFlashId === account.id ? "verification-success" : ""}`} key={account.id}>
               <div className="v16-account-row">
@@ -401,12 +401,13 @@ function GmailPanel({ accounts, vaultConfigured, onMutated, onOpenDeliverability
                 <div className="sender-identity">
                   <strong>{account.email}</strong>
                   <div className="v14-account-summary"><span className={`v14-tag ${state.className}`}>{state.label}</span><small>{roleLabel(account)}</small></div>
-                  <div className="v42-account-quota"><strong>{account.dailyLimit} emails/jour max.</strong><small>{scheduleLabel(account)}</small></div>
+                  <div className="v42-account-quota"><strong>{account.dailyLimit} emails/jour max.</strong><small>{scheduleLabel(account)}</small><small>Budget appliqué : {account.effectiveDailyLimit ?? account.dailyLimit} emails/jour</small></div>
                 </div>
                 <div className="v19-overview">
                   <div className="v19-score-label">Indice de délivrabilité</div>
                   <strong className={`v19-score ${score === null ? "unknown" : "has-score"}`}>{score === null ? "Non évalué" : `${score}/100`}</strong>
-                  <small>{score === null ? "En attente de mesures réelles" : "Source : BobWork"}</small>
+                  <small>{score === null ? (account.bobworkObservedAt || account.verifierResults.length ? "Données disponibles · analyse IA à venir" : "Aucune mesure disponible") : "Estimation IA · données réelles"}</small>
+                  {account.deliverabilityAssessedAt ? <small>Analyse du {new Date(account.deliverabilityAssessedAt).toLocaleString("fr-FR",{timeZone:"Europe/Paris"})}</small> : null}
                 </div>
                 <div className="v16-account-actions">
                   {!account.hasCredential ? <button className="win-button primary" type="button" onClick={() => openEditor(account)}>Terminer la configuration</button> : null}
@@ -422,6 +423,7 @@ function GmailPanel({ accounts, vaultConfigured, onMutated, onOpenDeliverability
                   <div><b>Warm-up BobWork</b><span>{warmupLabel(account)}</span></div>
                   <div><b>Taux spam sur 7 jours</b><span>{account.bobworkSpamRate7d === null ? "Non mesuré" : `${account.bobworkSpamRate7d}%`}</span></div>
                   <div><b>Dernier contrôle</b><span>{account.bobworkObservedAt ? new Date(account.bobworkObservedAt).toLocaleString("fr-FR") : account.lastSyncAt ? new Date(account.lastSyncAt).toLocaleString("fr-FR") : "Aucune date enregistrée"}</span></div>
+                  <section className="verifier-results"><strong>Décisions de délivrabilité</strong>{account.deliverabilityDecisions?.length ? account.deliverabilityDecisions.map((decision,index) => <article className="reply-thread-message" key={decision.id}><b>{index===0 ? "Décision actuelle · " : ""}{{maintain:"Maintenir",reduce:"Réduire",suspend:"Suspendre",increase:"Augmenter progressivement"}[decision.action] || decision.action} · {decision.limit} emails/jour</b><small>{new Date(decision.at).toLocaleString("fr-FR",{timeZone:"Europe/Paris"})}{decision.score == null ? " · indice non évalué" : ` · estimation ${decision.score}/100`}</small><p>{decision.rationale}</p><small>Sources : {decision.evidence.map(e => e.kind === "bobwork" ? "BobWork" : e.kind === "diagnostic" ? "Test externe" : "SMTP").filter((s,i,a) => a.indexOf(s)===i).join(", ") || "Aucune observation disponible"}</small></article>) : <p>Aucune décision IA enregistrée. Le plafond utilisateur reste appliqué.</p>}</section>
                   <section className="verifier-results"><strong>Résultats des vérificateurs</strong>{account.verifierResults.length ? <div>{account.verifierResults.map((result, index) => <span className={`verifier-result ${result.status || result.overallState}`} key={`${result.provider}-${result.dimension}-${index}`}><b>{result.provider}</b><em>{result.dimension || result.overallState}</em><small>{result.status || result.overallState}{result.value ? ` · ${result.value}` : ""}</small></span>)}</div> : <p>Aucun résultat réel enregistré pour cette adresse. Les prochains diagnostics apparaîtront ici.</p>}</section>
                   <button className="win-button gmail-connection-test" type="button" disabled={busyId === account.id || !account.hasCredential} onClick={() => void test(account.id)}>{busyId === account.id ? "Vérification…" : "Tester maintenant SMTP / IMAP"}</button>
                   <form className="gmail-test-send" onSubmit={(event) => void sendTestEmail(event, account)}>

@@ -180,3 +180,45 @@ SELECT agent_api.complete_run(
 - BobWork sans synchronisation réelle : état inconnu et prérequis à signaler.
 
 Le compte rendu final est bref, en français, et sépare : observations confirmées, signaux à surveiller, opérations en attente, blocages et intervention humaine nécessaire.
+
+## Régulation intelligente des volumes — contrat prioritaire
+
+À chaque passage, relire `agent_api.account_volume_policy`, les dernières
+observations de CHAQUE fournisseur et leur historique utile depuis
+`agent_api.deliverability_evidence`, ainsi que l'historique
+`agent_api.deliverability_decisions`. Les sources sont BobWork, les rapports
+externes et les tentatives SMTP, avec identifiants, dates et données réelles.
+Ne pas confondre connexion BobWork, préchauffage et placement réellement mesuré.
+
+Décider librement pour chaque compte : maintenir, réduire, suspendre ou augmenter
+progressivement, sans barème, seuil de spam, pourcentage de hausse ou durée
+minimale codés en dur. Apprécier volumes observés, tendances, ancienneté des
+sources, restrictions confirmées et qualité des tests. Ne pas réduire ou suspendre
+par réflexe en cas de données manquantes ou de `ready_for_outbound=false` isolé.
+Lorsque les faits le permettent, relever progressivement une ancienne restriction
+IA et éviter de conserver indéfiniment un plafond devenu injustifié.
+
+Enregistrer via :
+`agent_api.decide_account_volume(account_id, expected_decision_id, action, daily_limit, score, rationale, evidence, run_id, idempotency_key)`.
+Actions : `maintain`, `reduce`, `suspend`, `increase`. Pour maintenir, le budget
+peut être NULL ; pour suspendre, zéro. Le budget est un total journalier pour le
+compte, pas un nombre supplémentaire. Relire decision_id avant chaque décision,
+utiliser une clé stable et relire la politique après l'appel. Un conflit impose
+une nouvelle lecture, jamais un écrasement aveugle.
+
+`score` est une estimation IA entre 0 et 100, jamais un score mesuré inventé ni
+une moyenne de mesures incompatibles. Laisser NULL si les sources ne permettent
+pas une synthèse honnête. Expliquer le score, les limites des sources, la décision
+et le volume choisi dans rationale. `evidence` référence les observations réelles :
+`[{"kind":"bobwork","id":"uuid"},{"kind":"diagnostic","id":"uuid"},{"kind":"smtp","id":"uuid"}]`.
+Inclure les derniers BobWork et rapport externe disponibles, et les sources
+historiques utiles. Ne pas inventer d'identifiant, de métrique ni de succès.
+
+Le backend applique le minimum du budget IA, du plafond quotidien utilisateur et
+de son plafond de préchauffage, en conservant horaires, quotas partagés et pauses.
+Ne jamais modifier ces plafonds utilisateur. Une suspension IA utilise ce budget
+zéro, afin de pouvoir être réévaluée et reprise par une décision ultérieure.
+Pour les incidents, préférer le signalement sans pause protectrice historique :
+la régulation passe par ce nouveau contrat. Ne lever aucune pause manuelle,
+aucun arrêt global ni aucune autre protection existante. Un transport SMTP déjà
+commencé peut finir ; les réservations sont revérifiées avant de le commencer.

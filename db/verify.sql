@@ -19,7 +19,7 @@ SELECT to_regnamespace('app') IS NOT NULL
    AND to_regnamespace('agent_api') IS NOT NULL
    AND to_regnamespace('audit') IS NOT NULL AS all_schemas_exist;
 
-SELECT count(*) = 37 AS all_migrations_registered
+SELECT count(*) = 38 AS all_migrations_registered
 FROM app.schema_migrations
 WHERE version IN (
   '001_foundation',
@@ -58,7 +58,8 @@ WHERE version IN (
   '034_reply_campaign_settings',
   '035_live_sent_reply_safety',
   '036_reply_scope_and_unified_instructions',
-  '037_gmail_bobwork_setup_confirmation'
+  '037_gmail_bobwork_setup_confirmation',
+  '038_deliverability_decisions'
 );
 
 SELECT EXISTS (
@@ -367,3 +368,7 @@ SELECT to_regclass('agent_api.pending_reply_iterations') IS NOT NULL
  AND has_function_privilege('prospection95_agent','agent_api.complete_reply_iteration(uuid,uuid,text,text,text)','EXECUTE')
  AND NOT has_function_privilege('prospection95_agent','agent_api.propose_reply_draft(uuid,text,text,text)','EXECUTE')
  AND NOT has_table_privilege('prospection95_agent','app.reply_workflows','INSERT') AS reply_iteration_contract_is_guarded;
+
+SELECT to_regclass('agent_api.account_volume_policy') IS NOT NULL AND
+ has_function_privilege('prospection95_agent','agent_api.decide_account_volume(uuid,uuid,text,integer,numeric,text,jsonb,uuid,text)','EXECUTE') AND
+ NOT has_table_privilege('prospection95_agent','app.deliverability_decisions','INSERT') AS deliverability_decisions_are_guarded;

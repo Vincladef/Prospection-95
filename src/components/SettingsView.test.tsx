@@ -67,6 +67,15 @@ const account: GmailAccount = {
 };
 
 describe("SettingsView Gmail V53", () => {
+  it("shows the justified AI index and applied budget instead of a presumed BobWork score", () => {
+    render(<SettingsView settings={settings} accounts={[{...account,bobworkHealthScore:99,
+      deliverabilityScore:75,effectiveDailyLimit:4,deliverabilityAssessedAt:"2026-10-31T12:00:00Z",
+      deliverabilityDecisions:[{id:"decision",action:"reduce",limit:4,score:75,rationale:"Réduction justifiée par les observations SMTP",evidence:[{kind:"smtp",id:"observation"}],at:"2026-10-31T12:00:00Z"}]}]} providers={[]} attachments={[]} prospects={[]} onMutated={vi.fn()} />);
+    expect(screen.getByText("75/100")).toBeInTheDocument();
+    expect(screen.queryByText("99/100")).not.toBeInTheDocument();
+    expect(screen.getByText("Budget appliqué : 4 emails/jour")).toBeInTheDocument();
+    expect(screen.getByText("Réduction justifiée par les observations SMTP")).toBeInTheDocument();
+  });
   beforeEach(() => {
     vi.clearAllMocks();
     apiMocks.saveGmailAccount.mockResolvedValue({ account: { id: account.id } });

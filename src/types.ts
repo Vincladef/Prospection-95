@@ -144,6 +144,10 @@ export interface GmailAccount {
   imapVerifiedAt: string | null;
   lastSyncAt: string | null;
   lastErrorCode: string | null;
+  effectiveDailyLimit?: number;
+  deliverabilityScore?: number | null;
+  deliverabilityAssessedAt?: string | null;
+  deliverabilityDecisions?: Array<{id:string;action:string;limit:number;score:number|null;rationale:string;evidence:Array<{kind:string;id:string}>;at:string}>;
   bobworkConnected: boolean | null;
   bobworkSetupConfirmed: boolean;
   bobworkWarmupState: string;
