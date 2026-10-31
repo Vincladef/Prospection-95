@@ -13,7 +13,7 @@ SELECT to_regnamespace('app') IS NOT NULL
    AND to_regnamespace('agent_api') IS NOT NULL
    AND to_regnamespace('audit') IS NOT NULL AS all_schemas_exist;
 
-SELECT count(*) = 31 AS all_migrations_registered
+SELECT count(*) = 35 AS all_migrations_registered
 FROM app.schema_migrations
 WHERE version IN (
   '001_foundation',
@@ -46,7 +46,11 @@ WHERE version IN (
   '028_crm_sequence_view_permissions',
   '029_crm_general_writing_instructions',
   '030_existing_only_campaign_status',
-  '031_existing_only_campaign_workflow'
+  '031_existing_only_campaign_workflow',
+  '032_reply_iteration_workflow',
+  '033_reply_dispatch_guards',
+  '034_reply_campaign_settings',
+  '035_live_sent_reply_safety'
 );
 
 SELECT EXISTS (
@@ -349,3 +353,9 @@ SELECT count(*)=1 AS crm_can_read_writing_settings FROM crm_api.writing_settings
 RESET ROLE;
 SELECT has_function_privilege('prospection95_crm','crm_api.crm_writing_instructions_update(bigint,text)','EXECUTE')
  AND NOT has_table_privilege('prospection95_crm','app.settings','UPDATE') AS crm_writing_access_is_limited;
+
+SELECT to_regclass('agent_api.pending_reply_iterations') IS NOT NULL
+ AND to_regprocedure('agent_api.claim_reply_iteration(uuid,uuid,text)') IS NOT NULL
+ AND has_function_privilege('prospection95_agent','agent_api.complete_reply_iteration(uuid,uuid,text,text,text)','EXECUTE')
+ AND NOT has_function_privilege('prospection95_agent','agent_api.propose_reply_draft(uuid,text,text,text)','EXECUTE')
+ AND NOT has_table_privilege('prospection95_agent','app.reply_workflows','INSERT') AS reply_iteration_contract_is_guarded;

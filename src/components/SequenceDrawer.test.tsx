@@ -8,6 +8,22 @@ const original = { id: "p1", name: "Test", subject: "Objet passe 1", messages: [
 const latest = { ...original, subject: "Objet passe 2", messages: ["Passe 2", "R1", "R2", "R3", "R4", "R5"] as Prospect["messages"], version: 3 };
 
 describe("live sequence contents", () => {
+  it("shows successive exchanged messages and the latest reply draft separately from the prospecting sequence", () => {
+    const save=vi.fn();
+    render(<SequenceDrawer prospect={{...original,
+      conversationMessages:[
+        {id:"in1",direction:"inbound",kind:"reply",subject:"Question",body:"Première question",at:"2026-10-30T08:00:00Z"},
+        {id:"out1",direction:"outbound",kind:"reply",subject:"Re: Question",body:"Réponse déjà envoyée",at:"2026-10-30T09:00:00Z"},
+        {id:"in2",direction:"inbound",kind:"reply",subject:"Suite",body:"Nouvelle question",at:"2026-10-30T10:00:00Z"}],
+      replyProgress:{state:"draft_created",completed:3,total:3,subject:"Re: Suite",body:"Dernière réponse IA",dueAt:null}
+    }} onSave={save} onClose={vi.fn()} />);
+    expect(screen.getByRole("heading",{name:"Échanges"})).toBeInTheDocument();
+    expect(screen.getAllByText("Message reçu")).toHaveLength(2);
+    expect(screen.getByText("Réponse déjà envoyée")).toBeInTheDocument();
+    expect(screen.getByText("Dernière réponse IA")).toBeInTheDocument();
+    expect(screen.getByDisplayValue("Passe 1")).toBeInTheDocument();
+    expect(save).not.toHaveBeenCalled();
+  });
   it("refreshes the open drawer when no local edits exist", async () => {
     const save = vi.fn(); const close = vi.fn();
     const view = render(<SequenceDrawer prospect={original} onSave={save} onClose={close} />);

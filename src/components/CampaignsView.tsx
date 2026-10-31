@@ -75,6 +75,8 @@ function campaignPayload(campaign: Campaign) {
     aiInstructions: campaign.aiInstructions,
     writingIterations: campaign.writingIterations,
     replyInstructions: campaign.replyInstructions,
+    replyMode: campaign.replyMode,
+    replyIterations: campaign.replyIterations,
     trackingOpensEnabled: campaign.trackingOpensEnabled,
     trackingClicksEnabled: campaign.trackingClicksEnabled,
     experimentPolicy: campaign.experimentPolicy,
@@ -542,6 +544,17 @@ function CampaignEditor({
             if (isReferenceVariant) setDraft((current) => ({ ...current, replyInstructions: event.target.value }));
             else updateVariantGroup("reply", { ...replyGroup, replyInstructions: event.target.value });
           }} /><InstructionAttachments attachments={attachments} scope="campaign" campaignId={campaign.id} fieldKey={attachmentField("reply")} /></div>)}
+        </section>
+        <section className="target-section">
+          <div className="target-section-title"><h3>Gestion des réponses</h3><small>Un cycle distinct pour chaque nouveau message reçu</small></div>
+          <div className="v21-approval-options">
+            <label className="v21-choice"><input type="radio" name="reply-mode" checked={draft.replyMode === "draft"} onChange={() => setDraft(current => ({ ...current, replyMode: "draft" }))} /><span><strong>Brouillon Gmail</strong><small>Après les itérations, prépare un brouillon à relire et envoyer dans Gmail.</small></span></label>
+            <label className="v21-choice"><input type="radio" name="reply-mode" checked={draft.replyMode === "automatic"} onChange={() => setDraft(current => ({ ...current, replyMode: "automatic" }))} /><span><strong>Réponse automatique</strong><small>Envoie après les itérations, sans brouillon Gmail, avec une attente variable d’au moins 10 minutes et dans les plages autorisées.</small></span></label>
+          </div>
+          <div className="v23-pass-config"><div className="v23-pass-head"><label>Nombre d’itérations de réponse <input type="number" min={1} max={maximumDraftPasses} value={draft.replyIterations.length} onChange={event => { const count=event.currentTarget.valueAsNumber; setDraft(current => ({ ...current, replyIterations: resizeDraftPasses(current.replyIterations, count) })); }} /></label><span className="target-pill">{draft.replyIterations.length} itération{draft.replyIterations.length > 1 ? "s" : ""}</span></div>
+            <div className="v23-pass-list">{draft.replyIterations.map((instruction,index) => <label className="v23-pass-step" key={index}><strong>Itération de réponse {index+1}</strong><small>{index === 0 ? "Rédige une réponse adaptée à l’échange et aux instructions ci-dessus." : "Améliore la dernière réponse archivée."}</small><textarea value={instruction} onChange={event => { const value=event.target.value; setDraft(current => ({ ...current, replyIterations: current.replyIterations.map((text,i) => i===index ? value : text) })); }} /></label>)}</div>
+            <p className="v23-pass-help">Une passe par exécution de la planification. Les échanges et les versions précédentes sont conservés.</p>
+          </div>
         </section>
       </div>
 

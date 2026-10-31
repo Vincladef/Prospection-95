@@ -78,6 +78,28 @@ describe("MessagesView statuses", () => {
 
   afterEach(cleanup);
 
+  it.each([
+    ["scheduled", "Réponse programmée · 3/3", "Validés", "status-scheduled"],
+    ["draft_created", "Brouillon Gmail prêt · 3/3", "Expédiés / réponses", "status-received"],
+    ["failed", "Réponse · erreur", "À vérifier", "status-failed"],
+  ])("keeps reply phase %s visible in the matching filter", (state,label,filter,color) => {
+    renderMessages({...baseProspect,messageStatus:"received",hasOutboundMessages:true,
+      writingIterationStatus:"completed",writingIterationsCompleted:3,
+      replyProgress:{state,completed:3,total:3,subject:"Réponse",body:"Dernière version",dueAt:null}});
+    fireEvent.click(screen.getByRole("button",{name:filter}));
+    const cell=document.querySelector("[data-status-index]")!;
+    expect(cell).toHaveClass(color);
+    expect(cell.querySelector(".sheet-status-label")).toHaveTextContent(label);
+  });
+
+  it("shows reply writing progress and keeps it locked independently from the prospecting sequence", () => {
+    renderMessages({...baseProspect,messageStatus:"received",hasOutboundMessages:true,
+      writingIterationStatus:"completed",writingIterationsCompleted:3,
+      replyProgress:{state:"running",completed:2,total:3,subject:"Re: proposition",body:"Version 2",dueAt:null}});
+    expect(document.querySelector(".sheet-status-label")).toHaveTextContent("Réponse IA en cours · 2/3");
+    expect(screen.getByRole("combobox",{name:"Statut de Prospect Test"})).toBeDisabled();
+  });
+
   it("sorts real timestamps in both directions with stable ties and missing dates last", () => {
     const rows = [
       {id:"z",name:"Ancien",createdAt:"2026-10-29T07:00:00Z"},

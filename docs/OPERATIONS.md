@@ -292,3 +292,43 @@ Retour arrière applicatif : republier le dernier déploiement Netlify sain ou r
 Cliquer puis glisser dans la colonne Statut sélectionne une plage des lignes visibles. Maj + clic et Maj + flèches étendent la sélection. Le menu « Statut de la sélection » applique un statut à la plage ; les lignes exclues, en préparation ou verrouillées restent protégées. La poignée bleue recopie le statut de la première cellule de la plage, vers le haut ou le bas, uniquement au relâchement. Échap annule le glissement.
 
 Quand le tableau a le focus : Ctrl/⌘ + A sélectionne les statuts visibles, C/V copie et colle une colonne de statuts, D recopie le premier statut vers le bas, Z annule et Maj + Z (ou Ctrl + Y) rétablit. L'historique garde les 20 dernières opérations de cette session. Les versions renvoyées par le serveur sont vérifiées lors des annulations ; un envoi engagé ou une modification concurrente peut empêcher certaines lignes de revenir en arrière. Une opération accepte au plus 500 lignes. Un changement de filtre ou de tri efface la sélection. Aucun texte d'email n'est modifié par ces commandes.
+
+## Réponses IA par échange
+
+Chaque campagne possède `reply_mode` (`draft` par défaut, `automatic` sur choix
+explicite) et `reply_iteration_instructions` (une consigne vide par défaut,
+1 à 100 passes). La section Gestion des réponses suit Instructions pour les
+réponses. Les consignes existantes, y compris les surcharges de variante, et les
+consignes générales restent utilisées.
+
+Le flux horaire ChatGPT classe les messages puis traite une passe par source
+via `claim_reply_iteration` et `complete_reply_iteration`. Neon conserve chaque
+passe et le texte final. Les cycles sont identifiés par l'email entrant, pas par
+le prospect : une nouvelle réponse ouvre un nouveau cycle. Les sources dépassées,
+refus/oppositions et réponses déjà effectuées manuellement ne sont pas éligibles.
+Les cycles commencés conservent leur mode et leurs passes ; passer le mode en
+brouillon retire les réponses automatiques encore en file et conserve leur texte.
+
+En mode brouillon, `sync-drafts` matérialise la demande dans Gmail. En automatique,
+la dernière passe crée un email `kind=reply` et un job `job_kind=reply`, jamais un
+brouillon. Le délai est tiré une fois entre 10 et 30 minutes après cette dernière
+passe ; `next_account_send_at` applique ensuite la plage du compte. La réservation
+et le démarrage SMTP revérifient l'éligibilité et partagent les quotas existants.
+La confirmation d'une réponse ne modifie pas l'étape J0–R5 et ne reprend pas les
+relances. Les erreurs ambiguës gardent la protection `uncertain` sans rejeu.
+
+Le CRM affiche le progrès du dernier échange et les dernières versions IA ; le
+panneau de séquence montre les 50 derniers messages reçus/envoyés et la réponse
+en préparation. L'historique intégral reste dans Neon. Les versions IA intermédiaires
+sont consultables via `agent_api.reply_iteration_history`.
+
+Recette : `db/tests/034_reply_workflow.sql` sur branche isolée. Les confirmations
+SMTP y sont simulées uniquement dans des fixtures annulées ; aucun email externe
+n'est envoyé. La mise en production ne change aucun mode de campagne existant.
+
+Le flux `__LIVE_SENT__` rattrape les envois récents indépendamment des anciens
+Envoyés. `__LIVE_ALL__` réconcilie également nos copies sortantes au lieu de les
+ignorer. Une réponse automatique ne peut être réservée qu'après un passage
+complet des Envoyés postérieur à sa date prévue et datant de moins de cinq
+minutes. Cela permet de détecter une intervention manuelle durant l'attente ;
+un rattrapage incomplet ou une panne de synchronisation conserve le job en file.

@@ -33,6 +33,7 @@ export interface MailboxDelta {
   lastUid: number;
   messages: SyncedMessage[];
   resetRequired: boolean;
+  hasMore: boolean;
 }
 
 export function isPermanentBounceDiagnostic(isBounce: boolean, subject: string, text: string): boolean {
@@ -51,7 +52,7 @@ async function mailboxPath(client: ImapFlow, requested: string): Promise<string>
     if (!all) throw new Error("gmail_all_mailbox_not_found");
     return all.path;
   }
-  if (requested !== "__SENT__") return requested;
+  if (requested !== "__SENT__" && requested !== "__LIVE_SENT__") return requested;
   const mailboxes = await client.list();
   const sent = mailboxes.find((mailbox) => mailbox.specialUse === "\\Sent");
   if (!sent) throw new Error("gmail_sent_mailbox_not_found");
@@ -99,7 +100,7 @@ export async function fetchMailboxDelta(input: {
     const mailboxLastUid = Math.max(0, Number(status.uidNext ?? 1) - 1);
     let lastUid = resetRequired ? 0 : input.cursor.lastUid;
     if (mailboxLastUid < startUid) {
-      return { uidValidity, lastUid, messages: [], resetRequired };
+      return { uidValidity, lastUid, messages: [], resetRequired, hasMore: false };
     }
 
     const lock = await client.getMailboxLock(selectedMailbox, { readOnly: true });
@@ -113,12 +114,12 @@ export async function fetchMailboxDelta(input: {
       const found = await client.search({ uid: `${startUid}:${mailboxLastUid}`,
         ...(input.bootstrapSince && (resetRequired || !input.cursor.lastUid) ? { since: input.bootstrapSince } : {}),
       }, { uid: true });
-      const candidateUids = (Array.isArray(found) ? found : [])
+      const eligibleUids = (Array.isArray(found) ? found : [])
         .filter((uid) => uid >= startUid && uid <= mailboxLastUid)
-        .sort((left, right) => left - right)
-        .slice(0, maxMessages);
+        .sort((left, right) => left - right);
+      const candidateUids = eligibleUids.slice(0, maxMessages);
       const messages: SyncedMessage[] = [];
-      if (!candidateUids.length) return { uidValidity, lastUid: mailboxLastUid, messages, resetRequired };
+      if (!candidateUids.length) return { uidValidity, lastUid: mailboxLastUid, messages, resetRequired, hasMore: false };
       for await (const item of client.fetch(
         candidateUids.join(","),
         { uid: true, source: { start: 0, maxLength: 512_000 } },
@@ -163,7 +164,7 @@ export async function fetchMailboxDelta(input: {
         });
         lastUid = Math.max(lastUid, item.uid);
       }
-      return { uidValidity, lastUid, messages, resetRequired };
+      return { uidValidity, lastUid, messages, resetRequired, hasMore: eligibleUids.length > candidateUids.length };
     } finally {
       lock.release();
     }

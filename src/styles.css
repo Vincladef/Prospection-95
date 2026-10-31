@@ -5994,3 +5994,10 @@ body {
 .message-table.data-grid tbody td.sheet-selected::after { border-top:0; border-bottom:0; }
 .message-table.data-grid tbody td.sheet-selected[data-selection-top="true"]::after { border-top:2px solid #1a73e8; }
 .message-table.data-grid tbody td.sheet-selected[data-selection-bottom="true"]::after { border-bottom:2px solid #1a73e8; }
+
+.reply-thread-message { border:1px solid #ccd3df; padding:12px; margin:8px 0; background:#f8faff; }
+.reply-thread-message > strong, .reply-thread-message > b, .reply-thread-message > small { display:block; margin-bottom:5px; }
+.reply-thread-message p { white-space:pre-wrap; overflow-wrap:anywhere; margin:8px 0; }
+.reply-work { background:#fffbed; }
+
+.status-cell .sheet-status-label { white-space:normal; overflow-wrap:anywhere; }

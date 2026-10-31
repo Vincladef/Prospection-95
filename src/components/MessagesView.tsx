@@ -10,7 +10,7 @@ import { api } from "../lib/api";
 import { cellStatuses, canEditStatus, useStatusSheet } from "../hooks/useStatusSheet";
 import type { Campaign, MessageStatus, Prospect } from "../types";
 import { SequenceDrawer } from "./SequenceDrawer";
-import { statusLabel } from "./StatusBadge";
+import { replyStatusLabel, statusLabel } from "./StatusBadge";
 
 interface MessagesViewProps {
   campaigns: Campaign[];
@@ -40,15 +40,17 @@ const statusFilters = [
 function filterStatus(prospect: Prospect, filter: string) {
   if (filter === "all") return true;
   if (filter === "pending") return !prospect.excluded && (
+    ["pending","running","draft_requested"].includes(prospect.replyProgress?.state || "")
+    ||
     !isPreparationComplete(prospect)
     || !prospect.hasOutboundMessages
     || prospect.messageStatus === "draft"
     || prospect.messageStatus === "pending_approval"
     || prospect.messageStatus === "prepared"
   );
-  if (filter === "ready") return prospect.messageStatus === "approved" || prospect.messageStatus === "scheduled";
+  if (filter === "ready") return prospect.replyProgress?.state === "scheduled" || prospect.messageStatus === "approved" || prospect.messageStatus === "scheduled";
   if (filter === "sent") return !!prospect.lastSentStep || ["smtp_accepted", "received", "sent_manually"].includes(prospect.messageStatus || "");
-  return prospect.excluded || ["failed", "uncertain"].includes(prospect.messageStatus || "");
+  return prospect.excluded || ["failed", "uncertain", "writing_failed"].includes(prospect.replyProgress?.state || "") || ["failed", "uncertain"].includes(prospect.messageStatus || "");
 }
 
 const preservedStatuses = new Set<MessageStatus>([
@@ -93,7 +95,13 @@ const MessageRow = memo(function MessageRow({
   const selected = !!sheet.range && index >= Math.min(...sheet.range) && index <= Math.max(...sheet.range);
   const preview = !!sheet.preview && index >= Math.min(...sheet.preview) && index <= Math.max(...sheet.preview);
   const displayedStatus = preview && canEditStatus(prospect) ? sheet.previewStatus : prospect.messageStatus;
-  const displayedLabel = displayedStatus === "pending_approval" ? preparationLabel(prospect) : statusLabel(displayedStatus);
+  const replyState = prospect.replyProgress?.state;
+  const cellStatus = replyState && ["failed","uncertain","writing_failed"].includes(replyState) ? "failed"
+    : replyState && ["pending","running","draft_requested"].includes(replyState) ? "pending_approval"
+    : replyState === "scheduled" ? "scheduled"
+    : replyState && ["sent","sent_manually"].includes(replyState) ? "smtp_accepted"
+    : prospect.messageStatus;
+  const displayedLabel = replyStatusLabel(prospect.replyProgress) || (displayedStatus === "pending_approval" ? preparationLabel(prospect) : statusLabel(displayedStatus));
   return (
     <tr className={prospect.excluded ? "excluded-row" : ""}>
       <td className="sticky-col sticky-index pin-no">
@@ -117,7 +125,7 @@ const MessageRow = memo(function MessageRow({
           <button className="tiny-link sequence-link" type="button" onClick={onOpen}>Voir toute la séquence</button>
         </div>
       </td>
-      <td data-status-index={index} data-selection-top={selected && index === Math.min(...sheet.range!)} data-selection-bottom={selected && index === Math.max(...sheet.range!)} aria-selected={selected} className={`sticky-col sticky-status pin-status status-cell status-${prospect.excluded ? "failed" : preview && canEditStatus(prospect) ? sheet.previewStatus || prospect.messageStatus : prospect.messageStatus || "pending_approval"} ${selected ? "sheet-selected" : ""} ${preview ? "sheet-preview" : ""}`}
+      <td data-status-index={index} data-selection-top={selected && index === Math.min(...sheet.range!)} data-selection-bottom={selected && index === Math.max(...sheet.range!)} aria-selected={selected} className={`sticky-col sticky-status pin-status status-cell status-${prospect.excluded ? "failed" : preview && canEditStatus(prospect) ? sheet.previewStatus || prospect.messageStatus : cellStatus || "pending_approval"} ${selected ? "sheet-selected" : ""} ${preview ? "sheet-preview" : ""}`}
         onPointerDown={(event) => {
           if ((event.target as HTMLElement).closest(".fill-handle")) return;
           if ((event.target as HTMLElement).tagName === "SELECT" && selected && !event.shiftKey) return;

@@ -25,7 +25,7 @@ async function claimMailbox(): Promise<ClaimedMailbox | null> {
                clock_timestamp() - interval '7 days') as recent_since
       from app.gmail_accounts a
       cross join lateral (
-        select mailbox_name from (values ('INBOX'), ('__SENT__'), ('__LIVE_ALL__')) boxes(mailbox_name)
+        select mailbox_name from (values ('INBOX'), ('__SENT__'), ('__LIVE_ALL__'), ('__LIVE_SENT__')) boxes(mailbox_name)
         where boxes.mailbox_name = 'INBOX' or a.role in ('sender','primary')
       ) box
       left join app.imap_cursors c on c.account_id = a.id and c.mailbox_name = box.mailbox_name
@@ -96,17 +96,16 @@ export default async function syncMailboxes(_request: Request, _context: Context
       email: claimed.email,
       credentialId: claimed.credential_id,
       cursor: { mailbox: claimed.mailbox_name, uidValidity: claimed.uidvalidity, lastUid: Number(claimed.last_uid ?? 0) },
-      maxMessages: claimed.mailbox_name === "__LIVE_ALL__" ? 50 : 10,
-      bootstrapSince: claimed.mailbox_name === "__LIVE_ALL__" ? new Date(claimed.recent_since) : undefined,
+      maxMessages: claimed.mailbox_name.startsWith("__LIVE_") ? 50 : 10,
+      bootstrapSince: claimed.mailbox_name.startsWith("__LIVE_") ? new Date(claimed.recent_since) : undefined,
     });
     let recorded = 0;
-    const sentMailbox = claimed.mailbox_name === "__SENT__";
+    const sentMailbox = claimed.mailbox_name === "__SENT__" || claimed.mailbox_name === "__LIVE_SENT__";
     for (const message of delta.messages) {
-      // All Mail also contains our outbound copies. They belong to the Sent
-      // reconciler, never to inbound reply detection.
-      if (!sentMailbox && message.from.some(from => from.toLowerCase() === claimed!.email.toLowerCase())) continue;
-      const conversationId = await matchingConversation(claimed.account_id, claimed.email, message, sentMailbox);
-      if (sentMailbox) {
+      // Reconcile our own copies as Sent messages, never as inbound replies.
+      const outgoing = sentMailbox || message.from.some(from => from.toLowerCase() === claimed!.email.toLowerCase());
+      const conversationId = await matchingConversation(claimed.account_id, claimed.email, message, outgoing);
+      if (outgoing) {
         if (!conversationId || !message.from.length || !message.to.length) continue;
         await sqlOne(`
           select (app.record_sent_message(
@@ -143,16 +142,17 @@ export default async function syncMailboxes(_request: Request, _context: Context
     }
     await sqlQuery(`
       insert into app.imap_cursors
-        (account_id, mailbox_name, uidvalidity, last_uid, last_success_at, last_attempt_at, consecutive_failures)
-      values ($1::uuid, $2, $3::bigint, $4::bigint, clock_timestamp(), clock_timestamp(), 0)
+        (account_id, mailbox_name, uidvalidity, last_uid, last_success_at, last_attempt_at, consecutive_failures, caught_up_at)
+      values ($1::uuid, $2, $3::bigint, $4::bigint, clock_timestamp(), clock_timestamp(), 0, case when $5 then clock_timestamp() else null end)
       on conflict (account_id, mailbox_name) do update set
         uidvalidity = excluded.uidvalidity,
         last_uid = case when app.imap_cursors.uidvalidity is distinct from excluded.uidvalidity
                         then excluded.last_uid else greatest(app.imap_cursors.last_uid, excluded.last_uid) end,
         last_success_at = clock_timestamp(), last_attempt_at = clock_timestamp(),
         last_error_code = null, consecutive_failures = 0,
+        caught_up_at = case when $5 then clock_timestamp() when app.imap_cursors.uidvalidity is distinct from excluded.uidvalidity then null else app.imap_cursors.caught_up_at end,
         version = app.imap_cursors.version + 1, updated_at = clock_timestamp()
-    `, [claimed.account_id, claimed.mailbox_name, delta.uidValidity, delta.lastUid]);
+    `, [claimed.account_id, claimed.mailbox_name, delta.uidValidity, delta.lastUid, delta.hasMore === false]);
     await sqlQuery(
       `update app.gmail_accounts set last_sync_at = clock_timestamp(), last_error_code = null
        where id = $1::uuid`,

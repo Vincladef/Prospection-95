@@ -24,7 +24,7 @@ export default async function syncDrafts(_request: Request, _context: Context): 
     draft = await sqlOne<DraftRequest>(`
       with candidate as (
         select r.id from app.reply_draft_requests r
-        where r.state = 'requested'
+        where r.state = 'requested' and app.reply_source_is_current(r.source_message_id)
           and (r.last_checked_at is null or r.last_checked_at < clock_timestamp() - interval '5 minutes')
         order by r.created_at for update skip locked limit 1
       ), claimed as (
@@ -52,7 +52,7 @@ export default async function syncDrafts(_request: Request, _context: Context): 
         limit 1
       ) primary_account on true
       join app.email_messages source on source.id = claimed.source_message_id
-      where alias_account.deleted_at is null
+      where alias_account.deleted_at is null and alias_account.status = 'active' and alias_account.paused_at is null
     `);
     if (!draft) return workerResult(worker, { ok: true, claimed: 0 });
     const references = [...draft.source_references];

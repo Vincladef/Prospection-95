@@ -27,6 +27,8 @@ const campaign: Campaign = {
   aiInstructions: "",
   writingIterations: ["Prépare une première version."],
   replyInstructions: "",
+  replyMode: "draft",
+  replyIterations: [""],
   trackingOpensEnabled: false,
   trackingClicksEnabled: false,
   experimentPolicy: "continue",
@@ -92,6 +94,22 @@ describe("CampaignsView V53", () => {
   });
 
   afterEach(cleanup);
+
+  it("defaults replies to a Gmail draft and saves independent reply iterations and automatic mode", async () => {
+    renderCampaigns();
+    expect(screen.getByRole("radio", {name:/Brouillon Gmail/})).toBeChecked();
+    const section=screen.getByRole("heading",{name:"Gestion des réponses"}).closest("section")!;
+    const previous=screen.getByRole("heading",{name:"Instructions pour les réponses"});
+    expect(previous.compareDocumentPosition(section) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy();
+    fireEvent.click(screen.getByRole("radio",{name:/Réponse automatique/}));
+    fireEvent.change(screen.getByRole("spinbutton",{name:"Nombre d’itérations de réponse"}),{target:{value:"3"}});
+    const inputs=section.querySelectorAll("textarea");
+    expect(inputs).toHaveLength(3);
+    expect(Array.from(inputs,el=>el.value)).toEqual(["","",""]);
+    fireEvent.change(inputs[1],{target:{value:"Affiner la réponse avec le contexte de l’échange"}});
+    fireEvent.click(screen.getAllByRole("button",{name:"Enregistrer"})[0]);
+    await waitFor(()=>expect(apiMocks.updateCampaign).toHaveBeenCalledWith(campaign.id,expect.objectContaining({replyMode:"automatic",replyIterations:["","Affiner la réponse avec le contexte de l’échange",""],writingIterations:campaign.writingIterations})));
+  });
 
   it("saves the existing-only campaign mode without changing writing instructions or the daily goal", async () => {
     renderCampaigns();

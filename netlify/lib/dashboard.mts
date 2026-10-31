@@ -81,6 +81,7 @@ export async function loadDashboard(): Promise<Record<string, unknown>> {
              selected.campaign_id::text, selected.campaign_name,
              conv.id::text as conversation_id, conv.current_step::text,
              conv.state::text as conversation_state,
+             reply_tracking.progress as reply_progress, reply_thread.messages as conversation_messages,
              exists(select 1 from app.email_messages reply
                where reply.conversation_id = conv.id and reply.direction = 'inbound'
                  and reply.kind = 'reply' and reply.status = 'received') as has_reply,
@@ -116,6 +117,43 @@ export async function loadDashboard(): Promise<Record<string, unknown>> {
       left join app.conversations conv
         on conv.prospect_id = p.id and conv.campaign_id = selected.campaign_id
       left join app.gmail_accounts ga on ga.id = conv.sender_account_id
+      left join lateral (
+        select jsonb_build_object('state',
+          case when exists(select 1 from app.email_messages manual where manual.conversation_id=conv.id
+            and manual.direction='outbound' and manual.kind='manual' and manual.technical_confirmation
+            and coalesce(manual.sent_at,manual.created_at)>=coalesce(src.received_at,src.created_at)) then 'sent_manually'
+          when output.technical_confirmation then 'sent'
+          when w.state='superseded' then 'received'
+          when w.state='draft_requested' then case when d.state='created' then 'draft_created' when d.state='failed' then 'failed' when d.state='stale' then 'cancelled' else 'draft_requested' end
+          when job.status='cancelled' then 'cancelled'
+          when output.status in ('failed','uncertain','reserved','sending') then output.status::text
+          when w.state in ('pending','running') and last_pass.status='failed' then 'writing_failed'
+          when w.state='queued' then 'scheduled'
+          when w.state='cancelled' then 'cancelled'
+          when w.state is not null then w.state
+          when a.classification in ('negative','opposition','unrelated','automatic_reply','out_of_office','bounce') then 'not_required'
+          when a.id is not null then 'pending' else 'received' end,
+          'completed',coalesce(w.completed_iterations,0),
+          'total',coalesce(cardinality(w.instructions),cardinality((select reply_iteration_instructions from app.campaigns where id=conv.campaign_id))),
+          'subject',coalesce(w.subject,''),'body',coalesce(w.body,''),'dueAt',w.due_at) as progress
+        from app.email_messages src
+        left join app.reply_workflows w on w.source_message_id=src.id
+        left join app.reply_draft_requests d on d.id=w.draft_request_id
+        left join app.email_messages output on output.id=w.output_message_id
+        left join app.outbox_jobs job on job.message_id=output.id
+        left join lateral (select r.status from app.reply_iteration_runs r where r.workflow_id=w.id order by r.started_at desc,r.id desc limit 1) last_pass on true
+        left join app.inbound_analyses a on a.message_id=src.id
+        where src.conversation_id=conv.id and src.direction='inbound' and src.kind='reply'
+        order by coalesce(src.received_at,src.created_at) desc,src.created_at desc,src.id desc limit 1
+      ) reply_tracking on true
+      left join lateral (
+        select jsonb_agg(jsonb_build_object('id',t.id,'direction',t.direction,'kind',t.kind,
+          'subject',t.subject,'body',t.body_text,'at',t.at) order by t.at,t.id) as messages
+        from (select m.id,m.direction,m.kind,m.subject,m.body_text,coalesce(m.received_at,m.sent_at,m.created_at) as at
+          from app.email_messages m where m.conversation_id=conv.id and (m.kind='reply' and m.direction='inbound'
+            or m.direction='outbound' and m.technical_confirmation)
+          order by coalesce(m.received_at,m.sent_at,m.created_at) desc,m.id desc limit 50) t
+      ) reply_thread on true
       left join lateral (
         select state.*
         from app.prospect_iteration_states state
@@ -373,6 +411,8 @@ export async function loadDashboard(): Promise<Record<string, unknown>> {
         ? row.writing_iteration_instructions.map((value) => textValue(value))
         : [textValue(row.ai_instructions)],
       replyInstructions: textValue(row.reply_instructions),
+      replyMode: textValue(row.reply_mode, "draft"),
+      replyIterations: Array.isArray(row.reply_iteration_instructions) ? row.reply_iteration_instructions.map(value => textValue(value)) : [""],
       trackingOpensEnabled: Boolean(row.tracking_opens_enabled),
       trackingClicksEnabled: Boolean(row.tracking_clicks_enabled),
       experimentPolicy: textValue(row.experiment_policy),
@@ -439,6 +479,8 @@ export async function loadDashboard(): Promise<Record<string, unknown>> {
       messageStatus: row.has_reply || row.conversation_state === "replied" ? "received" : summary.status,
       statusStep: row.has_reply || row.conversation_state === "replied" ? null : summary.statusStep,
       lastSentStep: summary.lastSentStep,
+      replyProgress: row.reply_progress ?? null,
+      conversationMessages: row.conversation_messages ?? [],
       step: nullableText(row.current_step),
       lastSentAt: isoValue(summary.lastSentAt),
       senderEmail: nullableText(row.sender_email),
@@ -607,7 +649,8 @@ export async function loadDashboard(): Promise<Record<string, unknown>> {
       prospects: prospects.length,
       pendingApproval: prospects.filter((row) =>
         !row.excluded && (
-          row.writingIterationStatus !== "completed"
+          ["pending","running","draft_requested"].includes(textValue(jsonObject(row.replyProgress).state))
+          || row.writingIterationStatus !== "completed"
           || row.writingIterationsCompleted < row.writingIterationsTotal
           || !row.hasOutboundMessages
           || ["draft", "prepared", "pending_approval"].includes(row.messageStatus ?? "")

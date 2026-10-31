@@ -1,6 +1,6 @@
 import { FormEvent, useEffect, useState } from "react";
 import type { Prospect } from "../types";
-import { StatusBadge } from "./StatusBadge";
+import { replyStatusLabel, StatusBadge } from "./StatusBadge";
 
 interface SequenceDrawerProps {
   prospect: Prospect;
@@ -64,7 +64,7 @@ export function SequenceDrawer({ prospect, onClose, onSave }: SequenceDrawerProp
         <div className="drawer-toolbar">
           {prospect.lastSentStep ? <span>{prospect.lastSentStep} envoyé</span> : null}
           {prospect.lastSentStep && prospect.statusStep && prospect.statusStep !== prospect.lastSentStep ? <span>{prospect.statusStep}</span> : null}
-          <StatusBadge status={prospect.messageStatus} />
+          {prospect.replyProgress ? <span className="status-badge status-received">{replyStatusLabel(prospect.replyProgress)}</span> : <StatusBadge status={prospect.messageStatus} />}
           <span>Campagne : {prospect.campaignName || "Sans campagne"}</span>
           <span>Expéditeur : {prospect.senderEmail || "Non attribué"}</span>
           {prospect.variantLabel ? <span>Variante {prospect.variantLabel}</span> : null}
@@ -82,6 +82,8 @@ export function SequenceDrawer({ prospect, onClose, onSave }: SequenceDrawerProp
               {prospect.clickObserved ? <span><strong>↗ Clic observé</strong><small>{prospect.lastClickAt ? `Dernière observation ${new Date(prospect.lastClickAt).toLocaleString("fr-FR")}` : "Horodatage indisponible"}</small></span> : null}
             </div>
           ) : null}
+          {!!prospect.conversationMessages?.length && <section className="reply-thread"><h3>Échanges</h3>{prospect.conversationMessages.map(message => <article key={message.id} className="reply-thread-message"><strong>{message.direction === "inbound" ? "Message reçu" : "Message envoyé"}</strong>{message.at ? <small>{new Date(message.at).toLocaleString("fr-FR", {timeZone:"Europe/Paris"})}</small> : null}<b>{message.subject}</b><p>{message.body}</p></article>)}</section>}
+          {prospect.replyProgress?.body && !["sent","sent_manually"].includes(prospect.replyProgress.state) ? <section className="reply-thread-message reply-work"><h3>{replyStatusLabel(prospect.replyProgress)}</h3><b>{prospect.replyProgress.subject}</b><p>{prospect.replyProgress.body}</p>{prospect.replyProgress.dueAt ? <small>Envoi au plus tôt : {new Date(prospect.replyProgress.dueAt).toLocaleString("fr-FR",{timeZone:"Europe/Paris"})}</small> : null}</section> : null}
           <label className="field full-field">
             <span>Objet</span>
             <input value={subject} onChange={(event) => setSubject(event.target.value)} />
