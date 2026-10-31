@@ -16,6 +16,7 @@ interface SettingsViewProps {
 }
 
 interface GmailEditorDraft {
+  bobworkSetupConfirmed: boolean;
   email: string;
   displayName: string;
   role: GmailAccount["role"];
@@ -33,11 +34,13 @@ interface GmailEditorDraft {
 const gmailSetupSteps = [
   ["✉", "Connexion Gmail"],
   ["⚙", "Limites d’envoi"],
+  ["♨", "Warm-up BobWork"],
   ["✓", "Vérification finale"],
 ] as const;
 
 function gmailEditorDraft(account?: GmailAccount | null): GmailEditorDraft {
   return {
+    bobworkSetupConfirmed: account?.bobworkSetupConfirmed ?? false,
     email: account?.email ?? "",
     displayName: account?.displayName ?? "",
     role: account?.role ?? "sender",
@@ -171,6 +174,7 @@ function GmailPanel({ accounts, vaultConfigured, onMutated, onOpenDeliverability
     setEditorSaving(true);
     try {
       await api.saveGmailAccount({
+        bobworkSetupConfirmed: editorDraft.bobworkSetupConfirmed,
         email: editorDraft.email.trim().toLowerCase(),
         displayName: editorDraft.displayName.trim(),
         role: editorDraft.role,
@@ -363,10 +367,19 @@ function GmailPanel({ accounts, vaultConfigured, onMutated, onOpenDeliverability
               </> : null}
 
               {editorStep === 2 ? <>
+                <div className="v15-copy"><h3>Connecter la boîte à BobWork</h3><p>Ouvre BobWork, connecte <strong>{editorDraft.email}</strong> pour le warm-up, puis reviens ici cocher la case.</p></div>
+                <div className="v15-form">
+                  <a className="win-button primary" href="https://emailwarmup.bobwork.ai/app" target="_blank" rel="noopener noreferrer">Ouvrir le dashboard BobWork ↗</a>
+                  <label className="v15-check"><input type="checkbox" checked={editorDraft.bobworkSetupConfirmed} onChange={event => { const checked=event.target.checked; setEditorDraft(current => current && ({...current,bobworkSetupConfirmed:checked})); }} /><span><b>Oui, j’ai connecté cette boîte mail à BobWork</b><small>Tu peux aussi terminer cette connexion plus tard depuis la configuration du compte.</small></span></label>
+                </div>
+              </> : null}
+
+              {editorStep === 3 ? <>
                 <div className="v15-copy"><h3>Récapitulatif du compte</h3><p>Vérifie les réglages avant de les enregistrer. Le mot de passe d’application ne sera jamais affiché après cette étape.</p></div>
                 <div className="v15-finalrows">
                   <div className="v15-finalrow"><div><strong>Connexion Gmail</strong><small>{editorDraft.email} · {editorDraft.role === "sender" ? "Expéditeur" : editorDraft.role === "primary" ? "Gmail principal" : "Boîte réceptrice"}</small></div><div className="v15-finalright"><span className={`v15-smallstate ${editorConnectionReady ? "configured" : "pending"}`}>{editorConnectionReady ? "Préparée" : "À compléter"}</span><button className="v15-steplink" type="button" onClick={() => setEditorStep(0)}>Modifier</button></div></div>
                   <div className="v15-finalrow"><div><strong>Limites d’envoi</strong><small>{editorDraft.dailyLimit} emails/jour · {editorDraft.sendStart}–{editorDraft.sendEnd} · {editorDraft.timezone}</small></div><div className="v15-finalright"><span className={`v15-smallstate ${editorLimitsReady ? "configured" : "pending"}`}>{editorLimitsReady ? "Préparées" : "À compléter"}</span><button className="v15-steplink" type="button" onClick={() => setEditorStep(1)}>Modifier</button></div></div>
+                  <div className="v15-finalrow"><div><strong>Warm-up BobWork</strong><small>{editorDraft.bobworkSetupConfirmed ? "Connexion confirmée par tes soins" : "Connexion non confirmée ici"}</small></div><div className="v15-finalright"><span className={`v15-smallstate ${editorDraft.bobworkSetupConfirmed ? "configured" : "pending"}`}>{editorDraft.bobworkSetupConfirmed ? "Confirmée" : "À confirmer"}</span><button className="v15-steplink" type="button" onClick={() => setEditorStep(2)}>Modifier</button></div></div>
                   <div className="v15-finalrow"><div><strong>Jours autorisés</strong><small>{editorDraft.sendDays.map((day) => ["", "Lun", "Mar", "Mer", "Jeu", "Ven", "Sam", "Dim"][day]).join(", ")}</small></div><span className="v15-smallstate configured">Configurés</span></div>
                 </div>
                 <div className="v16-compact-info"><strong>Enregistrement sécurisé.</strong> La connexion sera testable immédiatement depuis la fiche du compte.</div>

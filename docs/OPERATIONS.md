@@ -355,3 +355,12 @@ pièces jointes, sans contenu textuel inventé pour l'IA.
 Le suivi des ouvertures et clics était déjà activé par défaut dans l'interface ;
 la création CRM est alignée sur ce défaut. Un choix explicite de désactivation
 reste respecté et aucune campagne existante ne voit son suivi modifié.
+
+## Confirmation de configuration BobWork
+
+L'assistant Gmail propose Connexion, Limites, Warm-up BobWork puis Vérification.
+Le lien ouvre `https://emailwarmup.bobwork.ai/app` dans un nouvel onglet. La case
+« J’ai connecté cette boîte mail à BobWork » est conservée dans
+`bobwork_setup_confirmed` et reste modifiable. Elle est facultative et ne change
+ni les quotas ni les autorisations d'envoi ; les mesures et l'état technique
+BobWork restent issus de la synchronisation réelle, indépendamment de cette case.

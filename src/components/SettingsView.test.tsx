@@ -51,6 +51,7 @@ const account: GmailAccount = {
   imapVerifiedAt: "2026-10-23T10:00:00.000Z",
   lastSyncAt: null,
   lastErrorCode: null,
+  bobworkSetupConfirmed: false,
   bobworkConnected: null,
   bobworkWarmupState: "unknown",
   bobworkObservedAt: null,
@@ -81,15 +82,19 @@ describe("SettingsView Gmail V53", () => {
     expect(screen.getByRole("heading", { name: "Configurer sender@example.com" })).toBeInTheDocument();
     expect(screen.getByText("1. Connexion Gmail")).toBeInTheDocument();
     expect(screen.getByText("2. Limites d’envoi")).toBeInTheDocument();
-    expect(screen.getByText("3. Vérification finale")).toBeInTheDocument();
+    expect(screen.getByText("4. Vérification finale")).toBeInTheDocument();
 
     fireEvent.click(screen.getByRole("button", { name: "Continuer →" }));
     const wednesday = screen.getByLabelText("Mer");
     fireEvent.click(wednesday);
     fireEvent.click(screen.getByRole("button", { name: "Continuer →" }));
+    expect(screen.getByRole("link",{name:/Ouvrir le dashboard BobWork/})).toHaveAttribute("href","https://emailwarmup.bobwork.ai/app");
+    fireEvent.click(screen.getByRole("checkbox",{name:/Oui, j’ai connecté cette boîte/}));
+    fireEvent.click(screen.getByRole("button", { name: "Continuer →" }));
+    expect(screen.getByText("Connexion confirmée par tes soins")).toBeInTheDocument();
     fireEvent.click(screen.getByRole("button", { name: "Enregistrer les modifications" }));
 
-    await waitFor(() => expect(apiMocks.saveGmailAccount).toHaveBeenCalledWith(expect.objectContaining({ sendDays: [1, 2, 4, 5], dailyLimit: 10 }), account.id));
+    await waitFor(() => expect(apiMocks.saveGmailAccount).toHaveBeenCalledWith(expect.objectContaining({ sendDays: [1, 2, 4, 5], dailyLimit: 10, bobworkSetupConfirmed:true }), account.id));
     expect(onMutated).toHaveBeenCalledOnce();
   });
 });

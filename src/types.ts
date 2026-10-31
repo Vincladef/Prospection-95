@@ -145,6 +145,7 @@ export interface GmailAccount {
   lastSyncAt: string | null;
   lastErrorCode: string | null;
   bobworkConnected: boolean | null;
+  bobworkSetupConfirmed: boolean;
   bobworkWarmupState: string;
   bobworkObservedAt: string | null;
   bobworkConnectionStatus: string;

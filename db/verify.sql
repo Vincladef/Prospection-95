@@ -19,7 +19,7 @@ SELECT to_regnamespace('app') IS NOT NULL
    AND to_regnamespace('agent_api') IS NOT NULL
    AND to_regnamespace('audit') IS NOT NULL AS all_schemas_exist;
 
-SELECT count(*) = 36 AS all_migrations_registered
+SELECT count(*) = 37 AS all_migrations_registered
 FROM app.schema_migrations
 WHERE version IN (
   '001_foundation',
@@ -57,7 +57,8 @@ WHERE version IN (
   '033_reply_dispatch_guards',
   '034_reply_campaign_settings',
   '035_live_sent_reply_safety',
-  '036_reply_scope_and_unified_instructions'
+  '036_reply_scope_and_unified_instructions',
+  '037_gmail_bobwork_setup_confirmation'
 );
 
 SELECT EXISTS (

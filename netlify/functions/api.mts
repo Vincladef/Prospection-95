@@ -579,6 +579,7 @@ const gmailSchema = z.object({
   timezone: z.string().min(1).max(100).default("Europe/Paris"),
   randomizeSendTimes: z.boolean().default(true),
   progressiveRampEnabled: z.boolean().default(true),
+  bobworkSetupConfirmed: z.boolean().optional(),
   version: version.optional(),
 });
 
@@ -593,12 +594,12 @@ async function createGmailAccount(request: Request, identity: AdminIdentity, req
     const row = await sqlOne<{ id: string }>(
       `insert into app.gmail_accounts
         (email, display_name, role, credential_id, daily_limit, warmup_daily_limit,
-         send_days, send_start, send_end, timezone, randomize_send_times, progressive_ramp_enabled)
-       values ($1, $2, $3, $4::uuid, $5, $6, $7::smallint[], $8::time, $9::time, $10, $11, $12)
+         send_days, send_start, send_end, timezone, randomize_send_times, progressive_ramp_enabled, bobwork_setup_confirmed)
+       values ($1, $2, $3, $4::uuid, $5, $6, $7::smallint[], $8::time, $9::time, $10, $11, $12, coalesce($13, false))
        returning id::text`,
       [value.email, value.displayName ?? null, value.role, credential.id, value.dailyLimit,
         value.warmupDailyLimit ?? null, value.sendDays, value.sendStart, value.sendEnd,
-        value.timezone, value.randomizeSendTimes, value.progressiveRampEnabled],
+        value.timezone, value.randomizeSendTimes, value.progressiveRampEnabled, value.bobworkSetupConfirmed ?? null],
     );
     if (!row) throw new Error("account insert did not return a row");
     await logMutation(identity, requestId, { action: "gmail_account_created", entityType: "gmail_account", entityId: row.id, after: { ...value, appPassword: "[redacted]" } });
@@ -628,14 +629,15 @@ async function updateGmailAccount(request: Request, id: string, identity: AdminI
          send_days = coalesce($8::smallint[], send_days), send_start = coalesce($9::time, send_start),
          send_end = coalesce($10::time, send_end), timezone = coalesce($11, timezone),
          randomize_send_times = coalesce($12, randomize_send_times),
-         progressive_ramp_enabled = coalesce($13, progressive_ramp_enabled), version = version + 1
+         progressive_ramp_enabled = coalesce($13, progressive_ramp_enabled),
+         bobwork_setup_confirmed = coalesce($16, bobwork_setup_confirmed), version = version + 1
        where id = $1::uuid and deleted_at is null and ($14::bigint is null or version = $14)
        returning id::text, version::int`,
       [id, value.email ?? null, value.displayName ?? null, value.role ?? null, credentialId,
         value.dailyLimit ?? null, value.warmupDailyLimit ?? null, value.sendDays ?? null,
         value.sendStart ?? null, value.sendEnd ?? null, value.timezone ?? null,
         value.randomizeSendTimes ?? null, value.progressiveRampEnabled ?? null, value.version ?? null,
-        Object.hasOwn(value, "warmupDailyLimit")],
+        Object.hasOwn(value, "warmupDailyLimit"), value.bobworkSetupConfirmed ?? null],
     );
     if (!row) throw new HttpError(409, "version_conflict", "Le compte Gmail a été modifié ailleurs.");
     if (credentialId && before.credential_id) await retireCredential(before.credential_id);

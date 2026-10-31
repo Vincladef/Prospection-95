@@ -531,6 +531,7 @@ export async function loadDashboard(): Promise<Record<string, unknown>> {
       imapVerifiedAt: isoValue(row.imap_verified_at),
       lastSyncAt: isoValue(row.last_sync_at),
       lastErrorCode: nullableText(row.last_error_code),
+      bobworkSetupConfirmed: Boolean(row.bobwork_setup_confirmed),
       bobworkConnected: row.bobwork_connected == null ? null : Boolean(row.bobwork_connected),
       bobworkWarmupState: textValue(row.bobwork_warmup_state, "unknown"),
       bobworkObservedAt: isoValue(row.bobwork_observed_at),
