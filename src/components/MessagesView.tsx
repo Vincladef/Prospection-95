@@ -184,12 +184,20 @@ export function MessagesView({ campaigns, prospects, totals, onOpenCampaign, onM
         .toLocaleLowerCase("fr")
         .includes(normalized);
     });
-    return rows.slice().sort((left, right) => {
-      if (sort === "alpha") return left.name.localeCompare(right.name, "fr");
-      if (sort === "alphaDesc") return right.name.localeCompare(left.name, "fr");
-      if (sort === "old") return left.id.localeCompare(right.id);
-      return right.id.localeCompare(left.id);
-    });
+    if (sort === "alpha" || sort === "alphaDesc") {
+      return rows.sort((left, right) => sort === "alpha"
+        ? left.name.localeCompare(right.name, "fr") : right.name.localeCompare(left.name, "fr"));
+    }
+    const direction = sort === "old" ? 1 : -1;
+    // Parse once per row; missing dates stay last in both directions.
+    return rows.map(row => ({ row, time: Date.parse(row.createdAt || "") }))
+      .sort((left, right) => {
+        const leftValid = Number.isFinite(left.time);
+        const rightValid = Number.isFinite(right.time);
+        if (leftValid !== rightValid) return leftValid ? -1 : 1;
+        if (leftValid && left.time !== right.time) return direction * (left.time - right.time);
+        return direction * left.row.id.localeCompare(right.row.id);
+      }).map(({ row }) => row);
   }, [campaignId, deferredQuery, prospects, sort, statusFilter]);
 
   const sheet = useStatusSheet(visible, tableScroll, onMutated);
@@ -251,7 +259,7 @@ export function MessagesView({ campaigns, prospects, totals, onOpenCampaign, onM
             </select>
           </div>
           <div className="command-right">
-            <select className="select sort-control" value={sort} onChange={(event) => setSort(event.target.value)} aria-label="Trier les prospects">
+            <select className="select sort-control" value={sort} onChange={(event) => setSort(event.target.value)} aria-label="Trier les prospects" title="Le tri chronologique utilise la date d’ajout du prospect au CRM">
               <option value="recent">Plus récents d’abord</option>
               <option value="old">Plus anciens d’abord</option>
               <option value="alpha">Nom A → Z</option>

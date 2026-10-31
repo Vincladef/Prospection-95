@@ -81,6 +81,7 @@ export interface BlacklistPage {
 
 export interface Prospect {
   id: string;
+  createdAt: string | null;
   campaignId: string | null;
   campaignName: string | null;
   organizationName: string | null;

@@ -75,7 +75,7 @@ export async function loadDashboard(): Promise<Record<string, unknown>> {
       order by campaign_id, step, version desc, created_at desc
     `),
     sqlQuery(`
-      select p.id::text, p.full_name, p.email, p.contact_raw, p.website_url,
+      select p.id::text, p.full_name, p.email, p.contact_raw, p.website_url, p.created_at,
              p.contact_state::text, p.version, o.name as organization_name,
              iteration_output.output_sequence, iteration_output.completed_at as iteration_completed_at,
              selected.campaign_id::text, selected.campaign_name,
@@ -428,6 +428,7 @@ export async function loadDashboard(): Promise<Record<string, unknown>> {
     return {
       id: textValue(row.id),
       campaignId,
+      createdAt: isoValue(row.created_at),
       campaignName: nullableText(row.campaign_name),
       organizationName: nullableText(row.organization_name),
       name: textValue(row.full_name),

@@ -19,6 +19,7 @@ vi.stubGlobal("ResizeObserver", ResizeObserverStub);
 
 const baseProspect: Prospect = {
   id: "11111111-1111-4111-8111-111111111111",
+  createdAt: "2026-10-26T07:00:00Z",
   campaignId: "22222222-2222-4222-8222-222222222222",
   campaignName: "Campagne test",
   organizationName: "Organisation",
@@ -76,6 +77,28 @@ describe("MessagesView statuses", () => {
   });
 
   afterEach(cleanup);
+
+  it("sorts real timestamps in both directions with stable ties and missing dates last", () => {
+    const rows = [
+      {id:"z",name:"Ancien",createdAt:"2026-10-29T07:00:00Z"},
+      {id:"a",name:"Récent",createdAt:"2026-10-30T10:00:00Z"},
+      {id:"b",name:"Milieu B",createdAt:"2026-10-30T10:30:00+02:00"},
+      {id:"c",name:"Milieu C",createdAt:"2026-10-30T08:30:00Z"},
+      {id:"d",name:"Sans date",createdAt:null},
+      {id:"e",name:"Date invalide",createdAt:"invalid"},
+    ].map(row=>({...baseProspect,...row}));
+    const {container} = render(<MessagesView campaigns={[]} prospects={rows}
+      totals={{prospects:6,pendingApproval:6,scheduled:0,sent:0,replied:0,excluded:0}}
+      onOpenCampaign={vi.fn()} onMutated={vi.fn()} />);
+    const names = () => Array.from(container.querySelectorAll(".person-name"), node=>node.textContent);
+    expect(names()).toEqual(["Récent","Milieu C","Milieu B","Ancien","Date invalide","Sans date"]);
+    fireEvent.change(screen.getByRole("combobox",{name:"Trier les prospects"}),{target:{value:"old"}});
+    expect(names()).toEqual(["Ancien","Milieu B","Milieu C","Récent","Sans date","Date invalide"]);
+    fireEvent.change(screen.getByRole("textbox",{name:"Rechercher dans le CRM"}),{target:{value:"Milieu"}});
+    expect(names()).toEqual(["Milieu B","Milieu C"]);
+    fireEvent.change(screen.getByRole("combobox",{name:"Trier les prospects"}),{target:{value:"recent"}});
+    expect(names()).toEqual(["Milieu C","Milieu B"]);
+  });
 
   function renderSheet() {
     const rows = ["1", "2", "3"].map((id,i) => ({ ...baseProspect, id, name: `Ligne ${id}`, messageStatus: (i===0 ? "approved" : "draft") as Prospect["messageStatus"], writingIterationStatus: "completed" as const, writingIterationsCompleted: 3, hasOutboundMessages: true }));

@@ -23,6 +23,11 @@ beforeEach(() => {
 });
 
 describe("prospect content displayed by dashboard", () => {
+  it("exposes the creation timestamp used for chronological sorting", async () => {
+    rows[0].created_at = "2026-10-30T10:30:00+02:00";
+    const [p] = await displayed();
+    expect(p.createdAt).toBe("2026-10-30T08:30:00.000Z");
+  });
   it("prioritizes a received reply over the next approved follow-up without hiding the sent initial", async () => {
     rows[0].has_reply = true;
     messages = [
