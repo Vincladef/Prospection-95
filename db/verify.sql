@@ -1,12 +1,19 @@
 -- Vérifications non destructives à lancer après toutes les migrations.
 -- Chaque ligne doit retourner true ou la valeur documentée.
 
+SELECT EXISTS(SELECT 1 FROM pg_enum WHERE enumtypid='app.campaign_status'::regtype AND enumlabel='existing_only')
+  AND position('existing_only' IN pg_get_functiondef('app.schedule_due_messages(integer)'::regprocedure)) > 0
+  AND position('existing_only' IN pg_get_functiondef('app.lease_outbox_jobs(text,integer,integer)'::regprocedure)) > 0
+  AND position('existing_only' IN pg_get_functiondef('agent_api.claim_prospect_iteration(uuid,uuid,uuid,uuid,text)'::regprocedure)) > 0
+  AND position('existing_only' IN pg_get_functiondef('agent_api.register_prospect(uuid,text,text,text,text,text,text,text,jsonb,numeric,text,uuid,text)'::regprocedure)) = 0
+  AS existing_only_keeps_workflow_without_registration;
+
 SELECT to_regnamespace('app') IS NOT NULL
    AND to_regnamespace('vault') IS NOT NULL
    AND to_regnamespace('agent_api') IS NOT NULL
    AND to_regnamespace('audit') IS NOT NULL AS all_schemas_exist;
 
-SELECT count(*) = 29 AS all_migrations_registered
+SELECT count(*) = 31 AS all_migrations_registered
 FROM app.schema_migrations
 WHERE version IN (
   '001_foundation',
@@ -37,7 +44,9 @@ WHERE version IN (
   '026_flexible_experiment_populations',
   '027_crm_pending_sequence_revisions',
   '028_crm_sequence_view_permissions',
-  '029_crm_general_writing_instructions'
+  '029_crm_general_writing_instructions',
+  '030_existing_only_campaign_status',
+  '031_existing_only_campaign_workflow'
 );
 
 SELECT EXISTS (

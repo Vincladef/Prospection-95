@@ -93,6 +93,15 @@ describe("CampaignsView V53", () => {
 
   afterEach(cleanup);
 
+  it("saves the existing-only campaign mode without changing writing instructions or the daily goal", async () => {
+    renderCampaigns();
+    fireEvent.change(screen.getByRole("combobox", {name:"Statut"}), {target:{value:"existing_only"}});
+    expect(screen.getByRole("option", {name:"Sans nouveaux prospects"})).toBeInTheDocument();
+    fireEvent.click(screen.getAllByRole("button", {name:"Enregistrer"})[0]);
+    await waitFor(() => expect(apiMocks.updateCampaign).toHaveBeenCalledWith(campaign.id,
+      expect.objectContaining({status:"existing_only",writingIterations:campaign.writingIterations,dailyNewContactGoal:campaign.dailyNewContactGoal})));
+  });
+
   it("uses the continuous V53 editor instead of the old tabbed layout", () => {
     renderCampaigns();
 

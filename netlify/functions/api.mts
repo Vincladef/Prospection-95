@@ -31,7 +31,7 @@ const sequence = z.object({
 });
 const campaignFields = {
   name: z.string().trim().min(1).max(180),
-  status: z.enum(["inactive", "active", "archived"]),
+  status: z.enum(["inactive", "active", "existing_only", "archived"]),
   folderId: uuid.nullable().optional(),
   targetDescription: z.string().max(200_000).default(""),
   dailyNewContactGoal: z.number().int().min(0).max(10_000).default(0),
@@ -208,7 +208,7 @@ async function updateCampaign(request: Request, id: string, identity: AdminIdent
          reply_instructions = $11,
          tracking_opens_enabled = $12, tracking_clicks_enabled = $13,
          experiment_policy = $14, next_test_instructions = $15,
-         imported_disabled = case when $4 = 'active' then false else imported_disabled end,
+         imported_disabled = case when $4 in ('active','existing_only') then false else imported_disabled end,
          version = version + 1
        where id = $1::uuid and version = $16 returning id, version
      ), incoming as (

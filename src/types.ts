@@ -13,7 +13,7 @@ export type MessageStatus =
   | "received"
   | "sent_manually";
 
-export type CampaignStatus = "inactive" | "active" | "archived";
+export type CampaignStatus = "inactive" | "active" | "existing_only" | "archived";
 
 export interface SequenceContent {
   subject: string;

@@ -8,6 +8,17 @@ Un déploiement, un import ou une migration ne modifie jamais ces valeurs. Le bo
 
 ## Cadence d'envoi
 
+Le statut de campagne « Sans nouveaux prospects » (`existing_only`) conserve
+la rédaction IA, les variantes, la validation et les envois des prospects déjà
+rattachés. La recherche et `agent_api.register_prospect` restent réservés aux
+campagnes `active`. Les candidats déjà rattachés peuvent encore être réservés.
+Les objectifs, quotas, horaires et itérations ne sont pas réinitialisés lors du
+changement de statut ; « Pas actif » et « Archivée » conservent leur comportement.
+Les migrations 030 puis 031 doivent être appliquées dans deux transactions
+distinctes : PostgreSQL exige que la nouvelle valeur d'enum soit validée avant
+son utilisation. La recette `db/tests/031_existing_only_campaign.sql` s'exécute
+uniquement sur une branche isolée et annule toutes ses données de test.
+
 Les réponses Gmail sont synchronisées chaque minute, en alternant les flux par
 compte. Un curseur `__LIVE_ALL__` indépendant lit les messages récents de
 « Tous les messages » depuis le premier envoi confirmé du compte ; le rattrapage

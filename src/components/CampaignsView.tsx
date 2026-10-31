@@ -356,9 +356,11 @@ function CampaignEditor({
               <span>Statut</span>
               <select value={draft.status} onChange={(event) => setDraft((current) => ({ ...current, status: event.target.value as Campaign["status"] }))}>
                 <option value="active">Actif</option>
+                <option value="existing_only">Sans nouveaux prospects</option>
                 <option value="inactive">Pas actif</option>
                 <option value="archived">Archivée</option>
               </select>
+              {draft.status === "existing_only" ? <small className="target-hint">Les prospects existants continuent ; aucune recherche ni inscription automatique de nouveaux prospects.</small> : null}
             </label>
             <label className="target-field">
               <span>Nouveaux contacts / jour</span>
@@ -712,7 +714,7 @@ export function CampaignsView({ campaigns, folders, accounts, experiments, attac
                         onDragEnd={() => { setDraggedCampaignId(null); setDropFolderId(undefined); }}
                         onClick={() => setSelectedId(campaign.id)}
                       >
-                        <span className="target-item-title"><strong>{campaign.name}</strong><i className={`target-status-dot ${campaign.status === "active" ? "on" : ""}`} /></span>
+                        <span className="target-item-title"><strong>{campaign.name}</strong><i className={`target-status-dot ${["active", "existing_only"].includes(campaign.status) ? "on" : ""}`} /></span>
                         <span className="target-meta">{campaign.dailyNewContactGoal} nouveaux/jour · {campaign.validationPolicy === "manual" ? "validation manuelle" : "validation automatique"}</span>
                       </button>
                     ))}

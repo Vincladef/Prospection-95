@@ -13,10 +13,16 @@ L'agent :
 - n'écrit jamais directement dans les schémas `app`, `vault` ou `audit` ;
 - ne modifie jamais le schéma ;
 - ne déclare jamais un envoi ou un brouillon Gmail comme réalisé ;
-- ne traite que les campagnes actives exposées par `agent_api` ;
+- ne traite que les campagnes `active` ou `existing_only` exposées par `agent_api` ;
 - emploie une clé d'idempotence stable pour chaque décision rejouable.
 
 Les fonctions peuvent préparer du travail, mais seul le backend applique horaires, quotas, exclusions, pauses et confirmations techniques.
+
+Le statut `existing_only` (« Sans nouveaux prospects ») autorise uniquement le
+traitement des prospects déjà rattachés : itérations, variantes et propositions
+de séquences. Ne rechercher et n'enregistrer aucun nouveau prospect pour ces
+campagnes, même si leur objectif journalier est non nul. La recherche et
+`register_prospect` sont réservés au statut `active`.
 
 ## Cycle obligatoire d'une exécution
 
@@ -51,7 +57,7 @@ Les anciennes colonnes `writing_iteration_*` sont conservées pour compatibilit�
 
 ```sql
 SELECT * FROM agent_api.campaign_parameters
-WHERE status = 'active'
+WHERE status IN ('active', 'existing_only')
 ORDER BY name;
 ```
 
