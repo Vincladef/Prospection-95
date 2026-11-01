@@ -472,9 +472,9 @@ signal. `open_reliability` reste `noisy`.
 `mean_open_to_click_seconds` est uniquement le délai observé entre un chargement
 et un clic de navigateur apparent, avec `delay_samples` comme taille de groupe.
 Ce délai peut inclure une pause ou une ouverture d'onglet ; ce n'est PAS un temps
-de lecture. `reading_time_seconds` reste NULL. Ne pas convertir ce délai en
+de lecture. `reading_time_seconds` reste NULL dans cette ancienne vue : les durées de connexion se lisent séparément dans `agent_api.reading_metrics` (043). Ne pas convertir ce délai en
 attention, compréhension, score certain ou durée de lecture estimée. Une paire
-absente, incohérente, proxy ou robot ne fournit pas ce délai expérimental.
+absente, incohérente, proxy ou robot ne fournit pas ce délai approximatif.
 
 L'IA peut utiliser ces signaux secondaires pour proposer progressivement des
 tests (objet, longueur, clarté du lien, etc.), en indiquant la couverture, l'âge
@@ -483,3 +483,33 @@ humaines et résultats commerciaux. Ne pas déclarer une gagnante à partir de
 chargements de pixels seuls, ni modifier les seuils de prospects uniques, les
 quotas ou la cadence sur la seule base de ces signaux bruités. Ne pas activer
 automatiquement un suivi supplémentaire dans le but d'obtenir des données.
+
+
+### Temps de lecture par connexion (043)
+
+Lire `agent_api.reading_metrics` avec les statistiques A/B/C. L’option
+`reading_time_enabled` est facultative, désactivée par défaut et figée au départ
+sur l’email. La mesure utilise le même pixel signé, en maintenant sa réponse
+ouverte jusqu’à 50 secondes ; aucun script n’est embarqué dans l’email.
+
+`reading_time_seconds` est la moyenne des durées non plafonnées, arrondies à une
+seconde, d’abord par prospect puis entre prospects. `samples` compte les emails,
+`measured_prospects` les prospects uniques. Une seule première connexion
+exploitable est retenue par email ; les réouvertures et plusieurs types de
+clients ne doivent pas surpondérer un prospect.
+
+`capped_samples` signifie connexion encore ouverte à 50 s : durée censurée,
+**au moins 50 s**, hors moyenne non plafonnée. Ne pas la remplacer par une durée
+exacte de 50 s et ne pas comparer naïvement les moyennes si la part plafonnée
+diffère entre variantes. Donner la couverture `attempted_messages` /
+`enabled_messages`, les effectifs et les exclusions (`incompatible_messages`,
+`failed_messages`, `budget_limited_messages`). Ne jamais transformer une absence
+ou un échec en zéro seconde.
+
+`method=connection_duration`, `reliability=approximate` : le serveur mesure un
+chargement interrompu, pas l’attention, la compréhension ni une lecture humaine
+certaine. Les proxys Gmail/Apple, robots et clients non identifiés ne fournissent
+pas de durée. Même une connexion directe peut être interrompue par le réseau.
+Ne pas généraliser l’échantillon mesurable à tous les destinataires ; croiser
+avec les réponses humaines et résultats commerciaux avant une conclusion A/B/C.
+Les limites de mesure n’affectent jamais les envois ni les plafonds des comptes.

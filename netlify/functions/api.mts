@@ -49,6 +49,7 @@ const campaignFields = {
   trackingClicksEnabled: z.boolean().default(true),
   advancedInteractionsEnabled:z.boolean().optional(),
   readDelayEnabled:z.boolean().optional(),
+  readingTimeEnabled:z.boolean().optional(),
   experimentPolicy: z.enum(["continue", "stabilize"]).default("continue"),
   nextTestInstructions: z.string().max(200_000).default(""),
   sequence,
@@ -161,11 +162,11 @@ async function createCampaign(request: Request, identity: AdminIdentity, request
          (folder_id, name, status, target_description, daily_new_contact_goal,
           validation_policy, sender_strategy, fixed_sender_account_id, ai_instructions,
           writing_iteration_instructions, reply_instructions, tracking_opens_enabled, tracking_clicks_enabled,
-          experiment_policy, next_test_instructions, reply_mode, reply_iteration_instructions, reply_auto_scope,advanced_interactions_enabled,read_delay_enabled)
+          experiment_policy, next_test_instructions, reply_mode, reply_iteration_instructions, reply_auto_scope,advanced_interactions_enabled,read_delay_enabled,reading_time_enabled)
        values ($1::uuid, $2, $3::app.campaign_status, $4, $5,
                $6::app.validation_policy, $7::app.sender_strategy, $8::uuid, $9,
                coalesce($19::text[], app.extract_campaign_iteration_instructions($9)),
-               $10, $11, $12, $13, $14, coalesce($20, 'draft'), coalesce($21::text[], ARRAY['']::text[]), coalesce($22, 'first'),coalesce($23,false),coalesce($24,false))
+               $10, $11, $12, $13, $14, coalesce($20, 'draft'), coalesce($21::text[], ARRAY['']::text[]), coalesce($22, 'first'),coalesce($23,false),coalesce($24,false),coalesce($25,false))
        returning id, version
      ), inserted_templates as (
        insert into app.message_templates (campaign_id, step, iteration, version, subject, body, instructions, created_by)
@@ -192,7 +193,7 @@ async function createCampaign(request: Request, identity: AdminIdentity, request
           ? JSON.stringify({ subject: value.sequence.subjectInstructions, body: value.sequence.stepInstructions[index] })
           : value.sequence.stepInstructions[index],
       }))), identity.email,
-      value.senderStrategy === "pool" ? value.senderAccountIds : [], value.writingIterations ?? null, value.replyMode ?? null, value.replyIterations ?? null, value.replyAutoScope ?? null,value.advancedInteractionsEnabled ?? false,value.readDelayEnabled ?? false],
+      value.senderStrategy === "pool" ? value.senderAccountIds : [], value.writingIterations ?? null, value.replyMode ?? null, value.replyIterations ?? null, value.replyAutoScope ?? null,value.advancedInteractionsEnabled ?? false,value.readDelayEnabled ?? false,value.readingTimeEnabled ?? false],
   );
   if (!row) throw new HttpError(500, "campaign_create_failed", "La campagne n’a pas pu être créée.");
   await logMutation(identity, requestId, { action: "campaign_created", entityType: "campaign", entityId: row.id, after: value });
@@ -214,7 +215,7 @@ async function updateCampaign(request: Request, id: string, identity: AdminIdent
          reply_mode = coalesce($22, reply_mode),
          reply_auto_scope = coalesce($24, reply_auto_scope),
          reply_iteration_instructions = coalesce($23::text[], reply_iteration_instructions),
-         advanced_interactions_enabled=coalesce($25,advanced_interactions_enabled),read_delay_enabled=coalesce($26,read_delay_enabled),
+         advanced_interactions_enabled=coalesce($25,advanced_interactions_enabled),read_delay_enabled=coalesce($26,read_delay_enabled),reading_time_enabled=coalesce($27,reading_time_enabled),
          tracking_opens_enabled = $12, tracking_clicks_enabled = $13,
          experiment_policy = $14, next_test_instructions = $15,
          imported_disabled = case when $4 in ('active','existing_only') then false else imported_disabled end,
@@ -264,7 +265,7 @@ async function updateCampaign(request: Request, id: string, identity: AdminIdent
           ? JSON.stringify({ subject: value.sequence.subjectInstructions, body: value.sequence.stepInstructions[index] })
           : value.sequence.stepInstructions[index],
       }))), identity.email,
-      value.senderStrategy === "pool" ? value.senderAccountIds : [], value.writingIterations ?? null, value.replyMode ?? null, value.replyIterations ?? null, value.replyAutoScope ?? null,value.advancedInteractionsEnabled ?? null,value.readDelayEnabled ?? null],
+      value.senderStrategy === "pool" ? value.senderAccountIds : [], value.writingIterations ?? null, value.replyMode ?? null, value.replyIterations ?? null, value.replyAutoScope ?? null,value.advancedInteractionsEnabled ?? null,value.readDelayEnabled ?? null,value.readingTimeEnabled ?? null],
   );
   if (!row) throw new HttpError(409, "version_conflict", "La campagne a été modifiée ailleurs.");
   await logMutation(identity, requestId, { action: "campaign_updated", entityType: "campaign", entityId: id, before, after: value });

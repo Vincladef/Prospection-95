@@ -54,7 +54,7 @@ function nullableBoolean(value: unknown): boolean | null {
 }
 
 export async function loadDashboard(): Promise<Record<string, unknown>> {
-  const [vaultConfigured, settingsRows, folderRows, campaignRows, templateRows, prospectRows, messageRows, accountRows, providerRows, experimentRows, variantRows, campaignStatsRows, attachmentRows, engagementRows] = await Promise.all([
+  const [vaultConfigured, settingsRows, folderRows, campaignRows, templateRows, prospectRows, messageRows, accountRows, providerRows, experimentRows, variantRows, campaignStatsRows, attachmentRows, engagementRows, readingRows] = await Promise.all([
     credentialVaultConfigured(),
     sqlQuery(`select * from app.settings where singleton`),
     sqlQuery(`select id::text, name, position from app.campaign_folders order by position, name`),
@@ -377,6 +377,7 @@ export async function loadDashboard(): Promise<Record<string, unknown>> {
       order by created_at
     `),
     sqlQuery(`select * from agent_api.interaction_metrics`),
+    sqlQuery(`select * from agent_api.reading_metrics`),
   ]);
 
   const engagementFor=(campaignId:string,variantId?:string)=>{
@@ -386,7 +387,12 @@ export async function loadDashboard(): Promise<Record<string, unknown>> {
     const repeats=rows.filter(r=>r.mean_open_interval_seconds!=null);
     const intervalWeight=(r:DbRow)=>Math.max(0,numberValue(r.open_requests)-numberValue(r.observed_messages));
     const totalWeight=repeats.reduce((n,r)=>n+intervalWeight(r),0);
-    return {measuredMessages:measured,observedMessages:observed,openRequests:observed?count("open_requests"):null,
+    const reading=readingRows.filter(r=>String(r.campaign_id)===campaignId && (!variantId || String(r.variant_id)===variantId));
+    const readingCount=(key:string)=>reading.reduce((n,r)=>n+numberValue(r[key]),0);
+    const measuredProspects=readingCount("measured_prospects");
+    return {reading:{enabledMessages:readingCount("enabled_messages"),attemptedMessages:readingCount("attempted_messages"),
+      samples:readingCount("samples"),measuredProspects,meanSeconds:measuredProspects?reading.reduce((n,r)=>n+numberValue(r.reading_time_seconds)*numberValue(r.measured_prospects),0)/measuredProspects:null,
+      cappedSamples:readingCount("capped_samples"),incompatibleMessages:readingCount("incompatible_messages"),failedMessages:readingCount("failed_messages"),budgetLimitedMessages:readingCount("budget_limited_messages")},measuredMessages:measured,observedMessages:observed,openRequests:observed?count("open_requests"):null,
       repeatedOpenMessages:observed?count("repeated_open_messages"):null,proxyOpenRequests:count("proxy_open_requests"),
       automatedOpenRequests:count("automated_open_requests"),directOpenRequests:count("direct_open_requests"),
       meanOpenIntervalSeconds:totalWeight?repeats.reduce((n,r)=>n+numberValue(r.mean_open_interval_seconds)*intervalWeight(r),0)/totalWeight:null,
@@ -440,7 +446,7 @@ export async function loadDashboard(): Promise<Record<string, unknown>> {
       replyIterations: Array.isArray(row.reply_iteration_instructions) ? row.reply_iteration_instructions.map(value => textValue(value)) : [""],
       trackingOpensEnabled: Boolean(row.tracking_opens_enabled),
       trackingClicksEnabled: Boolean(row.tracking_clicks_enabled),
-      advancedInteractionsEnabled:Boolean(row.advanced_interactions_enabled),readDelayEnabled:Boolean(row.read_delay_enabled),
+      advancedInteractionsEnabled:Boolean(row.advanced_interactions_enabled),readDelayEnabled:Boolean(row.read_delay_enabled),readingTimeEnabled:Boolean(row.reading_time_enabled),
       experimentPolicy: textValue(row.experiment_policy),
       nextTestInstructions: textValue(row.next_test_instructions),
       importedDisabled: Boolean(row.imported_disabled),

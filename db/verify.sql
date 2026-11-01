@@ -19,7 +19,7 @@ SELECT to_regnamespace('app') IS NOT NULL
    AND to_regnamespace('agent_api') IS NOT NULL
    AND to_regnamespace('audit') IS NOT NULL AS all_schemas_exist;
 
-SELECT count(*) = 42 AS all_migrations_registered
+SELECT count(*) = 43 AS all_migrations_registered
 FROM app.schema_migrations
 WHERE version IN (
   '001_foundation',
@@ -63,7 +63,8 @@ WHERE version IN (
   '039_reply_reliability',
   '040_sequence_safety_and_metrics',
   '041_initial_message_priority',
-  '042_advanced_interactions'
+  '042_advanced_interactions',
+  '043_reading_duration'
 );
 
 SELECT EXISTS (
@@ -397,3 +398,11 @@ SELECT to_regclass('agent_api.interaction_metrics') IS NOT NULL
  AND NOT has_table_privilege('prospection95_agent','app.interaction_buckets','SELECT')
  AND has_table_privilege('prospection95_agent','agent_api.interaction_metrics','SELECT')
  AS advanced_interactions_are_guarded;
+
+SELECT to_regclass('agent_api.reading_metrics') IS NOT NULL
+ AND has_table_privilege('prospection95_agent','agent_api.reading_metrics','SELECT')
+ AND NOT has_table_privilege('prospection95_agent','app.reading_sessions','SELECT')
+ AND NOT has_function_privilege('prospection95_agent','app.finish_reading_session(uuid,text,integer)','EXECUTE')
+ AND NOT has_table_privilege('prospection95_app','app.reading_budget','UPDATE')
+ AND has_function_privilege('prospection95_app','app.begin_reading_session(uuid,text)','EXECUTE')
+ AS reading_duration_contract_is_guarded;

@@ -60,6 +60,8 @@ export default async function syncMailboxes(_request: Request, _context: Context
     // Bounded retention maintenance uses the existing worker, no extra schedule.
     await sqlQuery(`delete from app.interaction_buckets where ctid in (
       select ctid from app.interaction_buckets where bucket_hour<clock_timestamp()-interval '90 days' limit 1000)`);
+    await sqlQuery(`delete from app.reading_sessions where id in (
+      select id from app.reading_sessions where started_at<clock_timestamp()-interval '90 days' limit 1000)`);
     claimed = await claimMailbox();
     if (!claimed) return workerResult(worker, { ok: true, claimed: 0 });
     const delta = await fetchMailboxDelta({

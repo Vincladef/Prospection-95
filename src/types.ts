@@ -43,6 +43,7 @@ export interface Campaign {
   trackingClicksEnabled: boolean;
   advancedInteractionsEnabled?:boolean;
   readDelayEnabled?:boolean;
+  readingTimeEnabled?:boolean;
   experimentPolicy: "continue" | "stabilize";
   nextTestInstructions: string;
   importedDisabled: boolean;
@@ -305,7 +306,13 @@ export interface ImportPreview {
   warnings: string[];
 }
 
+export interface ReadingMetrics {
+ enabledMessages:number;attemptedMessages:number;samples:number;measuredProspects:number;meanSeconds:number|null;
+ cappedSamples:number;incompatibleMessages:number;failedMessages:number;budgetLimitedMessages:number;
+}
+
 export interface EngagementMetrics {
+ reading?:ReadingMetrics|null;
  measuredMessages:number;observedMessages:number;openRequests:number|null;repeatedOpenMessages:number|null;
  proxyOpenRequests:number;automatedOpenRequests:number;directOpenRequests:number;
  meanOpenIntervalSeconds:number|null;delaySamples:number;meanOpenToClickSeconds:number|null;

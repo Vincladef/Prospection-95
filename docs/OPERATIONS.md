@@ -471,7 +471,7 @@ Validation : `db/tests/041_initial_message_priority.sql`, sans envoi externe.
 ## Interactions avancées (042)
 
 Options facultatives dans « Suivi des interactions » : réouvertures/fréquence et
-délai ouverture→clic expérimental. Elles n'ajoutent aucun pixel, script, requête
+délai ouverture→clic approximatif. Elles n'ajoutent aucun pixel, script, requête
 périodique, cookie, nouvelle URL ou prestataire aux emails. Le texte alternatif,
 le pixel unique signé et les redirections existants sont conservés. Aucun impact
 nul sur le spam ne peut être garanti : les traceurs existants peuvent déjà avoir
@@ -496,9 +496,7 @@ historique ne permet pas de reconstruire des horodatages individuels manquants.
 Conformité examinée au 1er novembre 2026 : la CNIL distingue le consentement aux
 traceurs de l'autorisation de prospection, y compris en B2B, et exige une analyse
 par finalité. L'exemption de délivrabilité est encadrée et n'autorise pas à elle
-seule l'optimisation marketing des variantes. L'interface rappelle les obligations
-sans ajouter de registre ou de blocage de consentement, conformément au choix
-explicite du propriétaire. La minimisation technique n'est pas une certification
+seule l'optimisation marketing des variantes. Aucun registre ni blocage de consentement n’est ajouté ; le rappel des obligations a été retiré des paramètres à la demande du propriétaire. La minimisation technique n'est pas une certification
 de conformité de l'usage : information, base légale, consentement lorsqu'il est
 requis, retrait et exercice des droits restent à organiser par le responsable.
 
@@ -510,3 +508,60 @@ Recette : `db/tests/042_advanced_interactions.sql`, tests unitaires du pixel,
 options de campagne et affichage des données manquantes. Aucun email réel n'est
 envoyé pour ces tests. Les métriques n'affectent ni la validation, ni les délais,
 ni les plafonds, ni la priorité J0/R1–R5.
+
+
+## Mesure de durée par flux (043)
+
+La case « Mesurer le temps de lecture » remplace l’URL du pixel unique par
+`/t/r/:token` pour les futurs envois. L’ancien `/t/o/:token` et les jetons déjà
+envoyés restent valides. Ouvrir/clic/fréquence/délai restent indépendants ; la
+durée nécessite seulement les ouvertures. Le texte alternatif, le nombre
+d’images, le domaine et les liens ne changent pas. Aucun JavaScript, cookie,
+identifiant d’appareil ou appel tiers n’est ajouté dans l’email.
+
+Une Edge Function délivre un GIF de moins de 400 octets, progressivement, pendant
+50 secondes maximum, avec une résolution d’une seconde. La fermeture est observée
+via l’annulation du flux/de la requête. L’Edge envoie un appel court de début et
+un appel court final au backend, protégé par `READING_EDGE_SECRET` ; jamais un
+appel ou une écriture par seconde. Ni connexion Postgres ni Function Node ne
+reste ouverte pendant les 50 secondes. L’Edge ne reçoit pas DATABASE_URL.
+La formule gratuite Netlify du projet ne permet pas les scopes sélectifs : le
+secret utilise les scopes disponibles et reste privé (aucun préfixe VITE_).
+
+Seuls les agents annonçant explicitement Thunderbird ou Outlook bureau entrent
+dans le groupe de clients candidats directs. Les autres, y compris les UA
+Mozilla/Safari génériques pouvant être Apple MPP, ne sont pas promus en humains.
+Un candidat direct reste une estimation par connexion, pas une garantie que
+le message était visible ou lu. La compatibilité de chaque version de client
+mail doit être vérifiée dans le client ; une recette HTTP n’est pas une recette
+Thunderbird/Outlook/Gmail. Les coupures réseau sont une limite intrinsèque.
+
+Une ligne au plus par email et classe de client empêche les relectures/rejeux
+multiples. Le backend sérialise l’allocation du budget : 100 flux longs par jour
+UTC, 2 000 par mois UTC, 8 simultanés (leases 60 s). En cas de limite, erreur ou
+client incompatible : GIF statique et absence de durée, sans bloquer l’envoi.
+Les seules ressources supplémentaires par mesure longue sont une invocation
+Edge et un appel final Node (le début remplace le suivi d’ouverture existant).
+Le budget limite cette hausse ; il n’affirme pas connaître la consommation de
+toutes les autres fonctions du compte. Aucun service payant ni nouvel abonnement.
+
+Une fin à 50 s est censurée (≥50 s), exclue de la moyenne des durées non plafonnées.
+Un rapport manquant, incohérent ou trop tardif n’est jamais converti en zéro.
+Les statistiques par variante donnent le même poids à chaque prospect, puis
+agrègent les durées de ses messages ; elles montrent la couverture, les plafonds
+et les exclusions. Les tables brutes sont privées ; l’IA ne lit que
+`agent_api.reading_metrics`. Conservation 90 jours via `sync-mailboxes` existant.
+
+Sources techniques :
+- https://guides.altcraft.com/en/user-guide/communication-channels/email/email-tracking/
+- https://help.litmus.com/article/164-analytics-engagement-metrics
+- https://docs.netlify.com/build/edge-functions/limits/
+- https://docs.netlify.com/manage/accounts-and-billing/billing/billing-for-credit-based-plans/how-credits-work/
+
+Validation : `db/tests/043_reading_duration.sql`, tests du flux, de la signature,
+du backend privé, des options et statistiques. Test réseau réel du 1er novembre
+2026 sur un déploiement Netlify isolé : annulations reçues à 7 352 et 17 977 ms,
+plafond serveur à 50 056 ms. Identifiants synthétiques, aucun email ni prospect
+réel. Ces résultats valident le transport navigateur → Netlify, pas une lecture
+humaine dans un client mail. Les tests SQL utilisent uniquement des fixtures
+annulées sur une branche de validation.

@@ -194,6 +194,7 @@ export async function prepareTrackedMessage(input: {
   html: string | null;
   opensEnabled: boolean;
   clicksEnabled: boolean;
+  readingTimeEnabled?: boolean;
   baseUrl: string;
   now?: Date;
   signer?: TokenSigner;
@@ -211,7 +212,7 @@ export async function prepareTrackedMessage(input: {
     : await linkifyPlainText(input.text, baseUrl, input.messageId, signer, expiresAt, input.clicksEnabled);
   if (input.opensEnabled) {
     const token = await signer({ v: TOKEN_VERSION, k: "open", m: input.messageId, e: expiresAt });
-    html += `<img src="${baseUrl}/t/o/${encodeURIComponent(token)}" width="1" height="1" alt="" style="display:block;width:1px;height:1px;border:0" referrerpolicy="no-referrer">`;
+    html += `<img src="${baseUrl}/t/${input.readingTimeEnabled ? "r" : "o"}/${encodeURIComponent(token)}" width="1" height="1" alt="" style="display:block;width:1px;height:1px;border:0" referrerpolicy="no-referrer">`;
   }
   return { text: input.text, html };
 }
