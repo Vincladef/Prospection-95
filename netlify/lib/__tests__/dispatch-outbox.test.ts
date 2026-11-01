@@ -117,3 +117,15 @@ it("defers an SMTP commit when its final Gmail read fails, preserving the retry 
  const abort=mocks.sqlQuery.mock.calls.find(([sql])=>sql.includes("precommit_abort_count=precommit_abort_count"));
  expect(abort?.[1]).toEqual(["job","lease",true]);
 });
+
+it.each([[true,true],[true,false],[false,true],[false,false]])("derives automatic analyses from source tracking (%s, %s)",async(opens,clicks)=>{
+ mocks.randomInt.mockReturnValue(0);mocks.refresh.mockResolvedValue(undefined);
+ mocks.prepare.mockResolvedValue({text:"Relance",html:null});
+ mocks.sqlOne.mockResolvedValueOnce({count:0}).mockResolvedValueOnce({...leased,tracking_opens_enabled:opens,tracking_clicks_enabled:clicks,advanced_interactions_enabled:false,read_delay_enabled:false})
+  .mockResolvedValueOnce({id:"job"}).mockResolvedValueOnce({id:"job",status:"running"})
+  .mockResolvedValueOnce({internet_message_id:"<persisted@test>",in_reply_to:null,references_header:[]});
+ mocks.send.mockResolvedValue({state:"accepted",response:"250 OK"});
+ await run();
+ const snapshot=mocks.sqlQuery.mock.calls.find(([sql])=>sql.includes("set tracking_opens_enabled="));
+ expect(snapshot?.[1]).toEqual(["message",opens,clicks,opens,opens&&clicks,false]);
+});

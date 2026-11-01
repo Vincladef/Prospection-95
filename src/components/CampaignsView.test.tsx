@@ -365,15 +365,18 @@ it("shows unavailable measurements instead of zero rates",()=>{
  expect(screen.getAllByText("—").length).toBeGreaterThanOrEqual(6);
 });
 
-it("saves advanced analytics as independent opt-in options using the existing tracking",async()=>{
+it("offers exactly three tracking choices with automatic secondary analyses",async()=>{
  cleanup();
  renderCampaigns([], [{...campaign,trackingOpensEnabled:true,trackingClicksEnabled:true}]);
  fireEvent.click(screen.getByText(/Suivi des interactions/));
- const advanced=screen.getByRole("checkbox",{name:"Analyser les réouvertures et leur fréquence"});
- const delay=screen.getByRole("checkbox",{name:/Analyser le délai entre ouverture et clic/});
- expect(advanced).not.toBeChecked();expect(delay).toBeEnabled();fireEvent.click(delay);
+ const panel=screen.getByText(/Suivi des interactions/).closest("details")!;
+ expect(panel.querySelectorAll('input[type="checkbox"]')).toHaveLength(3);
+ expect(screen.queryByRole("checkbox",{name:/réouvertures/})).not.toBeInTheDocument();
+ expect(screen.queryByRole("checkbox",{name:/délai entre/})).not.toBeInTheDocument();
+ fireEvent.click(screen.getByRole("checkbox",{name:"Mesurer les clics sur les liens"}));
  fireEvent.click(screen.getAllByRole("button",{name:"Enregistrer"})[0]);
- await waitFor(()=>expect(apiMocks.updateCampaign).toHaveBeenCalledWith(campaign.id,expect.objectContaining({advancedInteractionsEnabled:false,readDelayEnabled:true})));
+ await waitFor(()=>expect(apiMocks.updateCampaign).toHaveBeenCalledWith(campaign.id,expect.objectContaining({trackingOpensEnabled:true,trackingClicksEnabled:false})));
+ expect(apiMocks.updateCampaign.mock.calls[0][1]).not.toHaveProperty("readDelayEnabled");
  cleanup();
 });
 
@@ -381,7 +384,7 @@ it("saves real connection timing independently from clicks and removes the compl
  cleanup();
  renderCampaigns([], [{...campaign,trackingOpensEnabled:true,trackingClicksEnabled:false}]);
  fireEvent.click(screen.getByText(/Suivi des interactions/));
- const reading=screen.getByRole("checkbox",{name:"Mesurer le temps de lecture"});
+ const reading=screen.getByRole("checkbox",{name:"Mesurer la durée de lecture"});
  expect(reading).toBeEnabled();expect(reading).not.toBeChecked();fireEvent.click(reading);
  expect(screen.queryByText(/Recommandations CNIL/)).not.toBeInTheDocument();
  expect(screen.queryByText(/expérimental/)).not.toBeInTheDocument();

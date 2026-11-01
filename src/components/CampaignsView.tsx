@@ -81,7 +81,7 @@ function campaignPayload(campaign: Campaign) {
     replyIterations: campaign.replyIterations,
     trackingOpensEnabled: campaign.trackingOpensEnabled,
     trackingClicksEnabled: campaign.trackingClicksEnabled,
-    advancedInteractionsEnabled:campaign.advancedInteractionsEnabled ?? false,readDelayEnabled:campaign.readDelayEnabled ?? false,readingTimeEnabled:campaign.readingTimeEnabled ?? false,
+    readingTimeEnabled:campaign.readingTimeEnabled ?? false,
     experimentPolicy: campaign.experimentPolicy,
     nextTestInstructions: campaign.nextTestInstructions,
     sequence: campaign.sequence,
@@ -422,18 +422,10 @@ function CampaignEditor({
           <details className="v48-campaign-tracking">
             <summary>Suivi des interactions <span>{draft.trackingOpensEnabled || draft.trackingClicksEnabled ? "Configuré" : "Désactivé"}</span></summary>
             <div className="v48-tracking-body interaction-settings">
-              <fieldset><legend>Collecte</legend>
-              <label><input type="checkbox" checked={draft.trackingOpensEnabled} onChange={(event) => setDraft((current) => ({ ...current, trackingOpensEnabled: event.target.checked }))} /> Détecter les ouvertures</label>
-              <label><input type="checkbox" checked={draft.trackingClicksEnabled} onChange={(event) => setDraft((current) => ({ ...current, trackingClicksEnabled: event.target.checked }))} /> Mesurer les clics sur les liens</label>
-              </fieldset>
-              <fieldset><legend>Analyses</legend>
-              <label><input type="checkbox" disabled={!draft.trackingOpensEnabled} checked={draft.advancedInteractionsEnabled} onChange={e=>setDraft(d=>({...d,advancedInteractionsEnabled:e.target.checked}))}/> Analyser les réouvertures et leur fréquence</label>
-              <label><input type="checkbox" disabled={!draft.trackingOpensEnabled||!draft.trackingClicksEnabled} checked={draft.readDelayEnabled} onChange={e=>setDraft(d=>({...d,readDelayEnabled:e.target.checked}))}/> Analyser le délai entre ouverture et clic</label>
-              <label><input type="checkbox" disabled={!draft.trackingOpensEnabled} checked={draft.readingTimeEnabled} onChange={e=>setDraft(d=>({...d,readingTimeEnabled:e.target.checked}))}/> Mesurer le temps de lecture</label>
-              <small>Réouvertures et lecture : ouvertures requises. Délai ouverture-clic : ouvertures et clics requis. Chaque analyse se choisit séparément.</small>
-              </fieldset>
-              <details className="interaction-help"><summary>À propos des mesures</summary><p>Le temps de lecture est indicatif : durée de connexion au pixel, jusqu’à 50 secondes, avec une résolution d’une seconde. Tous les clients sont observés, y compris les proxys et chargements automatiques probables, dans les limites du budget de collecte. Les statistiques indiquent le contexte et l’incertitude.</p><p>Les analyses réutilisent le suivi existant, sans image ni script supplémentaire. Les choix s’appliquent aux prochains envois ; les données déjà recueillies sont conservées.</p></details>
-
+              <label><input type="checkbox" checked={draft.trackingOpensEnabled} onChange={e=>setDraft(d=>({...d,trackingOpensEnabled:e.target.checked}))}/> Détecter les ouvertures</label>
+              <label><input type="checkbox" checked={draft.trackingClicksEnabled} onChange={e=>setDraft(d=>({...d,trackingClicksEnabled:e.target.checked}))}/> Mesurer les clics sur les liens</label>
+              <label><input type="checkbox" disabled={!draft.trackingOpensEnabled} checked={draft.readingTimeEnabled} onChange={e=>setDraft(d=>({...d,readingTimeEnabled:e.target.checked}))}/> Mesurer la durée de lecture</label>
+              <small>Les autres analyses sont automatiques. La durée nécessite les ouvertures. Détails dans les statistiques.</small>
             </div>
           </details>
         </section>

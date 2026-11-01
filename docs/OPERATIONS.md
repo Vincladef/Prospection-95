@@ -625,3 +625,21 @@ les nouvelles données commencent à la prochaine observation admissible.
 Recette : db/tests/045_contextual_interactions.sql (fixtures annulées sur branche
 Neon), tests du classement et de l’affichage. Les envois et leur autorisation ne
 sont pas modifiés.
+
+
+### Trois options et analyses automatiques (046, remplace les options 042/044)
+
+Seules ouvertures, clics et durée de lecture sont configurables. Les réouvertures
+et leur fréquence sont analysées automatiquement depuis les ouvertures ; le délai
+ouverture-clic se calcule lorsque ses horodatages sont disponibles. Les anciens
+champs advanced_interactions_enabled/read_delay_enabled restent acceptés pour
+compatibilité mais ne pilotent plus la collecte ni le calcul. Aucun changement
+rétroactif des emails, aucune reconstitution de données manquantes. Les données
+déjà présentes restent analysables quand la collecte future est désactivée.
+
+La collecte vérifie toujours la confirmation technique, les options de sources
+figées au départ et les sources actuellement autorisées dans la campagne. Le
+worker fige les indicateurs secondaires depuis ces sources pour les nouveaux
+envois. Les compteurs horaires et le pixel existants sont réutilisés. Durées,
+contextes clients/proxys/automatisation, quotas, 90 jours de rétention et fiabilité
+restent inchangés. Recette : db/tests/046_automatic_interactions.sql.

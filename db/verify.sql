@@ -19,7 +19,7 @@ SELECT to_regnamespace('app') IS NOT NULL
    AND to_regnamespace('agent_api') IS NOT NULL
    AND to_regnamespace('audit') IS NOT NULL AS all_schemas_exist;
 
-SELECT count(*) = 45 AS all_migrations_registered
+SELECT count(*) = 46 AS all_migrations_registered
 FROM app.schema_migrations
 WHERE version IN (
   '001_foundation',
@@ -66,7 +66,8 @@ WHERE version IN (
   '042_advanced_interactions',
   '043_reading_duration',
   '044_independent_interaction_analyses',
-  '045_contextual_interactions'
+  '045_contextual_interactions',
+  '046_automatic_interaction_analyses'
 );
 
 SELECT EXISTS (
@@ -409,8 +410,8 @@ SELECT to_regclass('agent_api.reading_metrics') IS NOT NULL
  AND has_function_privilege('prospection95_app','app.begin_reading_session(uuid,text)','EXECUTE')
  AS reading_duration_contract_is_guarded;
 
-SELECT position('OR (m.read_delay_enabled' IN pg_get_functiondef('app.record_interaction_bucket(uuid,text,text)'::regprocedure))>0
- AND position('AND m.advanced_interactions_enabled' IN pg_get_viewdef('app.message_engagement'::regclass,true))=0 AS interaction_analyses_are_independent;
+SELECT position('m.advanced_interactions_enabled' IN pg_get_functiondef('app.record_interaction_bucket(uuid,text,text)'::regprocedure))=0
+ AND position('m.read_delay_enabled' IN pg_get_viewdef('app.message_engagement'::regclass,true))=0 AS interaction_analyses_are_automatic;
 
 SELECT to_regclass('agent_api.open_context_metrics') IS NOT NULL
  AND has_table_privilege('prospection95_agent','agent_api.reading_context_metrics','SELECT')
