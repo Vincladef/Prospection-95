@@ -19,7 +19,7 @@ SELECT to_regnamespace('app') IS NOT NULL
    AND to_regnamespace('agent_api') IS NOT NULL
    AND to_regnamespace('audit') IS NOT NULL AS all_schemas_exist;
 
-SELECT count(*) = 40 AS all_migrations_registered
+SELECT count(*) = 41 AS all_migrations_registered
 FROM app.schema_migrations
 WHERE version IN (
   '001_foundation',
@@ -61,7 +61,8 @@ WHERE version IN (
   '037_gmail_bobwork_setup_confirmation',
   '038_deliverability_decisions',
   '039_reply_reliability',
-  '040_sequence_safety_and_metrics'
+  '040_sequence_safety_and_metrics',
+  '041_initial_message_priority'
 );
 
 SELECT EXISTS (
@@ -385,3 +386,7 @@ SELECT position('mailbox_check_token' IN pg_get_functiondef('app.start_outbox_at
 SELECT to_regprocedure('app.prospection_earliest_at(uuid)') IS NOT NULL
  AND position('metrics.contacted_prospects' IN pg_get_functiondef('agent_api.advance_experiment(uuid,uuid,text)'::regprocedure))>0
  AND position('sequence_delay_not_elapsed' IN pg_get_functiondef('app.start_outbox_attempt(uuid,uuid)'::regprocedure))>0 AS sequence_clock_and_unique_thresholds_available;
+
+SELECT position('ORDER BY CASE WHEN m.step = ''J0'' THEN 0 ELSE 1 END' IN pg_get_functiondef('app.schedule_due_messages(integer)'::regprocedure))>0
+ AND position('ORDER BY CASE WHEN j.job_kind=''prospection'' AND j.step=''J0'' THEN 0' IN pg_get_functiondef('app.lease_outbox_jobs(text,integer,integer)'::regprocedure))>0
+ AS initial_messages_take_priority;

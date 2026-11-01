@@ -443,3 +443,11 @@ restent inconnus ; ne pas les interpréter comme un échec à 0 %.
 La programmation manuelle suit les mêmes délais et exclusions que le worker.
 Ne pas avancer artificiellement un horodatage ni remettre une conversation
 arrêtée en activité pour rendre une relance éligible.
+
+
+### Priorité des nouveaux contacts (041)
+
+Quand des J0 et des relances sont éligibles simultanément, les premiers emails
+J0 passent avant R1–R5 pour les places disponibles dans le quota. Cette règle
+remplace les anciennes mentions de priorité aux relances. Les relances restent
+en file ; aucun plafond, délai minimum ni contrôle de conversation n'est levé.

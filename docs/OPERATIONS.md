@@ -46,7 +46,7 @@ Les appels sans opportunité quittent immédiatement, sans accès à la base. Au
 bail n'est détenu pendant l'attente. Les dates réparties dans les plages des
 comptes sont conservées ; la réservation existante vérifie ensuite les horaires,
 quotas journaliers et de chauffe, pauses, exclusions et validations, en donnant
-la priorité aux relances dues. Les protections contre les doublons et le rejeu
+la priorité aux J0 éligibles avant les relances dues. Les protections contre les doublons et le rejeu
 d'un résultat SMTP incertain restent inchangées. Aucune migration n'est requise.
 
 ## Environnements distants
@@ -440,7 +440,7 @@ Les indicateurs d'activation du suivi sont figés sur chaque email avant envoi.
 Une mesure absente ou un suivi désactivé affiche « Non mesuré » / « — ». Les
 envois historiques sans preuve d'activation restent inconnus. La répartition
 utilise la capacité consommée et la dernière utilisation des comptes admissibles,
-tout en conservant la priorité des relances et les expéditeurs fixes choisis.
+avec priorité aux J0 éligibles (041), en conservant les expéditeurs fixes choisis.
 
 Pour une relance ou réponse automatique, le transport SMTP transmet le corps
 puis relit Gmail et vérifie Neon avant de terminer DATA. Un contrôle négatif
@@ -455,3 +455,15 @@ Le worker conserve uniquement les messages rattachés à une conversation.
 Les newsletters et autres courriels sans rapport font avancer le curseur mais
 ne sont plus recopiés dans Neon. Le nettoyage historique nécessite l'accord
 explicite du propriétaire et exclut toutes les références du CRM.
+
+
+## Priorité J0 (041)
+
+La programmation et la réservation donnent désormais la priorité aux J0 de
+prospection éligibles devant les relances, y compris lors du choix du compte.
+À priorité égale, l'équilibrage entre comptes et l'ordre chronologique existants
+restent applicables. Les relances demeurent en attente du quota disponible ;
+elles ne sont ni annulées ni avancées. Un flux continu de J0 peut donc les
+repousser : il n'y a pas de réservation artificielle de quota pour les relances.
+Cette règle remplace les anciennes mentions de priorité aux relances.
+Validation : `db/tests/041_initial_message_priority.sql`, sans envoi externe.
