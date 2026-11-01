@@ -66,3 +66,14 @@ export function readingClient(userAgent: string | null): ReadingClient {
   // Never promote them to a direct human session from their UA alone.
   return "unverified";
 }
+
+
+// These are hints about the image requester, never proof of the recipient's app.
+export function interactionContext(userAgent: string | null) {
+  const ua=userAgent ?? "";
+  const automated=/bot|crawler|spider|preview|scanner|headless|proofpoint|barracuda|mimecast|safelinks|mailprivacy|existence discovery/i.test(ua);
+  const client=readingClient(userAgent);
+  const provider=/googleimageproxy|gmail/i.test(ua)?"gmail":/outlook|microsoft office/i.test(ua)?"outlook":/thunderbird/i.test(ua)?"thunderbird":/yahoo/i.test(ua)?"yahoo":/applemail|apple mail|mailprivacy/i.test(ua)?"apple":/applewebkit/i.test(ua)&&!/chrome|chromium|crios|edg|opr|android/i.test(ua)?"apple_possible":"unknown";
+  const transport=/proxy|mailprivacy/i.test(ua)?"proxy":client==="thunderbird"||client==="outlook_desktop"?"direct":"unknown";
+  return {provider,transport,automated};
+}

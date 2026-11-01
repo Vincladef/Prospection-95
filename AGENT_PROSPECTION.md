@@ -502,14 +502,13 @@ clients ne doivent pas surpondérer un prospect.
 **au moins 50 s**, hors moyenne non plafonnée. Ne pas la remplacer par une durée
 exacte de 50 s et ne pas comparer naïvement les moyennes si la part plafonnée
 diffère entre variantes. Donner la couverture `attempted_messages` /
-`enabled_messages`, les effectifs et les exclusions (`incompatible_messages`,
+`enabled_messages`, les effectifs et les anciennes exclusions (`incompatible_messages`,
 `failed_messages`, `budget_limited_messages`). Ne jamais transformer une absence
 ou un échec en zéro seconde.
 
 `method=connection_duration`, `reliability=approximate` : le serveur mesure un
 chargement interrompu, pas l’attention, la compréhension ni une lecture humaine
-certaine. Les proxys Gmail/Apple, robots et clients non identifiés ne fournissent
-pas de durée. Même une connexion directe peut être interrompue par le réseau.
+certaine. Depuis 045, les proxys Gmail/Apple, robots et clients non identifiés fournissent aussi des durées de connexion, ventilées par contexte et potentiellement très bruitées. Même une connexion directe peut être interrompue par le réseau.
 Ne pas généraliser l’échantillon mesurable à tous les destinataires ; croiser
 avec les réponses humaines et résultats commerciaux avant une conclusion A/B/C.
 Les limites de mesure n’affectent jamais les envois ni les plafonds des comptes.
@@ -526,3 +525,39 @@ aucune collecte supplémentaire n’est activée automatiquement. Les observatio
 horaires sont partagées entre fréquence et délai, sans nouvelle requête, image,
 ni reconstruction de l’historique. Les statistiques et règles de fiabilité restent
 inchangées. Recette SQL : db/tests/044_independent_interactions.sql.
+
+
+### Contextualisation ouverte (045, remplace les exclusions clients de 043)
+
+Tous les demandeurs d’images sont admissibles aux mesures de connexion : proxys,
+robots probables, clients inconnus compris. Les plafonds globaux 100/jour,
+2 000/mois, 8 simultanés et 50 s restent inchangés. Le suivi utilise toujours le
+pixel unique ; le contexte est enregistré dans le même appel SQL que l’ouverture,
+agrégé par heure, sans UA brut ni IP, conservé 90 jours par le worker existant.
+
+Lire `agent_api.open_context_metrics` et `agent_api.reading_context_metrics`
+avec les statistiques générales et de variantes. `provider`, `transport` et
+`probable_automation` sont des indices sur le demandeur de l’image. Google peut
+être un proxy Gmail ; WebKit seul n’identifie pas Apple Mail et demeure
+`apple_possible` (Chrome/Edge/Android ne suffisent pas à ce classement). Un
+indicateur d’automatisation négatif signifie « non détecté », jamais humain
+confirmé ; NULL désigne l’ancien historique sans contexte. Ne pas reconstituer
+les clients anciens ni déduire la messagerie du domaine email du destinataire.
+
+Les durées interrompues de toutes les classes sont conservées, y compris dans
+la moyenne globale indicative ; les ventilations donnent les effectifs, moyennes
+par prospect, plafonds, échecs et budget par profil. Une connexion plafonnée
+signifie ≥50 s de téléchargement, pas de lecture. Les erreurs conservent leur
+elapsed_ms technique en stockage, sans inventer une lecture ou un zéro.
+
+L’IA doit contextualiser les signaux incertains, sans les écarter automatiquement.
+Elle juge librement de leur utilité à partir des profils, de la couverture et des
+résultats commerciaux, compare les variantes à composition de clients comparable,
+et explique les incertitudes. Aucune pondération ou seuil de fiabilité arbitraire
+n’est imposé. Une durée de proxy ou de robot décrit son chargement et ne prouve
+pas l’attention humaine. Les anciennes observations sans durée sont conservées ;
+les nouvelles données commencent à la prochaine observation admissible.
+
+Recette : db/tests/045_contextual_interactions.sql (fixtures annulées sur branche
+Neon), tests du classement et de l’affichage. Les envois et leur autorisation ne
+sont pas modifiés.

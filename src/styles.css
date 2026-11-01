@@ -6045,3 +6045,8 @@ body {
 .interaction-help { border-top:1px solid #edf0f2; padding-top:12px; color:#626262; font-size:11px; }
 .interaction-help summary { cursor:pointer; font-weight:400; }
 .interaction-help p { font-size:11px; line-height:1.6; margin:10px 0 0; }
+
+.interaction-context-stats { grid-column:1/-1; border-top:1px solid #edf0f2; padding-top:12px; font-size:11px; }
+.interaction-context-table { overflow-x:auto; margin-top:12px; }
+.interaction-context-table table { width:100%; border-collapse:collapse; }
+.interaction-context-table th,.interaction-context-table td { padding:8px; text-align:left; border-bottom:1px solid #edf0f2; white-space:nowrap; }

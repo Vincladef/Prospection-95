@@ -22,7 +22,7 @@ it("records the ordinary open and reserves a server-gated session without trusti
  mocks.verify.mockResolvedValue(payload);mocks.sqlOne.mockResolvedValue({result:{stream:true,id:"session"}});
  expect(await (await run({action:"start",token:"signed",userAgent:"Mozilla Thunderbird/128.0",elapsedMs:40000})).json()).toEqual({stream:true,id:"session"});
  expect(mocks.record).toHaveBeenCalledExactlyOnceWith({token:"signed",payload,userAgent:"Mozilla Thunderbird/128.0"});
- expect(mocks.sqlOne.mock.calls[0][1]).toEqual([payload.m,"thunderbird"]);
+ expect(mocks.sqlOne.mock.calls[0][1]).toEqual([payload.m,"thunderbird","thunderbird","direct",false]);
 });
 it("accepts only bounded results from our edge, with SQL providing idempotency",async()=>{
  const id="9bb96dd7-e172-4d9b-93bf-fcab54fa4370";

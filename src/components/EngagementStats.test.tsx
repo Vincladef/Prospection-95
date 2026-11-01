@@ -27,3 +27,10 @@ it("never reports an exact 50 second mean when all readings are censored",()=>{
  reading:{enabledMessages:1,attemptedMessages:1,samples:0,measuredProspects:0,meanSeconds:null,cappedSamples:1,incompatibleMessages:0,failedMessages:0,budgetLimitedMessages:0}}}/>);
  expect(screen.getByText("≥ 50 s")).toBeInTheDocument();expect(screen.queryByText("50 s")).not.toBeInTheDocument();
 });
+
+it("shows noisy durations with their requester context instead of excluding them",()=>{
+ render(<EngagementStats metrics={{measuredMessages:1,observedMessages:1,openRequests:2,repeatedOpenMessages:1,proxyOpenRequests:2,automatedOpenRequests:2,directOpenRequests:0,meanOpenIntervalSeconds:null,delaySamples:0,meanOpenToClickSeconds:null,
+ contexts:[{provider:"gmail",transport:"proxy",automation:true,requests:2,samples:1,measuredProspects:1,meanSeconds:7,capped:0,attempts:1,failed:0,budget:0}]}}/>);
+ expect(screen.getByText("Gmail / Google")).toBeInTheDocument();expect(screen.getByText("Proxy")).toBeInTheDocument();
+ expect(screen.getByText("Probable")).toBeInTheDocument();expect(screen.getByText("7 s")).toBeInTheDocument();
+});

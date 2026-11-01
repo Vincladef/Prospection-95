@@ -432,7 +432,7 @@ function CampaignEditor({
               <label><input type="checkbox" disabled={!draft.trackingOpensEnabled} checked={draft.readingTimeEnabled} onChange={e=>setDraft(d=>({...d,readingTimeEnabled:e.target.checked}))}/> Mesurer le temps de lecture</label>
               <small>Réouvertures et lecture : ouvertures requises. Délai ouverture-clic : ouvertures et clics requis. Chaque analyse se choisit séparément.</small>
               </fieldset>
-              <details className="interaction-help"><summary>À propos des mesures</summary><p>Le temps de lecture est indicatif : durée de connexion au pixel, jusqu’à 50 secondes, avec une résolution d’une seconde sur les clients compatibles. Première ouverture mesurable par email de prospection ; proxys et clients non identifiés exclus.</p><p>Les analyses réutilisent le suivi existant, sans image ni script supplémentaire. Les choix s’appliquent aux prochains envois ; les données déjà recueillies sont conservées.</p></details>
+              <details className="interaction-help"><summary>À propos des mesures</summary><p>Le temps de lecture est indicatif : durée de connexion au pixel, jusqu’à 50 secondes, avec une résolution d’une seconde. Tous les clients sont observés, y compris les proxys et chargements automatiques probables, dans les limites du budget de collecte. Les statistiques indiquent le contexte et l’incertitude.</p><p>Les analyses réutilisent le suivi existant, sans image ni script supplémentaire. Les choix s’appliquent aux prochains envois ; les données déjà recueillies sont conservées.</p></details>
 
             </div>
           </details>

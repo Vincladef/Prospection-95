@@ -528,7 +528,7 @@ reste ouverte pendant les 50 secondes. L’Edge ne reçoit pas DATABASE_URL.
 La formule gratuite Netlify du projet ne permet pas les scopes sélectifs : le
 secret utilise les scopes disponibles et reste privé (aucun préfixe VITE_).
 
-Seuls les agents annonçant explicitement Thunderbird ou Outlook bureau entrent
+Historique 043, restriction supprimée en 045 : seuls les agents annonçant explicitement Thunderbird ou Outlook bureau entraient
 dans le groupe de clients candidats directs. Les autres, y compris les UA
 Mozilla/Safari génériques pouvant être Apple MPP, ne sont pas promus en humains.
 Un candidat direct reste une estimation par connexion, pas une garantie que
@@ -539,7 +539,7 @@ Thunderbird/Outlook/Gmail. Les coupures réseau sont une limite intrinsèque.
 Une ligne au plus par email et classe de client empêche les relectures/rejeux
 multiples. Le backend sérialise l’allocation du budget : 100 flux longs par jour
 UTC, 2 000 par mois UTC, 8 simultanés (leases 60 s). En cas de limite, erreur ou
-client incompatible : GIF statique et absence de durée, sans bloquer l’envoi.
+client incompatible (avant 045) : GIF statique et absence de durée, sans bloquer l’envoi. Depuis 045, les classes incertaines sont aussi mesurées dans le même budget.
 Les seules ressources supplémentaires par mesure longue sont une invocation
 Edge et un appel final Node (le début remplace le suivi d’ouverture existant).
 Le budget limite cette hausse ; il n’affirme pas connaître la consommation de
@@ -589,3 +589,39 @@ aucune collecte supplémentaire n’est activée automatiquement. Les observatio
 horaires sont partagées entre fréquence et délai, sans nouvelle requête, image,
 ni reconstruction de l’historique. Les statistiques et règles de fiabilité restent
 inchangées. Recette SQL : db/tests/044_independent_interactions.sql.
+
+
+### Contextualisation ouverte (045, remplace les exclusions clients de 043)
+
+Tous les demandeurs d’images sont admissibles aux mesures de connexion : proxys,
+robots probables, clients inconnus compris. Les plafonds globaux 100/jour,
+2 000/mois, 8 simultanés et 50 s restent inchangés. Le suivi utilise toujours le
+pixel unique ; le contexte est enregistré dans le même appel SQL que l’ouverture,
+agrégé par heure, sans UA brut ni IP, conservé 90 jours par le worker existant.
+
+Lire `agent_api.open_context_metrics` et `agent_api.reading_context_metrics`
+avec les statistiques générales et de variantes. `provider`, `transport` et
+`probable_automation` sont des indices sur le demandeur de l’image. Google peut
+être un proxy Gmail ; WebKit seul n’identifie pas Apple Mail et demeure
+`apple_possible` (Chrome/Edge/Android ne suffisent pas à ce classement). Un
+indicateur d’automatisation négatif signifie « non détecté », jamais humain
+confirmé ; NULL désigne l’ancien historique sans contexte. Ne pas reconstituer
+les clients anciens ni déduire la messagerie du domaine email du destinataire.
+
+Les durées interrompues de toutes les classes sont conservées, y compris dans
+la moyenne globale indicative ; les ventilations donnent les effectifs, moyennes
+par prospect, plafonds, échecs et budget par profil. Une connexion plafonnée
+signifie ≥50 s de téléchargement, pas de lecture. Les erreurs conservent leur
+elapsed_ms technique en stockage, sans inventer une lecture ou un zéro.
+
+L’IA doit contextualiser les signaux incertains, sans les écarter automatiquement.
+Elle juge librement de leur utilité à partir des profils, de la couverture et des
+résultats commerciaux, compare les variantes à composition de clients comparable,
+et explique les incertitudes. Aucune pondération ou seuil de fiabilité arbitraire
+n’est imposé. Une durée de proxy ou de robot décrit son chargement et ne prouve
+pas l’attention humaine. Les anciennes observations sans durée sont conservées ;
+les nouvelles données commencent à la prochaine observation admissible.
+
+Recette : db/tests/045_contextual_interactions.sql (fixtures annulées sur branche
+Neon), tests du classement et de l’affichage. Les envois et leur autorisation ne
+sont pas modifiés.

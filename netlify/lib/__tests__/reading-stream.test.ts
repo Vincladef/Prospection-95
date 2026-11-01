@@ -1,5 +1,5 @@
 import { afterEach, describe, expect, it, vi } from "vitest";
-import { readingClient, readingStream, READING_PIXEL } from "../reading-stream.mts";
+import { interactionContext, readingClient, readingStream, READING_PIXEL } from "../reading-stream.mts";
 
 afterEach(() => vi.useRealTimers());
 
@@ -35,4 +35,13 @@ describe("bounded reading connection", () => {
     expect(readingClient("GoogleImageProxy Thunderbird/128.0")).toBe("proxy");
     expect(readingClient("Proofpoint scanner")).toBe("automated");
   });
+});
+
+it("keeps provider, proxy and automation hints independent and avoids inventing an Apple client from Chrome",()=>{
+ expect(interactionContext("GoogleImageProxy scanner")).toEqual({provider:"gmail",transport:"proxy",automated:true});
+ expect(interactionContext("Mozilla AppleWebKit Chrome/128.0").provider).toBe("unknown");
+ expect(interactionContext("Mozilla AppleWebKit Safari/605").provider).toBe("apple_possible");
+ expect(interactionContext("AppleMail MailPrivacy")).toEqual({provider:"apple",transport:"proxy",automated:true});
+ expect(interactionContext(null)).toEqual({provider:"unknown",transport:"unknown",automated:false});
+ expect(interactionContext("Outlook Yahoo proxy")).toEqual({provider:"outlook",transport:"proxy",automated:false});
 });

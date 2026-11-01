@@ -1,3 +1,4 @@
+import { interactionContext } from "./reading-stream.mts";
 import { createHash, createHmac, randomBytes, timingSafeEqual } from "node:crypto";
 import { getStore } from "@netlify/blobs";
 import { env } from "./env.mts";
@@ -232,6 +233,7 @@ export async function recordInteraction(input: {
 }): Promise<boolean> {
   const tokenFingerprint = createHash("sha256").update(input.token, "utf8").digest("hex");
   const agentClass = userAgentClass(input.userAgent);
+  const context = interactionContext(input.userAgent);
   const destination = input.payload.k === "click" ? safeHttpUrl(input.payload.u) : null;
   const linkHost = destination ? new URL(destination).hostname.toLowerCase() : null;
   const confidence = input.payload.k === "open" || agentClass === "automated" || agentClass === "proxy" ? "noisy" : agentClass === "browser" ? "probable" : "unknown";
@@ -268,6 +270,8 @@ export async function recordInteraction(input: {
        returning message_id
      ), advanced_observation as (
        select app.record_interaction_bucket(message_id,$2,$7) from observed
+     ), context_observation as (
+       select app.record_open_context(message_id,$9,$10,$11::boolean) from observed where $2='open'
      ), experiment_observation as (
        insert into app.experiment_events
          (experiment_id, variant_id, assignment_id, prospect_id, message_id,
@@ -282,8 +286,8 @@ export async function recordInteraction(input: {
        on conflict (idempotency_key) do nothing
        returning id
      )
-     select exists(select 1 from observed) as recorded, (select count(*) from advanced_observation) as sampled`,
-    [input.payload.m, input.payload.k, tokenFingerprint, confidence, source, linkHost, agentClass, scannerLikelihood],
+     select exists(select 1 from observed) as recorded, (select count(*) from advanced_observation) as sampled, (select count(*) from context_observation) as contextualized`,
+    [input.payload.m, input.payload.k, tokenFingerprint, confidence, source, linkHost, agentClass, scannerLikelihood,context.provider,context.transport,context.automated],
   );
   return Boolean(row?.recorded);
 }

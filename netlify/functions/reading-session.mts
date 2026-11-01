@@ -2,7 +2,7 @@ import { timingSafeEqual } from "node:crypto";
 import type { Config } from "@netlify/functions";
 import { sqlOne } from "../lib/db.mts";
 import { env } from "../lib/env.mts";
-import { readingClient } from "../lib/reading-stream.mts";
+import { readingClient, interactionContext } from "../lib/reading-stream.mts";
 import { recordInteraction, verifyTrackingToken } from "../lib/tracking.mts";
 
 // The public image never receives this secret or the session id. Only our edge
@@ -24,8 +24,9 @@ export default async function readingSession(request: Request): Promise<Response
     if (payload?.k !== "open") return Response.json({ stream: false }, { headers });
     const userAgent = typeof body.userAgent === "string" ? body.userAgent.slice(0, 2_000) : null;
     await recordInteraction({ token: body.token, payload, userAgent });
+    const context=interactionContext(userAgent);
     const row = await sqlOne<{ result: { stream: boolean; id?: string } }>(
-      "select app.begin_reading_session($1::uuid,$2) as result", [payload.m, readingClient(userAgent)],
+      "select app.begin_reading_session_v2($1::uuid,$2,$3,$4,$5::boolean) as result", [payload.m, readingClient(userAgent),context.provider,context.transport,context.automated],
     );
     return Response.json(row?.result ?? { stream: false }, { headers });
   }

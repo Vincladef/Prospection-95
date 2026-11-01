@@ -54,7 +54,7 @@ function nullableBoolean(value: unknown): boolean | null {
 }
 
 export async function loadDashboard(): Promise<Record<string, unknown>> {
-  const [vaultConfigured, settingsRows, folderRows, campaignRows, templateRows, prospectRows, messageRows, accountRows, providerRows, experimentRows, variantRows, campaignStatsRows, attachmentRows, engagementRows, readingRows] = await Promise.all([
+  const [vaultConfigured, settingsRows, folderRows, campaignRows, templateRows, prospectRows, messageRows, accountRows, providerRows, experimentRows, variantRows, campaignStatsRows, attachmentRows, engagementRows, readingRows, openContextRows, readingContextRows] = await Promise.all([
     credentialVaultConfigured(),
     sqlQuery(`select * from app.settings where singleton`),
     sqlQuery(`select id::text, name, position from app.campaign_folders order by position, name`),
@@ -378,6 +378,8 @@ export async function loadDashboard(): Promise<Record<string, unknown>> {
     `),
     sqlQuery(`select * from agent_api.interaction_metrics`),
     sqlQuery(`select * from agent_api.reading_metrics`),
+    sqlQuery(`select * from agent_api.open_context_metrics`),
+    sqlQuery(`select * from agent_api.reading_context_metrics`),
   ]);
 
   const engagementFor=(campaignId:string,variantId?:string)=>{
@@ -390,7 +392,15 @@ export async function loadDashboard(): Promise<Record<string, unknown>> {
     const reading=readingRows.filter(r=>String(r.campaign_id)===campaignId && (!variantId || String(r.variant_id)===variantId));
     const readingCount=(key:string)=>reading.reduce((n,r)=>n+numberValue(r[key]),0);
     const measuredProspects=readingCount("measured_prospects");
-    return {reading:{enabledMessages:readingCount("enabled_messages"),attemptedMessages:readingCount("attempted_messages"),
+    const profiles=new Map<string, {provider:string;transport:string;automation:boolean|null;requests:number;samples:number;measuredProspects:number;weighted:number;capped:number;attempts:number;failed:number;budget:number}>();
+    for(const row of [...openContextRows,...readingContextRows].filter(r=>String(r.campaign_id)===campaignId && (!variantId||String(r.variant_id)===variantId))){
+      const key=JSON.stringify([row.provider,row.transport,row.probable_automation]);
+      const p=profiles.get(key)??{provider:textValue(row.provider,"unknown"),transport:textValue(row.transport,"unknown"),automation:nullableBoolean(row.probable_automation),requests:0,samples:0,measuredProspects:0,weighted:0,capped:0,attempts:0,failed:0,budget:0};
+      p.requests+=numberValue(row.requests);p.samples+=numberValue(row.samples);p.measuredProspects+=numberValue(row.measured_prospects);p.weighted+=numberValue(row.mean_seconds)*numberValue(row.measured_prospects);
+      p.capped+=numberValue(row.capped_samples);p.attempts+=numberValue(row.attempts);p.failed+=numberValue(row.failed_samples);p.budget+=numberValue(row.budget_limited);profiles.set(key,p);
+    }
+    const contexts=[...profiles.values()].map(({weighted,...p})=>({...p,meanSeconds:p.measuredProspects?weighted/p.measuredProspects:null})).sort((a,b)=>b.requests-a.requests||b.attempts-a.attempts);
+    return {contexts,reading:{enabledMessages:readingCount("enabled_messages"),attemptedMessages:readingCount("attempted_messages"),
       samples:readingCount("samples"),measuredProspects,meanSeconds:measuredProspects?reading.reduce((n,r)=>n+numberValue(r.reading_time_seconds)*numberValue(r.measured_prospects),0)/measuredProspects:null,
       cappedSamples:readingCount("capped_samples"),incompatibleMessages:readingCount("incompatible_messages"),failedMessages:readingCount("failed_messages"),budgetLimitedMessages:readingCount("budget_limited_messages")},measuredMessages:measured,observedMessages:observed,openRequests:observed?count("open_requests"):null,
       repeatedOpenMessages:observed?count("repeated_open_messages"):null,proxyOpenRequests:count("proxy_open_requests"),
