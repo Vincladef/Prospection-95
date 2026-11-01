@@ -328,10 +328,7 @@ n'est envoyé. La mise en production ne change aucun mode de campagne existant.
 
 Le flux `__LIVE_SENT__` rattrape les envois récents indépendamment des anciens
 Envoyés. `__LIVE_ALL__` réconcilie également nos copies sortantes au lieu de les
-ignorer. Une réponse automatique ne peut être réservée qu'après un passage
-complet des Envoyés postérieur à sa date prévue et datant de moins de cinq
-minutes. Cela permet de détecter une intervention manuelle durant l'attente ;
-un rattrapage incomplet ou une panne de synchronisation conserve le job en file.
+ignorer. Les relances et réponses automatiques sont maintenant contrôlées par une relecture ciblée Gmail après réservation et avant SMTP (migration 039). Ce contrôle remplace l'ancienne condition de fraîcheur globale de `__LIVE_SENT__` : un rattrapage historique lent ne bloque plus une conversation correctement vérifiée. Une lecture incomplète ou en échec diffère le job sans tentative SMTP.
 
 ## Portée automatique et instructions de réponse unifiées
 
@@ -382,3 +379,44 @@ Le moteur applique les plafonds à la réservation et recontrôle le volume avan
 SMTP, sans lever les pauses manuelles ou globales. Une hausse peut reprendre
 une suspension budgétaire IA ; elle ne modifie pas les plafonds du propriétaire.
 La planification existante conserve sa fréquence et réévalue chaque compte.
+
+
+## Fiabilisation des échanges (039)
+
+`mailbox-sync.mts` porte l'ingestion commune au worker de synchronisation et au
+contrôle avant envoi. La correspondance utilise les identifiants RFC des messages
+entrants et sortants, l'identifiant de fil Gmail et celui des brouillons de
+l'application, puis l'adresse du correspondant lorsque le message est postérieur
+à la création de la conversation. Les brouillons IMAP ne sont jamais classés comme
+des envois. Les curseurs avancent uniquement après enregistrement complet du lot ;
+une reprise déduplique les messages déjà stockés. Un message initialement sans
+conversation peut être rattaché sur relecture et déclenche alors l'arrêt des
+relances. Les comptes mis en pause restent synchronisés.
+
+Pour R1–R5 et les réponses automatiques, le backend lit les messages concernés
+sans utiliser le curseur général, puis enregistre une preuve liée au bail.
+Gmail indisponible ou contrôle incomplet : report de deux minutes, sans consommer
+une tentative SMTP. Le dernier contrôle SQL vérifie aussi l'arrêt des relances,
+la campagne, les exclusions, le compte et les budgets existants. Il reste une
+courte fenêtre entre la dernière lecture Gmail et l'envoi SMTP : une réception
+survenant pendant SMTP ne peut pas rappeler un email déjà accepté.
+
+`sync-drafts` utilise un bail durable, découvre le dossier spécial `\Drafts`
+(y compris dans un Gmail en français) et recherche l'identifiant stable avant
+chaque APPEND. Il réutilise le brouillon existant sans modifier son contenu ; un
+brouillon édité peut aussi être retrouvé par son fil et son message parent.
+Les échecs restent visibles et sont repris avec un délai croissant plafonné à
+une heure. Les brouillons créés sont revérifiés périodiquement ; une suppression
+manuelle est respectée. Les anciennes propositions sont marquées obsolètes,
+sans suppression des brouillons Gmail ni des modifications manuelles.
+
+Une preuve dans « Envoyés » rapproche un envoi de l'application de son job,
+y compris lorsqu'une tentative SMTP était incertaine. Un envoi manuel clôt les
+cycles concernés, sans effacer l'historique ni bloquer la rédaction d'une réponse
+à un message reçu ensuite. Les annulations de jobs sont répercutées sur les
+statuts des messages.
+
+Validation : tests unitaires IMAP/Gmail/dispatch/brouillons avec services simulés,
+`db/tests/039_reply_reliability.sql` et les recettes 034/036 sur branche Neon isolée.
+Aucun de ces tests n'envoie d'email externe. La recette de fil/alias Gmail reste
+à distinguer d'une confirmation IMAP d'existence d'un brouillon.

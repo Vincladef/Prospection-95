@@ -412,3 +412,21 @@ Le backend décide du mode ; ne jamais tenter de forcer l'envoi. `all` conserve
 le mode automatique pour les échanges suivants. Restreindre `all` à `first`
 retire de la file les réponses ultérieures non encore parties et conserve leur
 texte en demandes de brouillon. Ne pas recréer une étape déjà archivée.
+
+
+### Fiabilité de la synchronisation et des réponses (039)
+
+La création et la reprise d'un brouillon Gmail appartiennent uniquement à
+`sync-drafts`. Un échec est repris avec la même demande et le même identifiant ;
+ne recréer ni cycle IA ni demande de brouillon pour le contourner. Un brouillon
+modifié manuellement est conservé ; un brouillon supprimé dans Gmail n'est pas
+recréé automatiquement. Une réponse plus récente rend l'ancienne proposition
+obsolète, sans effacer les passes IA ni les messages envoyés.
+
+Le backend relit directement les échanges Gmail concernés avant chaque relance
+R1–R5 et réponse automatique, indépendamment des curseurs de rattrapage. Le
+contrôle est lié au bail du job et revérifié avant SMTP. Une panne de lecture
+reporte l'opération, sans consommer les tentatives SMTP. Ne pas lever ce contrôle
+ou considérer un job réservé comme envoyé. La réconciliation d'un message
+réellement retrouvé dans « Envoyés » peut confirmer une tentative SMTP incertaine,
+sans nouveau message ni reprise des relances après réponse.

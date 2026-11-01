@@ -52,7 +52,7 @@ BEGIN
  -- Tests fast-forward only fixture timestamps. No SMTP function or network call is made.
  UPDATE app.reply_workflows SET due_at=clock_timestamp()-interval '1 second' WHERE source_message_id=inbound2;
  UPDATE app.outbox_jobs SET due_at=clock_timestamp()-interval '1 second' WHERE id=job.id;
- IF app.reply_job_is_ready(job.id) THEN RAISE EXCEPTION 'reply_allowed_before_sent_sync'; END IF;
+ -- Bulk Sent freshness is superseded by a targeted check bound to the lease.
  INSERT INTO app.imap_cursors(account_id,mailbox_name,caught_up_at) VALUES(sender,'__LIVE_SENT__',clock_timestamp())
  ON CONFLICT(account_id,mailbox_name) DO UPDATE SET caught_up_at=EXCLUDED.caught_up_at;
  IF NOT app.reply_job_is_ready(job.id) THEN RAISE EXCEPTION 'eligible_reply_blocked'; END IF;
@@ -66,6 +66,7 @@ BEGIN
  SELECT * INTO job FROM app.lease_outbox_jobs('reply-fixture',1,40);
  IF job.message_id IS DISTINCT FROM output THEN RAISE EXCEPTION 'reply_not_leased'; END IF;
  -- Simulate only the SMTP acknowledgement on an isolated fixture, never an external send.
+ UPDATE app.outbox_jobs SET mailbox_checked_at=clock_timestamp(),mailbox_check_token=job.lease_token WHERE id=job.id;
  PERFORM app.start_outbox_attempt(job.id,job.lease_token);
  PERFORM app.confirm_smtp_acceptance(job.id,job.lease_token,'fixture-no-network',clock_timestamp());
  IF (SELECT state FROM app.reply_workflows WHERE source_message_id=inbound2)<>'sent' THEN RAISE EXCEPTION 'reply_confirmation_missing'; END IF;

@@ -1,7 +1,8 @@
 import { randomUUID } from "node:crypto";
 import type { Config, Context } from "@netlify/functions";
 import { sqlOne, sqlQuery } from "../lib/db.mts";
-import { classifyOperationalMessage, fetchMailboxDelta, type SyncedMessage } from "../lib/imap.mts";
+import { fetchMailboxDelta } from "../lib/imap.mts";
+import { recordMailboxMessages } from "../lib/mailbox-sync.mts";
 import { workerFailure, workerResult } from "../lib/worker-response.mts";
 
 interface ClaimedMailbox {
@@ -29,7 +30,7 @@ async function claimMailbox(): Promise<ClaimedMailbox | null> {
         where boxes.mailbox_name = 'INBOX' or a.role in ('sender','primary')
       ) box
       left join app.imap_cursors c on c.account_id = a.id and c.mailbox_name = box.mailbox_name
-      where a.deleted_at is null and a.status = 'active' and a.paused_at is null
+      where a.deleted_at is null and a.status = 'active'
         and a.credential_id is not null
         and (c.last_attempt_at is null or c.last_attempt_at < clock_timestamp() - interval '2 minutes')
       order by c.last_success_at nulls first, a.last_sync_at nulls first, a.created_at
@@ -52,40 +53,6 @@ async function claimMailbox(): Promise<ClaimedMailbox | null> {
   `);
 }
 
-async function matchingConversation(accountId: string, accountEmail: string, message: SyncedMessage, sentMailbox: boolean): Promise<string | null> {
-  const identifiers = [message.inReplyTo, ...message.references].filter((value): value is string => !!value);
-  const correspondents = sentMailbox
-    ? message.to.filter((value) => value.toLowerCase() !== accountEmail.toLowerCase())
-    : message.from;
-  const row = await sqlOne<{ id: string }>(`
-    select candidate.id::text from (
-      select conv.id, 0 as priority, m.created_at
-      from app.conversations conv
-      join app.email_messages m on m.conversation_id = conv.id and m.direction = 'outbound'
-      where conv.sender_account_id = $1::uuid and m.internet_message_id = any($2::text[])
-      union all
-      select conv.id, 1 as priority, conv.updated_at as created_at
-      from app.conversations conv
-      join app.prospects p on p.id = conv.prospect_id
-      where conv.sender_account_id = $1::uuid
-        and exists (
-          select 1 from unnest($3::text[]) correspondent
-          where p.normalized_email = app.canonical_email(correspondent)
-        )
-    ) candidate order by candidate.priority, candidate.created_at desc limit 1
-  `, [accountId, identifiers, correspondents]);
-  return row?.id ?? null;
-}
-
-function inboundKind(message: SyncedMessage, conversationId: string | null): string {
-  const classification = classifyOperationalMessage(message);
-  if (classification === "bounce") return "bounce";
-  if (classification === "automatic_reply") {
-    return /out of office|absence|vacation|congé/i.test(message.subject) ? "out_of_office" : "automatic_reply";
-  }
-  return conversationId ? "reply" : "unrelated";
-}
-
 export default async function syncMailboxes(_request: Request, _context: Context): Promise<Response> {
   const worker = `netlify-imap-${randomUUID()}`;
   let claimed: ClaimedMailbox | null = null;
@@ -99,47 +66,9 @@ export default async function syncMailboxes(_request: Request, _context: Context
       maxMessages: claimed.mailbox_name.startsWith("__LIVE_") ? 50 : 10,
       bootstrapSince: claimed.mailbox_name.startsWith("__LIVE_") ? new Date(claimed.recent_since) : undefined,
     });
-    let recorded = 0;
-    const sentMailbox = claimed.mailbox_name === "__SENT__" || claimed.mailbox_name === "__LIVE_SENT__";
-    for (const message of delta.messages) {
-      // Reconcile our own copies as Sent messages, never as inbound replies.
-      const outgoing = sentMailbox || message.from.some(from => from.toLowerCase() === claimed!.email.toLowerCase());
-      const conversationId = await matchingConversation(claimed.account_id, claimed.email, message, outgoing);
-      if (outgoing) {
-        if (!conversationId || !message.from.length || !message.to.length) continue;
-        await sqlOne(`
-          select (app.record_sent_message(
-            $1::uuid, $2::uuid, $3, $4::text[], $5, $6, $7,
-            $8, $9, $10::text[], $11, $12::bigint, $13::bigint,
-            $14::timestamptz, $15::jsonb
-          )).id::text as id
-        `, [claimed.account_id, conversationId, message.from[0], message.to,
-          message.subject, message.text, message.html, message.internetMessageId,
-          message.inReplyTo, message.references, message.mailbox, message.uidValidity,
-          message.uid, message.date ?? new Date().toISOString(),
-          JSON.stringify({ synchronizedFrom: "sent" })]);
-        recorded += 1;
-        continue;
-      }
-      const kind = inboundKind(message, conversationId);
-      const from = message.from[0];
-      if (!from || !message.to.length) continue;
-      await sqlOne(`
-        select (app.record_inbound_message(
-          $1::uuid, $2::uuid, $3, $4, $5::text[], $6, $7, $8,
-          '{}'::text[], $9, $10, $11::text[], null, null, $12,
-          $13::bigint, $14::bigint, null, $15::timestamptz, $16::jsonb
-        )).id::text as id
-      `, [claimed.account_id, conversationId, kind, from, message.to, message.subject,
-        message.text, message.html, message.internetMessageId, message.inReplyTo,
-        message.references, message.mailbox, message.uidValidity, message.uid,
-        message.date ?? new Date().toISOString(), JSON.stringify({
-          autoSubmitted: message.autoSubmitted,
-          precedence: message.precedence,
-          permanentBounce: message.isBounce ? message.isPermanentBounce : false,
-        })]);
-      recorded += 1;
-    }
+    const recorded = await recordMailboxMessages({ id: claimed.account_id, email: claimed.email,
+      credentialId: claimed.credential_id }, delta.messages,
+      claimed.mailbox_name === "__SENT__" || claimed.mailbox_name === "__LIVE_SENT__");
     await sqlQuery(`
       insert into app.imap_cursors
         (account_id, mailbox_name, uidvalidity, last_uid, last_success_at, last_attempt_at, consecutive_failures, caught_up_at)
@@ -150,7 +79,7 @@ export default async function syncMailboxes(_request: Request, _context: Context
                         then excluded.last_uid else greatest(app.imap_cursors.last_uid, excluded.last_uid) end,
         last_success_at = clock_timestamp(), last_attempt_at = clock_timestamp(),
         last_error_code = null, consecutive_failures = 0,
-        caught_up_at = case when $5 then clock_timestamp() when app.imap_cursors.uidvalidity is distinct from excluded.uidvalidity then null else app.imap_cursors.caught_up_at end,
+        caught_up_at = case when $5 then clock_timestamp() else null end,
         version = app.imap_cursors.version + 1, updated_at = clock_timestamp()
     `, [claimed.account_id, claimed.mailbox_name, delta.uidValidity, delta.lastUid, delta.hasMore === false]);
     await sqlQuery(

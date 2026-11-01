@@ -1,5 +1,6 @@
 import nodemailer from "nodemailer";
-import { ImapFlow } from "imapflow";
+import { lookup } from "node:dns/promises";
+import { ImapFlow, type SearchObject } from "imapflow";
 import { readCredential } from "./credentials.mts";
 import { isProductionOutboundEnabled } from "./auth.mts";
 import { HttpError } from "./http.mts";
@@ -194,10 +195,13 @@ export async function sendGmailDiagnostic(input: {
   }
 }
 
-export async function createGmailDraft(input: OutboundEmail & { mailbox?: string }): Promise<{
+export async function createGmailDraft(input: OutboundEmail & { mailbox?: string; sourceThreadId?: string | null; checkOnly?: boolean }): Promise<{
   uid?: number;
   mailbox: string;
-  threadingVerified: false;
+  threadingVerified: boolean;
+  gmailThreadId?: string | null;
+  missing?: boolean;
+  alreadySent?: boolean;
 }> {
   const credentialEmail = input.credentialEmail ?? input.fromEmail;
   const password = await appPassword({ email: credentialEmail, credentialId: input.credentialId });
@@ -215,21 +219,52 @@ export async function createGmailDraft(input: OutboundEmail & { mailbox?: string
     headers: { "X-Prospection95-Draft": input.messageId },
   });
   const raw = compiled.message as Buffer;
-  const mailbox = input.mailbox ?? "[Gmail]/Drafts";
+  const imapAddress = await lookup("imap.gmail.com", { family: 4 });
   const client = new ImapFlow({
-    host: "imap.gmail.com",
+    host: imapAddress.address,
+    servername: "imap.gmail.com",
     port: 993,
     secure: true,
     auth: { user: credentialEmail, pass: password },
     logger: false,
-    socketTimeout: 25_000,
+    disableAutoIdle: true,
+    connectionTimeout: 20_000,
+    greetingTimeout: 15_000,
+    socketTimeout: 30_000,
   });
+  const deadline = setTimeout(() => client.close(), 45_000);
   try {
     await client.connect();
-    const result = await client.append(mailbox, raw, ["\\Draft"]);
-    return { uid: result ? Number(result.uid) : undefined, mailbox, threadingVerified: false };
+    const boxes = await client.list();
+    const mailbox = input.mailbox ?? boxes.find(box => box.specialUse === "\\Drafts")?.path;
+    if (!mailbox) throw new Error("gmail_drafts_mailbox_not_found");
+    const sent = boxes.find(box => box.specialUse === "\\Sent");
+    if (!sent) throw new Error("gmail_sent_mailbox_not_found");
+    const identity: SearchObject = { or: [{ header: { "Message-ID": input.messageId } },
+      { header: { "X-Prospection95-Draft": input.messageId } }] };
+    const sentLock = await client.getMailboxLock(sent.path, { readOnly: true });
+    try {
+      const found = await client.search(identity, { uid: true });
+      if (!Array.isArray(found)) throw new Error("gmail_draft_search_unconfirmed");
+      if (found.length) return { mailbox, threadingVerified: false, alreadySent: true };
+    } finally { sentLock.release(); }
+    const lock = await client.getMailboxLock(mailbox);
+    try {
+      const draftIdentity: SearchObject = { or: [...(identity.or ?? []),
+        ...(input.sourceThreadId && input.inReplyTo ? [{threadId:input.sourceThreadId,header:{"In-Reply-To":input.inReplyTo}}] : [])] };
+      const found = await client.search({ ...draftIdentity, draft: true, deleted: false }, { uid: true });
+      if (!Array.isArray(found)) throw new Error("gmail_draft_search_unconfirmed");
+      if (found.length) return { uid: Math.min(...found), mailbox, threadingVerified: false };
+      if (input.checkOnly) return { mailbox,threadingVerified:false,missing:true };
+      // A retry always searches the stable identifier before APPEND. The worker
+      // keeps a durable lease until well after this connection's deadline.
+      const result = await client.append(mailbox, raw, ["\\Draft"]);
+      if (!result || !result.uid) throw new Error("gmail_draft_append_unconfirmed");
+      return { uid: Number(result.uid), mailbox, threadingVerified: false };
+    } finally { lock.release(); }
   } finally {
-    if (client.usable) await client.logout().catch(() => undefined);
+    clearTimeout(deadline);
+    client.close();
   }
 }
 

@@ -29,6 +29,7 @@ export function replyStatusLabel(progress: Prospect["replyProgress"]) {
   const count = `${progress.completed}/${progress.total}`;
   const labels: Record<string,string> = {
     received: "Répondu · à analyser", writing_failed: `Réponse IA · erreur · ${count}`, pending: `Réponse IA · ${count}`, running: `Réponse IA en cours · ${count}`,
+    draft_retrying: "Brouillon Gmail · nouvelle tentative prévue", draft_stale: "Brouillon Gmail obsolète", draft_dismissed:"Brouillon Gmail supprimé",
     draft_requested: `Brouillon Gmail en préparation · ${count}`, draft_created: `Brouillon Gmail prêt · ${count}`,
     scheduled: `Réponse programmée · ${count}`, reserved: "Réponse réservée", sending: "Réponse en cours d’envoi",
     sent: "Réponse envoyée", sent_manually: "Réponse envoyée manuellement", failed: "Réponse · erreur",

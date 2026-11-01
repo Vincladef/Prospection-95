@@ -18,3 +18,17 @@ it("ingests a recent reply through the existing stop-follow-ups RPC and reconcil
   expect(records).toHaveLength(1);
   expect(records[0][1].slice(0,3)).toEqual(["account","conversation","reply"]);
 });
+
+it("leaves the batch cursor unchanged if storing a later message fails",async()=>{
+  const claimed={account_id:"account",email:"sender@example.test",credential_id:"credential",mailbox_name:"INBOX",last_uid:41,uidvalidity:"1"};
+  let records=0;
+  mocks.sqlOne.mockImplementation(async(sql:string)=>{
+    if(sql.includes("with candidate as"))return claimed;
+    if(sql.includes("app.record_inbound_message") && ++records===2)throw new Error("database failure");
+    return {id:"conversation"};
+  });
+  const reply={uid:42,uidValidity:"1",mailbox:"INBOX",from:["contact@example.test"],to:["sender@example.test"],references:[],inReplyTo:null,subject:"Re: proposition",text:"Question",html:null,internetMessageId:"<reply@test>",date:"2026-10-30T10:00:00Z",autoSubmitted:null,precedence:null,isBounce:false,isPermanentBounce:false};
+  mocks.fetchMailboxDelta.mockResolvedValue({uidValidity:"1",lastUid:43,hasMore:false,messages:[reply,{...reply,uid:43}]});
+  expect(await(await sync(new Request("https://example.test"),{} as Context)).json()).toMatchObject({ok:false});
+  expect(mocks.sqlQuery.mock.calls.some(([sql])=>sql.includes("insert into app.imap_cursors"))).toBe(false);
+});

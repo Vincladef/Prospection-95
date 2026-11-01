@@ -7,9 +7,9 @@ const migrationsDirectory = join(process.cwd(), "db", "migrations");
 describe("database safety contract", () => {
   it("keeps a contiguous additive migration set", () => {
     const files = readdirSync(migrationsDirectory).filter((name) => name.endsWith(".sql")).sort();
-    expect(files).toHaveLength(38);
+    expect(files).toHaveLength(39);
     expect(files.map((name) => name.slice(0, 3))).toEqual([
-      "001", "002", "003", "004", "005", "006", "007", "008", "009", "010", "011", "012", "013", "014", "015", "016", "017", "018", "019", "020", "021", "022", "023", "024", "025", "026", "027", "028", "029", "030", "031", "032", "033", "034", "035", "036", "037", "038",
+      "001", "002", "003", "004", "005", "006", "007", "008", "009", "010", "011", "012", "013", "014", "015", "016", "017", "018", "019", "020", "021", "022", "023", "024", "025", "026", "027", "028", "029", "030", "031", "032", "033", "034", "035", "036", "037", "038", "039",
     ]);
   });
 
@@ -54,8 +54,8 @@ describe("database safety contract", () => {
 
   it("falls back to the conversation sender when no primary Gmail exists", () => {
     const worker = readFileSync(join(process.cwd(), "netlify", "functions", "sync-drafts.mts"), "utf8");
-    expect(worker).toContain("primary_candidate.role = 'primary' or primary_candidate.id = alias_account.id");
-    expect(worker).toContain("case when primary_candidate.role = 'primary' then 0 else 1 end");
+    expect(worker).toContain("p.role='primary' or p.id=alias_account.id");
+    expect(worker).toContain("case when p.role='primary' then 0 else 1 end");
   });
 
   it("persists A/B variant creation and overrides through private routes", () => {
@@ -243,7 +243,7 @@ describe("database safety contract", () => {
 
   it("keeps Gmail threads and stops only confirmed permanent bounces", () => {
     const worker = readFileSync(join(process.cwd(), "netlify", "functions", "dispatch-outbox.mts"), "utf8");
-    const mailbox = readFileSync(join(process.cwd(), "netlify", "functions", "sync-mailboxes.mts"), "utf8");
+    const mailbox = readFileSync(join(process.cwd(), "netlify", "lib", "mailbox-sync.mts"), "utf8");
     const sql = readFileSync(join(migrationsDirectory, "023_final_prospecting_cycle.sql"), "utf8");
     expect(worker).toContain("prior.internet_message_id");
     expect(worker).toContain("array_append(previous.references_header, previous.internet_message_id)");

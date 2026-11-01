@@ -123,8 +123,9 @@ export async function loadDashboard(): Promise<Record<string, unknown>> {
             and manual.direction='outbound' and manual.kind='manual' and manual.technical_confirmation
             and coalesce(manual.sent_at,manual.created_at)>=coalesce(src.received_at,src.created_at)) then 'sent_manually'
           when output.technical_confirmation then 'sent'
+          when d.state='dismissed' then 'draft_dismissed'
           when w.state='superseded' then 'received'
-          when w.state='draft_requested' then case when d.state='created' then 'draft_created' when d.state='failed' then 'failed' when d.state='stale' then 'cancelled' else 'draft_requested' end
+          when w.state='draft_requested' then case when d.state='created' then 'draft_created' when d.state='failed' then 'draft_retrying' when d.state='stale' then 'draft_stale' when d.state='dismissed' then 'draft_dismissed' else 'draft_requested' end
           when job.status='cancelled' then 'cancelled'
           when output.status in ('failed','uncertain','reserved','sending') then output.status::text
           when w.state in ('pending','running') and last_pass.status='failed' then 'writing_failed'
@@ -135,7 +136,7 @@ export async function loadDashboard(): Promise<Record<string, unknown>> {
           when a.id is not null then 'pending' else 'received' end,
           'completed',coalesce(w.completed_iterations,0),
           'total',coalesce(cardinality(w.instructions),cardinality((select reply_iteration_instructions from app.campaigns where id=conv.campaign_id))),
-          'subject',coalesce(w.subject,''),'body',coalesce(w.body,''),'dueAt',w.due_at) as progress
+          'subject',coalesce(w.subject,''),'body',coalesce(w.body,''),'dueAt',w.due_at,'errorCode',d.last_error_code) as progress
         from app.email_messages src
         left join app.reply_workflows w on w.source_message_id=src.id
         left join app.reply_draft_requests d on d.id=w.draft_request_id

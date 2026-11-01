@@ -3,12 +3,16 @@ import { setTimeout as delay } from "node:timers/promises";
 import type { Config, Context } from "@netlify/functions";
 import { isProductionOutboundEnabled } from "../lib/auth.mts";
 import { sqlOne, sqlQuery } from "../lib/db.mts";
+import { refreshConversation } from "../lib/mailbox-sync.mts";
 import { sendGmailMessage } from "../lib/gmail.mts";
 import { prepareTrackedMessage, trackingBaseUrl } from "../lib/tracking.mts";
 import { workerFailure, workerResult } from "../lib/worker-response.mts";
 
 interface LeasedMessage {
   id: string;
+  job_kind: string;
+  step: string;
+  conversation_id: string | null;
   lease_token: string;
   attempt_count: number;
   max_attempts: number;
@@ -39,7 +43,7 @@ async function finishCertainFailure(job: LeasedMessage, code: string, retryable:
          due_at = case when $4 and attempt_count < max_attempts then clock_timestamp() + interval '15 minutes' else due_at end,
          last_error_code = $3, last_error_detail = null, lease_expires_at = null,
          lease_owner = null, lease_token = null, updated_at = clock_timestamp()
-       where id = $1::uuid and lease_token = $2::uuid and status = 'running'
+       where id = $1::uuid and lease_token = $2::uuid and status in ('reserved','running')
        returning message_id, status
      ), message_changed as (
        update app.email_messages m set
@@ -71,14 +75,14 @@ export default async function dispatchOutbox(_request: Request, _context: Contex
       `select app.schedule_due_messages(50) as count`,
     );
     const job = await sqlOne<LeasedMessage>(
-      `select leased.id::text, leased.lease_token::text, leased.attempt_count,
+      `select leased.id::text, leased.job_kind, leased.step, leased.conversation_id::text, leased.lease_token::text, leased.attempt_count,
               leased.max_attempts, m.id::text as message_id, m.from_address,
               m.to_addresses, m.subject, m.body_text, m.body_html,
               m.internet_message_id, m.in_reply_to, m.references_header,
               a.credential_id::text, a.display_name,
               coalesce(c.tracking_opens_enabled, false) as tracking_opens_enabled,
               coalesce(c.tracking_clicks_enabled, false) as tracking_clicks_enabled
-       from app.lease_outbox_jobs($1, 1, 40) leased
+       from app.lease_outbox_jobs($1, 1, 180) leased
        join app.email_messages m on m.id = leased.message_id
        join app.gmail_accounts a on a.id = leased.account_id
        left join app.campaigns c on c.id = leased.campaign_id`,
@@ -88,6 +92,23 @@ export default async function dispatchOutbox(_request: Request, _context: Contex
     if (!job.credential_id || job.to_addresses.length !== 1 || !isEmail(job.to_addresses[0]) || !isEmail(job.from_address)) {
       await finishCertainFailure(job, "invalid_mail_envelope", false);
       return workerResult(worker, { ok: false, jobId: job.id, state: "failed", code: "invalid_mail_envelope" });
+    }
+    if (job.job_kind === "reply" || (job.job_kind === "prospection" && job.step !== "J0")) {
+      try {
+        if (!job.conversation_id) throw new Error("conversation_missing");
+        await refreshConversation(job.conversation_id);
+      } catch {
+        await sqlQuery(`update app.outbox_jobs set status='deferred',due_at=clock_timestamp()+interval '2 minutes',
+          lease_owner=null,lease_token=null,lease_expires_at=null,attempt_count=greatest(0,attempt_count-1),
+          last_error_code='mailbox_check_failed',updated_at=clock_timestamp()
+          where id=$1::uuid and lease_token=$2::uuid and status='reserved'`, [job.id,job.lease_token]);
+        return workerResult(worker,{ ok:true,jobId:job.id,state:"deferred",code:"mailbox_check_failed" });
+      }
+      const checked = await sqlOne<{ id: string }>(`update app.outbox_jobs
+        set mailbox_checked_at=clock_timestamp(),mailbox_check_token=$2::uuid
+        where id=$1::uuid and lease_token=$2::uuid and status='reserved' and lease_expires_at>clock_timestamp()
+        returning id::text`, [job.id,job.lease_token]);
+      if (!checked) return workerResult(worker,{ok:true,jobId:job.id,state:"cancelled"});
     }
     const started = await sqlOne<{ id: string; status: string }>(
       `select started.id::text, started.status::text
@@ -184,4 +205,4 @@ export default async function dispatchOutbox(_request: Request, _context: Contex
   }
 }
 
-export const config: Config = { schedule: "* * * * *" };
+export const config: Config = { schedule: "* * * * *", background: true };

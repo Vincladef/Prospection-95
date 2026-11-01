@@ -26,6 +26,10 @@ export interface SyncedMessage {
   precedence: string | null;
   isBounce: boolean;
   isPermanentBounce: boolean;
+  gmailThreadId?: string | null;
+  draftRequestId?: string | null;
+  prospectionMessageId?: string | null;
+  sent?: boolean;
 }
 
 export interface MailboxDelta {
@@ -65,6 +69,8 @@ export async function fetchMailboxDelta(input: {
   cursor: MailboxCursor;
   maxMessages?: number;
   bootstrapSince?: Date;
+  correspondent?: string;
+  identifiers?: string[];
 }): Promise<MailboxDelta> {
   const credential = await readCredential(input.credentialId);
   if (!["gmail_sender", "gmail_primary", "test_inbox"].includes(credential.kind)) {
@@ -111,21 +117,33 @@ export async function fetchMailboxDelta(input: {
       // take longer than Netlify's scheduled-function request window. UIDNEXT is
       // part of the mailbox STATUS, so an empty delta can be returned
       // immediately and non-empty searches can be bounded to a real UID.
-      const found = await client.search({ uid: `${startUid}:${mailboxLastUid}`,
+      const found = await client.search({ draft: false, deleted: false,
+        ...(input.correspondent ? { or: [{ from: input.correspondent }, { to: input.correspondent },
+          ...(input.identifiers ?? []).flatMap(id => ["In-Reply-To","References"].map(key => ({ header: { [key]: id } })))] } : {}),
+        uid: `${startUid}:${mailboxLastUid}`,
         ...(input.bootstrapSince && (resetRequired || !input.cursor.lastUid) ? { since: input.bootstrapSince } : {}),
       }, { uid: true });
-      const eligibleUids = (Array.isArray(found) ? found : [])
+      if (!Array.isArray(found)) throw new Error("imap_search_unconfirmed");
+      const eligibleUids = found
         .filter((uid) => uid >= startUid && uid <= mailboxLastUid)
         .sort((left, right) => left - right);
       const candidateUids = eligibleUids.slice(0, maxMessages);
       const messages: SyncedMessage[] = [];
+      const fetchedUids = new Set<number>();
       if (!candidateUids.length) return { uidValidity, lastUid: mailboxLastUid, messages, resetRequired, hasMore: false };
       for await (const item of client.fetch(
         candidateUids.join(","),
-        { uid: true, source: { start: 0, maxLength: 512_000 } },
+        { uid: true, flags: true, labels: true, threadId: true, internalDate: true, source: { start: 0, maxLength: 512_000 } },
         { uid: true },
       )) {
-        if (!item.source || item.uid < startUid) continue;
+        if (item.uid < startUid) continue;
+        // A missing source must not silently advance a cursor past an unread mail.
+        if (!item.source) throw new Error("imap_message_source_missing");
+        fetchedUids.add(item.uid);
+        if (item.flags?.has("\\Draft") || item.flags?.has("\\Deleted")) {
+          lastUid = Math.max(lastUid,item.uid);
+          continue;
+        }
         const parsed = await simpleParser(item.source, { skipImageLinks: true });
         const headers = parsed.headers;
         const references = Array.isArray(parsed.references)
@@ -150,7 +168,11 @@ export async function fetchMailboxDelta(input: {
           subject: parsed.subject ?? "",
           text: parsed.text ?? "",
           html: typeof parsed.html === "string" ? parsed.html : null,
-          date: parsed.date?.toISOString() ?? null,
+          date: parsed.date?.toISOString() ?? (item.internalDate ? new Date(item.internalDate).toISOString() : null),
+          gmailThreadId: item.threadId ?? null,
+          draftRequestId: headers.get("x-prospection95-draft")?.toString().match(/draft-([0-9a-f-]{36})@/i)?.[1] ?? null,
+          prospectionMessageId: headers.get("x-prospection95-message-id")?.toString() ?? null,
+          sent: item.labels?.has("\\Sent") ?? false,
           autoSubmitted: headers.get("auto-submitted")?.toString() ?? null,
           precedence: headers.get("precedence")?.toString() ?? null,
           isBounce,
@@ -164,7 +186,13 @@ export async function fetchMailboxDelta(input: {
         });
         lastUid = Math.max(lastUid, item.uid);
       }
-      return { uidValidity, lastUid, messages, resetRequired, hasMore: eligibleUids.length > candidateUids.length };
+      // Every selected UID must have been read before committing the batch cursor.
+      if (candidateUids.some(uid => !fetchedUids.has(uid))) {
+        throw new Error("imap_batch_incomplete");
+      }
+      messages.sort((a,b) => a.uid-b.uid);
+      const hasMore = eligibleUids.length > candidateUids.length;
+      return { uidValidity, lastUid: hasMore ? lastUid : mailboxLastUid, messages, resetRequired, hasMore };
     } finally {
       lock.release();
     }

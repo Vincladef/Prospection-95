@@ -19,7 +19,7 @@ SELECT to_regnamespace('app') IS NOT NULL
    AND to_regnamespace('agent_api') IS NOT NULL
    AND to_regnamespace('audit') IS NOT NULL AS all_schemas_exist;
 
-SELECT count(*) = 38 AS all_migrations_registered
+SELECT count(*) = 39 AS all_migrations_registered
 FROM app.schema_migrations
 WHERE version IN (
   '001_foundation',
@@ -59,7 +59,8 @@ WHERE version IN (
   '035_live_sent_reply_safety',
   '036_reply_scope_and_unified_instructions',
   '037_gmail_bobwork_setup_confirmation',
-  '038_deliverability_decisions'
+  '038_deliverability_decisions',
+  '039_reply_reliability'
 );
 
 SELECT EXISTS (
@@ -372,3 +373,10 @@ SELECT to_regclass('agent_api.pending_reply_iterations') IS NOT NULL
 SELECT to_regclass('agent_api.account_volume_policy') IS NOT NULL AND
  has_function_privilege('prospection95_agent','agent_api.decide_account_volume(uuid,uuid,text,integer,numeric,text,jsonb,uuid,text)','EXECUTE') AND
  NOT has_table_privilege('prospection95_agent','app.deliverability_decisions','INSERT') AS deliverability_decisions_are_guarded;
+
+
+SELECT position('mailbox_check_token' IN pg_get_functiondef('app.start_outbox_attempt(uuid,uuid)'::regprocedure))>0
+ AND position('INSERT INTO app.imap_cursors' IN pg_get_functiondef('app.record_inbound_message(uuid,uuid,text,text,text[],text,text,text,text[],text,text,text[],text,text,text,bigint,bigint,numeric,timestamptz,jsonb)'::regprocedure))=0
+ AND EXISTS(SELECT 1 FROM pg_trigger WHERE tgrelid='app.outbox_jobs'::regclass AND tgname='sync_cancelled_outbox_message')
+ AND EXISTS(SELECT 1 FROM information_schema.columns WHERE table_schema='app' AND table_name='reply_draft_requests' AND column_name='lease_token')
+ AS reply_reliability_guards_are_installed;

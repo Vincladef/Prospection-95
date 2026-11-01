@@ -19,7 +19,7 @@ describe("live reply cursor independent from historical backlog", () => {
   it("distinguishes an incomplete batch from a fully synchronized Sent pass", async () => {
     mocks.search.mockResolvedValueOnce(Array.from({length:51},(_,i)=>i+1));
     mocks.fetch.mockImplementationOnce(async function* () {
-      yield {uid:50,source:Buffer.from("From: sender@example.test\r\nTo: contact@example.test\r\nSubject: Fixture\r\nMessage-ID: <fixture@example.test>\r\n\r\nMessage de test")};
+      for(let uid=1;uid<=50;uid++) yield {uid,source:Buffer.from("From: sender@example.test\r\nTo: contact@example.test\r\nSubject: Fixture\r\nMessage-ID: <fixture@example.test>\r\n\r\nMessage de test")};
     });
     const partial=await fetchMailboxDelta({email:"sender@example.test",credentialId:"fixture",
       cursor:{mailbox:"__LIVE_SENT__",lastUid:0},maxMessages:50});
@@ -37,7 +37,28 @@ describe("live reply cursor independent from historical backlog", () => {
     const result = await fetchMailboxDelta({ email:"sender@example.test", credentialId:"test",
       cursor:{mailbox:"__LIVE_ALL__",lastUid,uidValidity:"1"},bootstrapSince:since });
     expect(mocks.status).toHaveBeenCalledWith("All", expect.anything());
-    expect(mocks.search).toHaveBeenCalledWith({ uid:`${lastUid+1}:120`, ...(lastUid ? {} : {since}) },{uid:true});
+    expect(mocks.search).toHaveBeenCalledWith({ draft:false,deleted:false,uid:`${lastUid+1}:120`, ...(lastUid ? {} : {since}) },{uid:true});
     expect(result.lastUid).toBe(120);
   });
+});
+
+it("refuses a partial FETCH rather than advancing past an unread message", async () => {
+  mocks.search.mockResolvedValue([1,2]);
+  mocks.fetch.mockImplementationOnce(async function* () { yield {uid:2,source:Buffer.from("From: contact@example.test\r\nTo: sender@example.test\r\n\r\nReply")}; });
+  await expect(fetchMailboxDelta({email:"sender@example.test",credentialId:"test",cursor:{mailbox:"INBOX",lastUid:0}}))
+    .rejects.toThrow("imap_batch_incomplete");
+});
+it("targets correspondents and thread references and never ingests a draft as Sent", async () => {
+  mocks.search.mockResolvedValue([1,2]);
+  mocks.fetch.mockImplementationOnce(async function* () {
+    const source=Buffer.from("From: sender@example.test\r\nTo: contact@example.test\r\nMessage-ID: <sent@example.test>\r\n\r\nReply");
+    yield {uid:2,source,flags:new Set(["\\Draft"])};
+    yield {uid:1,source,labels:new Set(["\\Sent"]),threadId:"thread-1"};
+  });
+  const result=await fetchMailboxDelta({email:"sender@example.test",credentialId:"test",cursor:{mailbox:"__LIVE_ALL__",lastUid:0},
+    correspondent:"contact@example.test",identifiers:["<source@example.test>"]});
+  expect(mocks.search.mock.calls[0][0].or).toContainEqual({header:{"In-Reply-To":"<source@example.test>"}});
+  expect(result.messages).toHaveLength(1);
+  expect(result.messages[0]).toMatchObject({uid:1,sent:true,gmailThreadId:"thread-1"});
+  expect(result.lastUid).toBe(120);
 });

@@ -96,7 +96,7 @@ export interface Prospect {
   messageStatus: MessageStatus | null;
   statusStep?: string | null;
   lastSentStep?: string | null;
-  replyProgress?: { state: string; completed: number; total: number; subject: string; body: string; dueAt: string | null } | null;
+  replyProgress?: { state: string; completed: number; total: number; subject: string; body: string; dueAt: string | null; errorCode?: string | null } | null;
   conversationMessages?: Array<{ id: string; direction: string; kind: string; subject: string; body: string; at: string | null }>;
   step: string | null;
   lastSentAt: string | null;
