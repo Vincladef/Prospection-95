@@ -407,7 +407,7 @@ function CampaignEditor({
                             : current.senderAccountIds.filter((id) => id !== account.id),
                         }))}
                       />
-                      {account.email} <b>plafond {account.dailyLimit}/j</b>
+                      <span className="sender-pool-email">{account.email}</span><small className="sender-pool-limit">{account.dailyLimit} emails/j max.</small>
                     </label>
                   ))}
                   <small>Un prospect conserve le même compte pour ses relances.</small>

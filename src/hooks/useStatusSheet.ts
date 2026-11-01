@@ -14,7 +14,7 @@ function advanceVersions(stack: Change[][], saved: Change[]) {
 }
 type Drag = { anchor: number; end: number; fill: boolean; source: MessageStatus | null; y: number; x: number };
 
-export function useStatusSheet(rows: Prospect[], scroll: RefObject<HTMLDivElement | null>, refresh: () => Promise<void>) {
+export function useStatusSheet(rows: Prospect[], scroll: RefObject<HTMLDivElement | null>, refresh: () => Promise<void>, beforeMutation?: () => void) {
   const [range, setRange] = useState<[number, number] | null>(null);
   const [preview, setPreview] = useState<[number, number] | null>(null);
   const [busy, setBusy] = useState(false);
@@ -53,6 +53,7 @@ export function useStatusSheet(rows: Prospect[], scroll: RefObject<HTMLDivElemen
   async function commit(changes: Change[], history = true): Promise<Change[] | null> {
     if (operation.current || !changes.length) return null;
     if (changes.length > 500) { setNotice("Sélection limitée à 500 statuts par opération."); return null; }
+    beforeMutation?.();
     operation.current = true; setBusy(true); setNotice(null);
     const done: Change[] = [];
     try {

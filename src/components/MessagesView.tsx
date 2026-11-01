@@ -180,7 +180,11 @@ export function MessagesView({ campaigns, prospects, totals, onOpenCampaign, onM
   const rail = useRef<HTMLDivElement>(null);
   const railInner = useRef<HTMLDivElement>(null);
 
-  const visible = useMemo(() => {
+  const viewKey = JSON.stringify([campaignId, deferredQuery, sort, statusFilter]);
+  const [frozen, setFrozen] = useState<{ key: string; ids: string[] } | null>(null);
+  useEffect(() => { setFrozen(null); }, [viewKey]);
+
+  const filtered = useMemo(() => {
     const normalized = deferredQuery.trim().toLocaleLowerCase("fr");
     const rows = prospects.filter((prospect) => {
       if (campaignId !== "all" && prospect.campaignId !== campaignId) return false;
@@ -208,7 +212,15 @@ export function MessagesView({ campaigns, prospects, totals, onOpenCampaign, onM
       }).map(({ row }) => row);
   }, [campaignId, deferredQuery, prospects, sort, statusFilter]);
 
-  const sheet = useStatusSheet(visible, tableScroll, onMutated);
+  const visible = useMemo(() => {
+    if (!frozen || frozen.key !== viewKey) return filtered;
+    const current = new Map(prospects.map(prospect => [prospect.id, prospect]));
+    return frozen.ids.flatMap(id => current.has(id) ? [current.get(id)!] : []);
+  }, [filtered, frozen, prospects, viewKey]);
+  const freezeRows = () => {
+    setFrozen(current => current?.key === viewKey ? current : { key: viewKey, ids: visible.map(row => row.id) });
+  };
+  const sheet = useStatusSheet(visible, tableScroll, onMutated, freezeRows);
 
   useEffect(() => {
     const source = tableScroll.current;
@@ -273,6 +285,7 @@ export function MessagesView({ campaigns, prospects, totals, onOpenCampaign, onM
               <option value="alpha">Nom A → Z</option>
               <option value="alphaDesc">Nom Z → A</option>
             </select>
+            <button className="win-button plain-btn" disabled={sheet.busy} onClick={() => { setFrozen(null); void onMutated(); }}>Actualiser la liste</button>
             <span className="command-count">{visible.length} lignes dans cet extrait</span>
             <button className={`win-button plain-btn ${compact ? "pressed on" : ""}`} onClick={() => setCompact((value) => !value)}>
               {compact ? "Vue normale" : "Vue compacte"}

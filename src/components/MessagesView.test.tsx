@@ -337,3 +337,21 @@ describe("MessagesView statuses", () => {
     expect(screen.getByRole("option", { name: "SMTP accepté" })).toBeInTheDocument();
   });
 });
+
+it("keeps validated rows in their current position until the user reapplies the view",async()=>{
+ const ready:Prospect={...baseProspect,messageStatus:"pending_approval",writingIterationStatus:"completed",writingIterationsCompleted:3,writingIterationsTotal:3,hasOutboundMessages:true};
+ const totals={prospects:1,pendingApproval:1,scheduled:0,sent:0,replied:0,excluded:0};
+ let rows=[ready];
+ let redraw:()=>void;
+ const refresh=vi.fn(async()=>{rows=[{...ready,messageStatus:"approved",version:2}];redraw();});
+ const view=()=> <MessagesView campaigns={[]} prospects={rows} totals={totals} onOpenCampaign={vi.fn()} onMutated={refresh}/>;
+ const rendered=render(view());redraw=()=>rendered.rerender(view());
+ apiMocks.bulkStatus.mockResolvedValue({updated:1,prospects:[{id:ready.id,version:2}]});
+ fireEvent.click(screen.getByRole("button",{name:/En attente/}));
+ fireEvent.change(screen.getByRole("combobox",{name:"Statut de Prospect Test"}),{target:{value:"approved"}});
+ await waitFor(()=>expect(screen.getByRole("combobox",{name:"Statut de Prospect Test"})).toHaveValue("approved"));
+ expect(refresh).toHaveBeenCalledOnce();
+ fireEvent.click(screen.getByRole("button",{name:"Actualiser la liste"}));
+ await waitFor(()=>expect(screen.queryByRole("combobox",{name:"Statut de Prospect Test"})).not.toBeInTheDocument());
+ cleanup();
+});

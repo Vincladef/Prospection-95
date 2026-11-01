@@ -6006,3 +6006,23 @@ body {
 .reply-auto-scope select { max-width:100%; }
 .reply-auto-scope small { flex-basis:100%; color:#647084; }
 .reply-step-actions { display:flex; align-items:center; gap:10px; margin:10px 0; flex-wrap:wrap; }
+
+/* Compact sender selection: override generic full-width form inputs. */
+.v22-pool-preview .v22-sender-chip {
+  display: grid;
+  grid-template-columns: 14px minmax(0, 1fr) auto;
+  align-items: center;
+  gap: 8px;
+  padding: 5px 0;
+  font-weight: normal;
+}
+.v22-pool-preview .v22-sender-chip input[type="checkbox"] {
+  width: 14px;
+  height: 14px;
+  min-height: 0;
+  margin: 0;
+  padding: 0;
+  accent-color: #64748b;
+}
+.sender-pool-email { overflow-wrap: anywhere; }
+.v22-pool-preview .sender-pool-limit { color: #666; font-size: 10px; white-space: nowrap; }
