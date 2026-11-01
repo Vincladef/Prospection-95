@@ -3,7 +3,7 @@ DO $test$
 #variable_conflict use_variable
 DECLARE sender uuid; cid uuid; pid uuid; conv uuid; j0 uuid; followup uuid; job app.outbox_jobs;
  source1 uuid; source2 uuid; source3 uuid; output_id uuid; run_id uuid; claim jsonb; draft_id uuid; manual_id uuid;
- k text:='reply-reliability:'||gen_random_uuid(); caught boolean; at0 timestamptz:=clock_timestamp()-interval '1 hour';
+ k text:='reply-reliability:'||gen_random_uuid(); caught boolean; at0 timestamptz:=clock_timestamp()-interval '4 days';
 BEGIN
  BEGIN
  SELECT id INTO sender FROM app.gmail_accounts WHERE status='active' AND credential_id IS NOT NULL LIMIT 1;

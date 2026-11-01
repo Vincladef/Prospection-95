@@ -1,4 +1,6 @@
 import nodemailer from "nodemailer";
+import SMTPConnection from "nodemailer/lib/smtp-connection";
+import { sendWithCommitGate } from "./smtp-gate.mts";
 import { lookup } from "node:dns/promises";
 import { ImapFlow, type SearchObject } from "imapflow";
 import { readCredential } from "./credentials.mts";
@@ -98,16 +100,18 @@ export interface OutboundEmail {
 export type SmtpResult =
   | { state: "accepted"; response: string; messageId: string; accepted: string[]; rejected: string[] }
   | { state: "failed"; code: string; retryable: boolean }
-  | { state: "uncertain"; code: string };
+  | { state: "uncertain"; code: string }
+  | { state: "blocked"; code: string };
 
-export async function sendGmailMessage(message: OutboundEmail): Promise<SmtpResult> {
+export async function sendGmailMessage(message: OutboundEmail, beforeCommit?: () => Promise<boolean>): Promise<SmtpResult> {
   if (!isProductionOutboundEnabled()) {
     throw new HttpError(423, "outbound_disabled", "Les envois sont désactivés côté serveur.");
   }
   const password = await appPassword({ email: message.fromEmail, credentialId: message.credentialId });
   const transport = smtpTransport(message.fromEmail, password);
+  let commitBlocked=false;
   try {
-    const result = await transport.sendMail({
+    const mailOptions = {
       from: message.fromName
         ? { name: message.fromName, address: message.fromEmail }
         : message.fromEmail,
@@ -122,7 +126,27 @@ export async function sendGmailMessage(message: OutboundEmail): Promise<SmtpResu
       headers: {
         "X-Prospection95-Message-ID": message.messageId,
       },
-    });
+    };
+    let result;
+    if(beforeCommit){
+      const compiled=await nodemailer.createTransport({streamTransport:true,buffer:true,newline:"windows"}).sendMail(mailOptions);
+      const connection=new SMTPConnection({host:"smtp.gmail.com",port:465,secure:true,connectionTimeout:8000,greetingTimeout:8000,socketTimeout:120000,logger:false});
+      try {
+        await new Promise<void>((resolve,reject)=>{
+          connection.once("error",reject);
+          connection.connect(error=>{connection.removeListener("error",reject);if(error)reject(error);else resolve();});
+        });
+        await new Promise<void>((resolve,reject)=>{
+          connection.once("error",reject);
+          connection.login({user:message.fromEmail,pass:password},error=>{connection.removeListener("error",reject);if(error)reject(error);else resolve();});
+        });
+        const sent=await sendWithCommitGate(connection,{from:message.fromEmail,to:[message.recipient]},compiled.message as Buffer,async()=>{
+          try {commitBlocked=!await beforeCommit();}catch{commitBlocked=true;}
+          return !commitBlocked;
+        });
+        result={...sent,messageId:message.messageId};
+      }finally{connection.close();}
+    }else result=await transport.sendMail(mailOptions);
     const accepted = result.accepted.map(String);
     const rejected = result.rejected.map(String);
     if (accepted.length) {
@@ -136,6 +160,7 @@ export async function sendGmailMessage(message: OutboundEmail): Promise<SmtpResu
     }
     return { state: "failed", code: "smtp_rejected", retryable: false };
   } catch (error) {
+    if(commitBlocked)return {state:"blocked",code:"smtp_commit_blocked"};
     const code = gmailErrorCode(error);
     if (isAmbiguousSmtpFailure(error)) return { state: "uncertain", code };
     return { state: "failed", code, retryable: isRetryableSmtpFailure(error) };

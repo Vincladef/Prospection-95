@@ -57,8 +57,8 @@ export interface CampaignStats {
   clicked: number;
   replied: number;
   unclassifiedReplies: number;
-  openRate: number;
-  clickRate: number;
+  openRate: number | null;
+  clickRate: number | null;
   firstSentAt: string | null;
   lastSentAt: string | null;
 }
@@ -220,6 +220,11 @@ export interface ExperimentVariant {
   overrides: Record<string, unknown>;
   assignedCount: number;
   sentCount: number;
+  contactedCount?: number;
+  repliedProspectCount?: number;
+  openRate?: number | null;
+  clickRate?: number | null;
+  replyRate?: number | null;
   humanReplyCount: number;
   unclassifiedReplyCount: number;
   positiveReplyCount: number;

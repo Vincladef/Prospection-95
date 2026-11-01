@@ -32,3 +32,10 @@ it("leaves the batch cursor unchanged if storing a later message fails",async()=
   expect(await(await sync(new Request("https://example.test"),{} as Context)).json()).toMatchObject({ok:false});
   expect(mocks.sqlQuery.mock.calls.some(([sql])=>sql.includes("insert into app.imap_cursors"))).toBe(false);
 });
+it("advances past mail unrelated to any conversation without storing its content",async()=>{
+ mocks.sqlOne.mockImplementation(async(sql:string)=>sql.includes("with candidate as")?{account_id:"account",email:"sender@example.test",credential_id:"credential",mailbox_name:"INBOX",last_uid:0,uidvalidity:"1"}:null);
+ mocks.fetchMailboxDelta.mockResolvedValue({uidValidity:"1",lastUid:99,hasMore:false,messages:[{uid:99,from:["newsletter@example.test"],to:["sender@example.test"],references:[],inReplyTo:null,date:"2026-11-01T07:00:00Z"}]});
+ expect(await(await sync(new Request("https://example.test"),{} as Context)).json()).toMatchObject({ok:true,recorded:0});
+ expect(mocks.sqlOne.mock.calls.some(([sql])=>sql.includes("app.record_inbound_message"))).toBe(false);
+ expect(mocks.sqlQuery.mock.calls.some(([sql])=>sql.includes("insert into app.imap_cursors"))).toBe(true);
+});

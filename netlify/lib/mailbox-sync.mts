@@ -49,6 +49,7 @@ export async function recordMailboxMessages(account: MailboxAccount, messages: S
       // Reconcile our own copies as Sent messages, never as inbound replies.
       const outgoing = sentMailbox || message.sent || message.from.some(from => from.toLowerCase() === account.email.toLowerCase());
       const conversationId = await matchingConversation(account.id, account.email, message, outgoing);
+      if (!conversationId) continue;
       if (outgoing) {
         if (!conversationId || !message.from.length || !message.to.length) continue;
         await sqlOne(`

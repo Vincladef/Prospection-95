@@ -430,3 +430,16 @@ reporte l'opération, sans consommer les tentatives SMTP. Ne pas lever ce contr�
 ou considérer un job réservé comme envoyé. La réconciliation d'un message
 réellement retrouvé dans « Envoyés » peut confirmer une tentative SMTP incertaine,
 sans nouveau message ni reprise des relances après réponse.
+
+### Délais et métriques de référence (040)
+
+Les seuils de contacts utilisent `experiment_metrics.contacted_prospects`, et le
+seuil de réponses `replied_prospects` : un prospect compte une fois par variante,
+même si plusieurs emails ou réponses existent. `smtp_accepted` reste un nombre
+d'emails. L'affectation et la rédaction ne prouvent aucune exposition : seules les
+confirmations techniques de l'étape concernée la prouvent. Des taux non mesurés
+restent inconnus ; ne pas les interpréter comme un échec à 0 %.
+
+La programmation manuelle suit les mêmes délais et exclusions que le worker.
+Ne pas avancer artificiellement un horodatage ni remettre une conversation
+arrêtée en activité pour rendre une relance éligible.

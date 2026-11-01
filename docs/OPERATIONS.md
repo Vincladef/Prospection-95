@@ -420,3 +420,38 @@ Validation : tests unitaires IMAP/Gmail/dispatch/brouillons avec services simul�
 `db/tests/039_reply_reliability.sql` et les recettes 034/036 sur branche Neon isolée.
 Aucun de ces tests n'envoie d'email externe. La recette de fil/alias Gmail reste
 à distinguer d'une confirmation IMAP d'existence d'un brouillon.
+
+## Délais, métriques et validation SMTP (040)
+
+Le calcul `app.prospection_earliest_at(message_id)` est commun à la programmation
+manuelle et automatique, à la réservation et au dernier contrôle SMTP. Il requiert
+l'étape précédente techniquement confirmée : R1 à J0 + 3 jours, puis +7, +7,
++14 et +14 jours. Les fenêtres horaires peuvent repousser ces échéances. Un job
+ancien ne permet pas de contourner l'arrêt, la pause ou l'état de conversation.
+Les dates réelles des envois passés, même prématurés, restent intactes.
+
+Les affectations A/B/C ne deviennent exposées qu'à confirmation d'un envoi ; un
+test par étape attend l'envoi de cette étape. `smtp_accepted` garde son sens de
+nombre d'emails ; `contacted_prospects` et `replied_prospects` sont les dénominateurs
+uniques des seuils. Les comptes de messages et de prospects ne sont pas confondus.
+L'exposition historique est recalculée d'après les envois confirmés.
+
+Les indicateurs d'activation du suivi sont figés sur chaque email avant envoi.
+Une mesure absente ou un suivi désactivé affiche « Non mesuré » / « — ». Les
+envois historiques sans preuve d'activation restent inconnus. La répartition
+utilise la capacité consommée et la dernière utilisation des comptes admissibles,
+tout en conservant la priorité des relances et les expéditeurs fixes choisis.
+
+Pour une relance ou réponse automatique, le transport SMTP transmet le corps
+puis relit Gmail et vérifie Neon avant de terminer DATA. Un contrôle négatif
+ferme la connexion sans transmettre le terminateur qui valide le message. Une
+panne de contrôle diffère le job sans épuiser son budget de reprises. Le test
+`smtp-gate.test.ts` utilise un serveur SMTP local et vérifie qu'aucun message
+bloqué pendant DATA n'est accepté. La course résiduelle entre ce tout dernier
+contrôle et l'acceptation distante ne peut pas être supprimée par une transaction
+commune à Gmail et Neon ; une acceptation déjà donnée ne peut être rappelée.
+
+Le worker conserve uniquement les messages rattachés à une conversation.
+Les newsletters et autres courriels sans rapport font avancer le curseur mais
+ne sont plus recopiés dans Neon. Le nettoyage historique nécessite l'accord
+explicite du propriétaire et exclut toutes les références du CRM.

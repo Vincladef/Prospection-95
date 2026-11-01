@@ -55,7 +55,7 @@ describe("random outbound pacing", () => {
     release();
     expect(await (await pending).json()).toMatchObject({ ok: true, leased: 0 });
     expect(mocks.sqlOne.mock.calls[0][0]).toContain("app.schedule_due_messages(50)");
-    expect(mocks.sqlOne.mock.calls[1][0]).toContain("app.lease_outbox_jobs($1, 1, 180)");
+    expect(mocks.sqlOne.mock.calls[1][0]).toContain("app.lease_outbox_jobs($1, 1, 300)");
     expect(mocks.send).not.toHaveBeenCalled();
   });
 });
@@ -93,4 +93,27 @@ it("sends only after the complete Gmail check and the final database gate", asyn
   expect(mocks.refresh.mock.invocationCallOrder[0]).toBeLessThan(mocks.send.mock.invocationCallOrder[0]);
   expect(mocks.sqlOne.mock.calls[3][0]).toContain("app.start_outbox_attempt");
   expect(mocks.send).toHaveBeenCalledOnce();
+});
+
+it("withdraws a follow-up when a reply is detected by the final SMTP commit gate",async()=>{
+ mocks.randomInt.mockReturnValue(0);mocks.refresh.mockResolvedValue(undefined);
+ mocks.prepare.mockResolvedValue({text:"Relance",html:null});
+ mocks.sqlOne.mockResolvedValueOnce({count:0}).mockResolvedValueOnce(leased).mockResolvedValueOnce({id:"job"})
+  .mockResolvedValueOnce({id:"job",status:"running"}).mockResolvedValueOnce({internet_message_id:"<persisted@test>",in_reply_to:null,references_header:[]})
+  .mockResolvedValueOnce({ready:false,eligible:false});
+ mocks.send.mockImplementation(async(_mail,gate)=>{expect(await gate()).toBe(false);return {state:"blocked",code:"smtp_commit_blocked"};});
+ expect(await(await run()).json()).toMatchObject({state:"blocked"});
+ expect(mocks.refresh).toHaveBeenCalledTimes(2);
+ const abort=mocks.sqlQuery.mock.calls.find(([sql])=>sql.includes("conversation_changed_before_smtp_commit"));
+ expect(abort?.[1]).toEqual(["job","lease",false]);
+});
+it("defers an SMTP commit when its final Gmail read fails, preserving the retry budget",async()=>{
+ mocks.randomInt.mockReturnValue(0);mocks.refresh.mockResolvedValueOnce(undefined).mockRejectedValueOnce(new Error("temporary IMAP failure"));
+ mocks.prepare.mockResolvedValue({text:"Relance",html:null});
+ mocks.sqlOne.mockResolvedValueOnce({count:0}).mockResolvedValueOnce(leased).mockResolvedValueOnce({id:"job"})
+  .mockResolvedValueOnce({id:"job",status:"running"}).mockResolvedValueOnce({internet_message_id:"<persisted@test>",in_reply_to:null,references_header:[]});
+ mocks.send.mockImplementation(async(_mail,gate)=>{expect(await gate()).toBe(false);return {state:"blocked",code:"smtp_commit_blocked"};});
+ await run();
+ const abort=mocks.sqlQuery.mock.calls.find(([sql])=>sql.includes("precommit_abort_count=precommit_abort_count"));
+ expect(abort?.[1]).toEqual(["job","lease",true]);
 });

@@ -39,8 +39,8 @@ async function finishCertainFailure(job: LeasedMessage, code: string, retryable:
   await sqlQuery(
     `with changed as (
        update app.outbox_jobs set
-         status = case when $4 and attempt_count < max_attempts then 'deferred'::app.job_status else 'failed'::app.job_status end,
-         due_at = case when $4 and attempt_count < max_attempts then clock_timestamp() + interval '15 minutes' else due_at end,
+         status = case when $4 and attempt_count-precommit_abort_count < max_attempts then 'deferred'::app.job_status else 'failed'::app.job_status end,
+         due_at = case when $4 and attempt_count-precommit_abort_count < max_attempts then clock_timestamp() + interval '15 minutes' else due_at end,
          last_error_code = $3, last_error_detail = null, lease_expires_at = null,
          lease_owner = null, lease_token = null, updated_at = clock_timestamp()
        where id = $1::uuid and lease_token = $2::uuid and status in ('reserved','running')
@@ -82,7 +82,7 @@ export default async function dispatchOutbox(_request: Request, _context: Contex
               a.credential_id::text, a.display_name,
               coalesce(c.tracking_opens_enabled, false) as tracking_opens_enabled,
               coalesce(c.tracking_clicks_enabled, false) as tracking_clicks_enabled
-       from app.lease_outbox_jobs($1, 1, 180) leased
+       from app.lease_outbox_jobs($1, 1, 300) leased
        join app.email_messages m on m.id = leased.message_id
        join app.gmail_accounts a on a.id = leased.account_id
        left join app.campaigns c on c.id = leased.campaign_id`,
@@ -180,6 +180,10 @@ export default async function dispatchOutbox(_request: Request, _context: Contex
       clicksEnabled: job.tracking_clicks_enabled,
       baseUrl: job.tracking_opens_enabled || job.tracking_clicks_enabled ? trackingBaseUrl() : "",
     });
+    await sqlQuery(`update app.email_messages set tracking_opens_enabled=$2,tracking_clicks_enabled=$3 where id=$1::uuid`,
+      [job.message_id,job.tracking_opens_enabled,job.tracking_clicks_enabled]);
+    let checkFailed=false;
+    const guarded=job.job_kind==="reply" || job.job_kind==="prospection" && job.step!=="J0";
     const result = await sendGmailMessage({
       fromEmail: job.from_address,
       fromName: job.display_name,
@@ -191,9 +195,32 @@ export default async function dispatchOutbox(_request: Request, _context: Contex
       messageId,
       inReplyTo: persistedMessage.in_reply_to,
       references: persistedMessage.references_header,
-    });
+    }, guarded ? async()=>{
+      try {
+        await refreshConversation(job.conversation_id!);
+        const row=await sqlOne<{ready:boolean;eligible:boolean}>(`select app.outbox_commit_is_ready(j.id,$2::uuid) as ready,
+          case when j.job_kind='reply' then app.reply_source_is_current(w.source_message_id)
+            else app.prospection_message_is_eligible(j.message_id) end as eligible
+          from app.outbox_jobs j left join app.reply_workflows w on w.output_message_id=j.message_id where j.id=$1::uuid`,[job.id,job.lease_token]);
+        if(row?.eligible && !row.ready)checkFailed=true;
+        return row?.ready===true;
+      }catch{checkFailed=true;return false;}
+    } : undefined);
     if (result.state === "accepted") {
       await sqlOne(`select (app.confirm_smtp_acceptance($1::uuid, $2::uuid, $3, clock_timestamp())).id::text as id`, [job.id, job.lease_token, result.response || result.messageId]);
+    } else if(result.state === "blocked") {
+      await sqlQuery(`with changed as (update app.outbox_jobs set
+        status=case when $3 then 'deferred'::app.job_status else 'cancelled'::app.job_status end,
+        due_at=case when $3 then clock_timestamp()+interval '2 minutes' else due_at end,
+        precommit_abort_count=precommit_abort_count+case when $3 then 1 else 0 end,
+        cancel_reason=case when $3 then null else 'conversation_changed_before_smtp_commit' end,
+        cancelled_at=case when $3 then null else clock_timestamp() end,
+        lease_expires_at=null,lease_owner=null,lease_token=null,last_error_code='smtp_commit_blocked',updated_at=clock_timestamp()
+        where id=$1::uuid and lease_token=$2::uuid and status='running' returning message_id,status)
+        update app.email_messages m set status=case when changed.status='deferred' then 'scheduled'::app.message_status else 'cancelled'::app.message_status end
+        from changed where m.id=changed.message_id and not m.technical_confirmation`,[job.id,job.lease_token,checkFailed]);
+      await sqlQuery(`update app.outbox_attempts set finished_at=clock_timestamp(),outcome='failed',error_code='smtp_aborted_before_commit'
+        where job_id=$1::uuid and lease_token=$2::uuid`,[job.id,job.lease_token]);
     } else if (result.state === "uncertain") {
       await sqlQuery(`select app.mark_smtp_uncertain($1::uuid, $2::uuid, $3, null)`, [job.id, job.lease_token, result.code]);
     } else {

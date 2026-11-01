@@ -62,8 +62,8 @@ const experiment: Experiment = {
   decision: null,
   matureAt: null,
   variants: [
-    { id: "aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa", label: "A", name: "Référence", allocationWeight: 1, overrides: {}, assignedCount: 12, sentCount: 10, humanReplyCount: 2, unclassifiedReplyCount: 1, positiveReplyCount: 1, confirmedMeetingCount: 1, openCount: 6, clickCount: 3 },
-    { id: "bbbbbbbb-bbbb-4bbb-8bbb-bbbbbbbbbbbb", label: "B", name: "Version B", allocationWeight: 1, overrides: { search: { criteria: "Recherche propre à la version B" } }, assignedCount: 11, sentCount: 10, humanReplyCount: 3, unclassifiedReplyCount: 0, positiveReplyCount: 2, confirmedMeetingCount: 1, openCount: 7, clickCount: 4 },
+    { id: "aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa", label: "A", name: "Référence", allocationWeight: 1, overrides: {}, assignedCount: 12, sentCount: 10, contactedCount: 8, openRate:60,clickRate:30,replyRate:25, humanReplyCount: 2, unclassifiedReplyCount: 1, positiveReplyCount: 1, confirmedMeetingCount: 1, openCount: 6, clickCount: 3 },
+    { id: "bbbbbbbb-bbbb-4bbb-8bbb-bbbbbbbbbbbb", label: "B", name: "Version B", allocationWeight: 1, overrides: { search: { criteria: "Recherche propre à la version B" } }, assignedCount: 11, sentCount: 10, contactedCount: 9, openRate:70,clickRate:40,replyRate:33, humanReplyCount: 3, unclassifiedReplyCount: 0, positiveReplyCount: 2, confirmedMeetingCount: 1, openCount: 7, clickCount: 4 },
   ],
 };
 
@@ -355,4 +355,12 @@ describe("CampaignsView V53", () => {
     await waitFor(() => expect(apiMocks.moveCampaignToFolder).toHaveBeenCalledWith(campaign.id, folder.id, campaign.version));
     expect(onMutated).toHaveBeenCalledOnce();
   });
+});
+
+it("shows unavailable measurements instead of zero rates",()=>{
+ renderCampaigns([{...experiment,variants:experiment.variants.map(v=>({...v,openRate:null,clickRate:null,replyRate:null}))}],
+  [{...campaign,stats:{...campaign.stats,openRate:null,clickRate:null}}]);
+ fireEvent.click(screen.getByRole("button",{name:/Voir les statistiques/}));
+ expect(screen.getAllByText("Non mesuré")).toHaveLength(2);
+ expect(screen.getAllByText("—").length).toBeGreaterThanOrEqual(6);
 });

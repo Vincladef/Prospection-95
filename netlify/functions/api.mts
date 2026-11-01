@@ -429,7 +429,7 @@ async function setProspectStatus(ids: string[], status: z.infer<typeof editableM
         and iteration_state.experiment_assignment_id is not distinct from conv.experiment_assignment_id
         and iteration_state.status = 'completed'
         and iteration_state.completed_iterations = iteration_state.total_iterations
-       where true
+       where conv.followups_stopped_at is null and conv.state in ('prepared','active')
          and p.contact_state <> 'do_not_contact' and not app.is_excluded(p.email)
      ), latest_messages as (
        select eligible.*, m.id as message_id, m.step, m.subject, m.body_text,
@@ -447,7 +447,7 @@ async function setProspectStatus(ids: string[], status: z.infer<typeof editableM
      ), targets as (
        select candidate.*
        from latest_messages candidate
-       where (
+       where ($2<>'scheduled' or app.prospection_message_is_eligible(candidate.message_id)) and (
            ($2 = 'approved' and candidate.message_status in ('draft','prepared','pending_approval','cancelled'))
            or
            ($2 <> 'approved' and ($2 <> 'scheduled' or candidate.message_id = (
@@ -492,12 +492,12 @@ async function setProspectStatus(ids: string[], status: z.infer<typeof editableM
           status, approval_required, approved_at, due_at, idempotency_key)
        select t.message_id, t.conversation_id, t.campaign_id, t.prospect_id,
               t.sender_account_id, t.step, 'scheduled', true, clock_timestamp(),
-              app.next_account_send_at(t.sender_account_id, clock_timestamp(), t.message_id::text),
+              app.next_account_send_at(t.sender_account_id, greatest(clock_timestamp(),app.prospection_earliest_at(t.message_id)), t.message_id::text),
               'ui-schedule:' || t.message_id::text
        from targets t
        join changed_messages changed on changed.id = t.message_id
        join app.prospects p on p.id = t.prospect_id
-       where $2 = 'scheduled' and p.contact_kind = 'email' and p.normalized_email is not null
+       where $2 = 'scheduled' and app.prospection_message_is_eligible(t.message_id) and p.contact_kind = 'email' and p.normalized_email is not null
          and not app.is_excluded(p.normalized_email)
        on conflict (idempotency_key) do update
          set status = case when app.outbox_jobs.status in ('completed','uncertain') then app.outbox_jobs.status else 'scheduled' end,

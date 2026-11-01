@@ -19,7 +19,7 @@ SELECT to_regnamespace('app') IS NOT NULL
    AND to_regnamespace('agent_api') IS NOT NULL
    AND to_regnamespace('audit') IS NOT NULL AS all_schemas_exist;
 
-SELECT count(*) = 39 AS all_migrations_registered
+SELECT count(*) = 40 AS all_migrations_registered
 FROM app.schema_migrations
 WHERE version IN (
   '001_foundation',
@@ -60,7 +60,8 @@ WHERE version IN (
   '036_reply_scope_and_unified_instructions',
   '037_gmail_bobwork_setup_confirmation',
   '038_deliverability_decisions',
-  '039_reply_reliability'
+  '039_reply_reliability',
+  '040_sequence_safety_and_metrics'
 );
 
 SELECT EXISTS (
@@ -380,3 +381,7 @@ SELECT position('mailbox_check_token' IN pg_get_functiondef('app.start_outbox_at
  AND EXISTS(SELECT 1 FROM pg_trigger WHERE tgrelid='app.outbox_jobs'::regclass AND tgname='sync_cancelled_outbox_message')
  AND EXISTS(SELECT 1 FROM information_schema.columns WHERE table_schema='app' AND table_name='reply_draft_requests' AND column_name='lease_token')
  AS reply_reliability_guards_are_installed;
+
+SELECT to_regprocedure('app.prospection_earliest_at(uuid)') IS NOT NULL
+ AND position('metrics.contacted_prospects' IN pg_get_functiondef('agent_api.advance_experiment(uuid,uuid,text)'::regprocedure))>0
+ AND position('sequence_delay_not_elapsed' IN pg_get_functiondef('app.start_outbox_attempt(uuid,uuid)'::regprocedure))>0 AS sequence_clock_and_unique_thresholds_available;

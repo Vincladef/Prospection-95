@@ -307,9 +307,10 @@ export async function loadDashboard(): Promise<Record<string, unknown>> {
       order by experiment.created_at desc
     `),
     sqlQuery(`
-      select v.*,
+      select v.*, c.tracking_opens_enabled as campaign_opens_enabled,c.tracking_clicks_enabled as campaign_clicks_enabled,
              coalesce(metrics.assigned_prospects, 0)::int as assigned_count,
              coalesce(metrics.smtp_accepted, 0)::int as sent_count,
+             metrics.contacted_prospects,metrics.replied_prospects,metrics.positive_prospects,metrics.meeting_prospects,metrics.tracked_open_sends,metrics.tracked_click_sends,
              coalesce(metrics.human_replies, 0)::int as human_reply_count,
              coalesce(metrics.positive_replies, 0)::int as positive_reply_count,
              coalesce(metrics.confirmed_meetings, 0)::int as confirmed_meeting_count,
@@ -317,6 +318,7 @@ export async function loadDashboard(): Promise<Record<string, unknown>> {
              coalesce(metrics.measured_clicks, 0)::int as click_count,
              coalesce(metrics.unclassified_responses, 0)::int as unclassified_reply_count
       from app.experiment_variants v
+      join app.experiments e on e.id=v.experiment_id join app.campaigns c on c.id=e.campaign_id
       left join agent_api.experiment_metrics metrics
         on metrics.experiment_id = v.experiment_id and metrics.variant_id = v.id
       order by v.experiment_id, v.code
@@ -329,6 +331,7 @@ export async function loadDashboard(): Promise<Record<string, unknown>> {
              coalesce(outbound.clicked, 0)::int as clicked,
              coalesce(inbound.replied, 0)::int as replied,
              coalesce(inbound.unclassified_replies, 0)::int as unclassified_replies,
+             outbound.tracked_open_sends,outbound.tracked_click_sends,
              outbound.first_sent_at,
              outbound.last_sent_at
       from app.campaigns c
@@ -342,6 +345,8 @@ export async function loadDashboard(): Promise<Record<string, unknown>> {
           count(*) filter (where m.technical_confirmation and m.status in ('smtp_accepted','sent_manually') and exists (
             select 1 from app.tracking_events event where event.message_id = m.id and event.event_type = 'click'
           )) as clicked,
+          count(*) filter(where m.technical_confirmation and m.tracking_opens_enabled) as tracked_open_sends,
+          count(*) filter(where m.technical_confirmation and m.tracking_clicks_enabled) as tracked_click_sends,
           min(coalesce(m.smtp_accepted_at, m.sent_at)) filter (where m.technical_confirmation) as first_sent_at,
           max(coalesce(m.smtp_accepted_at, m.sent_at)) filter (where m.technical_confirmation) as last_sent_at
         from app.conversations conversation
@@ -441,8 +446,8 @@ export async function loadDashboard(): Promise<Record<string, unknown>> {
         clicked: numberValue(stats.clicked),
         replied: numberValue(stats.replied),
         unclassifiedReplies: numberValue(stats.unclassified_replies),
-        openRate: sent ? Math.round(numberValue(stats.opened) * 10_000 / sent) / 100 : 0,
-        clickRate: sent ? Math.round(numberValue(stats.clicked) * 10_000 / sent) / 100 : 0,
+        openRate: row.tracking_opens_enabled && numberValue(stats.tracked_open_sends)>0 ? Math.round(numberValue(stats.opened) * 10_000 / numberValue(stats.tracked_open_sends)) / 100 : null,
+        clickRate: row.tracking_clicks_enabled && numberValue(stats.tracked_click_sends)>0 ? Math.round(numberValue(stats.clicked) * 10_000 / numberValue(stats.tracked_click_sends)) / 100 : null,
         firstSentAt: isoValue(stats.first_sent_at),
         lastSentAt: isoValue(stats.last_sent_at),
       },
@@ -594,10 +599,14 @@ export async function loadDashboard(): Promise<Record<string, unknown>> {
       overrides: (row.overrides as DbRow | null) ?? {},
       assignedCount: numberValue(row.assigned_count),
       sentCount: numberValue(row.sent_count),
+      contactedCount:numberValue(row.contacted_prospects),repliedProspectCount:numberValue(row.replied_prospects),
+      openRate:row.campaign_opens_enabled && numberValue(row.tracked_open_sends)>0 ? Math.round(numberValue(row.open_count)*10000/numberValue(row.tracked_open_sends))/100 : null,
+      clickRate:row.campaign_clicks_enabled && numberValue(row.tracked_click_sends)>0 ? Math.round(numberValue(row.click_count)*10000/numberValue(row.tracked_click_sends))/100 : null,
+      replyRate:numberValue(row.contacted_prospects)>0 && numberValue(row.unclassified_reply_count)===0 ? Math.round(numberValue(row.replied_prospects)*10000/numberValue(row.contacted_prospects))/100 : null,
       humanReplyCount: numberValue(row.human_reply_count),
       unclassifiedReplyCount: numberValue(row.unclassified_reply_count),
-      positiveReplyCount: numberValue(row.positive_reply_count),
-      confirmedMeetingCount: numberValue(row.confirmed_meeting_count),
+      positiveReplyCount: numberValue(row.positive_prospects),
+      confirmedMeetingCount: numberValue(row.meeting_prospects),
       openCount: numberValue(row.open_count),
       clickCount: numberValue(row.click_count),
     });
