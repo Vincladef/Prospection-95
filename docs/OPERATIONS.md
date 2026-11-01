@@ -513,7 +513,7 @@ ni les plafonds, ni la priorité J0/R1–R5.
 ## Mesure de durée par flux (043)
 
 La case « Mesurer le temps de lecture » remplace l’URL du pixel unique par
-`/t/r/:token` pour les futurs envois. L’ancien `/t/o/:token` et les jetons déjà
+`/t/r/:token` pour les futurs envois de prospection (les réponses conservent le pixel ordinaire). L’ancien `/t/o/:token` et les jetons déjà
 envoyés restent valides. Ouvrir/clic/fréquence/délai restent indépendants ; la
 durée nécessite seulement les ouvertures. Le texte alternatif, le nombre
 d’images, le domaine et les liens ne changent pas. Aucun JavaScript, cookie,
@@ -565,3 +565,14 @@ plafond serveur à 50 056 ms. Identifiants synthétiques, aucun email ni prospec
 réel. Ces résultats valident le transport navigateur → Netlify, pas une lecture
 humaine dans un client mail. Les tests SQL utilisent uniquement des fixtures
 annulées sur une branche de validation.
+
+Recette HTTP complète sur la prévisualisation de la fonctionnalité : flux lus
+pendant 7 404 ms, 18 001 ms et 50 061 ms ; durées enregistrées dans Neon à 7 s,
+18 s et ≥50 s. Deux clients incompatibles ont reçu le GIF statique (42 octets)
+sans durée. L’agrégat retourne 2 mesures non plafonnées, 1 prospect unique,
+12,5 s de moyenne, 1 plafond, 2 exclusions et aucun échec. Le GIF complet fait
+287 octets et se décode en une image 1×1 valide. L’empaquetage Edge hors ligne
+local est bloqué par l’accès réseau au composant Netlify ; le même code a été
+construit et exécuté avec succès sur Netlify. Les fixtures HTTP sont isolées sur
+la branche Neon de validation ; aucune statistique réelle n’est alimentée par
+ces essais.

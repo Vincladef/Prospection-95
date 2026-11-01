@@ -427,7 +427,7 @@ function CampaignEditor({
               <label><input type="checkbox" disabled={!draft.trackingOpensEnabled} checked={draft.advancedInteractionsEnabled} onChange={e=>setDraft(d=>({...d,advancedInteractionsEnabled:e.target.checked}))}/> Analyser les réouvertures et leur fréquence</label>
               <label><input type="checkbox" disabled={!draft.advancedInteractionsEnabled||!draft.trackingOpensEnabled||!draft.trackingClicksEnabled} checked={draft.readDelayEnabled} onChange={e=>setDraft(d=>({...d,readDelayEnabled:e.target.checked}))}/> Analyser le délai entre ouverture et clic</label>
               <label><input type="checkbox" disabled={!draft.trackingOpensEnabled} checked={draft.readingTimeEnabled} onChange={e=>setDraft(d=>({...d,readingTimeEnabled:e.target.checked}))}/> Mesurer le temps de lecture</label>
-              <small>Jusqu’à 50 secondes, avec une résolution d’une seconde sur les clients compatibles. Le pixel existant mesure la durée de connexion ; les proxys et les clients non identifiés sont exclus. Aucune image ni aucun script supplémentaire.</small>
+              <small>Jusqu’à 50 secondes, avec une résolution d’une seconde sur les clients compatibles. Première ouverture mesurable par email de prospection. Le pixel existant mesure la durée de connexion ; les proxys et les clients non identifiés sont exclus. Aucune image ni aucun script supplémentaire.</small>
               <small>Suivi signé appliqué aux prochains envois. Une ouverture est une observation technique : les proxys d’images comme Gmail peuvent la déclencher sans lecture humaine.</small>
             </div>
           </details>

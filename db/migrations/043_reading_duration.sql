@@ -35,7 +35,7 @@ DECLARE t timestamptz:=clock_timestamp(); s app.reading_sessions; b app.reading_
 BEGIN
  IF p_client NOT IN ('thunderbird','outlook_desktop','proxy','automated','unverified') THEN RAISE EXCEPTION 'invalid_reading_client'; END IF;
  IF NOT EXISTS(SELECT 1 FROM app.email_messages m JOIN app.conversations conv ON conv.id=m.conversation_id JOIN app.campaigns c ON c.id=conv.campaign_id
-   WHERE m.id=p_message AND m.direction='outbound' AND m.technical_confirmation
+   WHERE m.id=p_message AND m.direction='outbound' AND m.kind='prospection' AND m.technical_confirmation
    AND m.reading_time_enabled AND c.reading_time_enabled AND m.tracking_opens_enabled AND c.tracking_opens_enabled)
  THEN RETURN jsonb_build_object('stream',false,'reason','disabled'); END IF;
  SELECT * INTO s FROM app.reading_sessions WHERE message_id=p_message AND client=p_client;

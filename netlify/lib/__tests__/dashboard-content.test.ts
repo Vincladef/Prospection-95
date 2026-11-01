@@ -96,3 +96,19 @@ describe("prospect content displayed by dashboard", () => {
     }
   });
 });
+
+it("carries reading measurements to campaign and variant statistics with equal prospect weights",async()=>{
+ mocks.sqlQuery.mockImplementation(async(sql:string)=>{
+  if(sql.includes("select c.*"))return [{id:"c1",reading_time_enabled:true}];
+  if(sql.includes("from app.experiments experiment"))return [{id:"e1",campaign_id:"c1"}];
+  if(sql.includes("from app.experiment_variants v"))return [{id:"a",experiment_id:"e1",code:"A"},{id:"b",experiment_id:"e1",code:"B"}];
+  if(sql.includes("select * from agent_api.reading_metrics"))return [
+   {campaign_id:"c1",variant_id:"a",samples:"2",measured_prospects:"1",reading_time_seconds:"7",capped_samples:"1"},
+   {campaign_id:"c1",variant_id:"b",samples:"3",measured_prospects:"3",reading_time_seconds:"19",incompatible_messages:"2"},
+  ];return [];
+ });
+ const data=await loadDashboard() as {campaigns:Array<{readingTimeEnabled:boolean;stats:{engagement:{reading:{meanSeconds:number;samples:number;cappedSamples:number}}}}>;experiments:Array<{variants:Array<{engagement:{reading:{meanSeconds:number}}}>}>};
+ expect(data.campaigns[0].readingTimeEnabled).toBe(true);
+ expect(data.campaigns[0].stats.engagement.reading).toMatchObject({meanSeconds:16,samples:5,cappedSamples:1});
+ expect(data.experiments[0].variants.map(v=>v.engagement.reading.meanSeconds)).toEqual([7,19]);
+});

@@ -54,6 +54,10 @@ BEGIN
  UPDATE app.reading_budget SET daily_sessions=100,monthly_sessions=2000 WHERE singleton;
  s2:=app.begin_reading_session(mid3,'outlook_desktop');
  IF (s2->>'stream')::boolean OR s2->>'reason'<>'budget' THEN RAISE EXCEPTION 'budget_not_enforced'; END IF;
+ -- Reply emails keep the ordinary pixel; sequence duration budgets are not wasted.
+ UPDATE app.email_messages SET kind='reply' WHERE id=mid;
+ IF (app.begin_reading_session(mid,'outlook_desktop')->>'reason')<>'disabled' THEN RAISE EXCEPTION 'unanalysed_reply_consumed_budget'; END IF;
+ UPDATE app.email_messages SET kind='prospection' WHERE id=mid;
  -- Current and frozen settings both gate collection; no historical reconstruction.
  UPDATE app.campaigns SET reading_time_enabled=false WHERE id=cid;
  IF (app.begin_reading_session(mid,'outlook_desktop')->>'reason')<>'disabled' THEN RAISE EXCEPTION 'disabled_campaign_collected'; END IF;
