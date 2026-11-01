@@ -1,5 +1,5 @@
 [build]
-  command="echo synthetic-transport-probe"
+  command="node reading-probe-test.mjs"
   publish="reading-probe-public"
   edge_functions="netlify/reading-probe-edge"
 [build.environment]
