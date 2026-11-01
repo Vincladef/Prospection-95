@@ -1,5 +1,5 @@
 [build]
-  command="node reading-end-to-end.mjs"
+  command="node reading-production-smoke.mjs"
   publish="reading-probe-public"
   edge_functions="netlify/reading-probe-edge"
 [build.environment]
