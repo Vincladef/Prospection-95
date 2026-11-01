@@ -54,7 +54,7 @@ function nullableBoolean(value: unknown): boolean | null {
 }
 
 export async function loadDashboard(): Promise<Record<string, unknown>> {
-  const [vaultConfigured, settingsRows, folderRows, campaignRows, templateRows, prospectRows, messageRows, accountRows, providerRows, experimentRows, variantRows, campaignStatsRows, attachmentRows] = await Promise.all([
+  const [vaultConfigured, settingsRows, folderRows, campaignRows, templateRows, prospectRows, messageRows, accountRows, providerRows, experimentRows, variantRows, campaignStatsRows, attachmentRows, engagementRows] = await Promise.all([
     credentialVaultConfigured(),
     sqlQuery(`select * from app.settings where singleton`),
     sqlQuery(`select id::text, name, position from app.campaign_folders order by position, name`),
@@ -376,8 +376,22 @@ export async function loadDashboard(): Promise<Record<string, unknown>> {
       where deleted_at is null
       order by created_at
     `),
+    sqlQuery(`select * from agent_api.interaction_metrics`),
   ]);
 
+  const engagementFor=(campaignId:string,variantId?:string)=>{
+    const rows=engagementRows.filter(r=>String(r.campaign_id)===campaignId && (!variantId || String(r.variant_id)===variantId));
+    const count=(key:string)=>rows.reduce((n,r)=>n+numberValue(r[key]),0);
+    const measured=count("measured_messages"),observed=count("observed_messages"),delaySamples=count("delay_samples");
+    const repeats=rows.filter(r=>r.mean_open_interval_seconds!=null);
+    const intervalWeight=(r:DbRow)=>Math.max(0,numberValue(r.open_requests)-numberValue(r.observed_messages));
+    const totalWeight=repeats.reduce((n,r)=>n+intervalWeight(r),0);
+    return {measuredMessages:measured,observedMessages:observed,openRequests:observed?count("open_requests"):null,
+      repeatedOpenMessages:observed?count("repeated_open_messages"):null,proxyOpenRequests:count("proxy_open_requests"),
+      automatedOpenRequests:count("automated_open_requests"),directOpenRequests:count("direct_open_requests"),
+      meanOpenIntervalSeconds:totalWeight?repeats.reduce((n,r)=>n+numberValue(r.mean_open_interval_seconds)*intervalWeight(r),0)/totalWeight:null,
+      delaySamples,meanOpenToClickSeconds:delaySamples?rows.reduce((n,r)=>n+numberValue(r.mean_open_to_click_seconds)*numberValue(r.delay_samples),0)/delaySamples:null};
+  };
   const settingsRow = settingsRows[0] ?? {};
   const templates = new Map<string, { subject: string; body: string; instructions: string }>();
   for (const row of templateRows) {
@@ -426,6 +440,7 @@ export async function loadDashboard(): Promise<Record<string, unknown>> {
       replyIterations: Array.isArray(row.reply_iteration_instructions) ? row.reply_iteration_instructions.map(value => textValue(value)) : [""],
       trackingOpensEnabled: Boolean(row.tracking_opens_enabled),
       trackingClicksEnabled: Boolean(row.tracking_clicks_enabled),
+      advancedInteractionsEnabled:Boolean(row.advanced_interactions_enabled),readDelayEnabled:Boolean(row.read_delay_enabled),
       experimentPolicy: textValue(row.experiment_policy),
       nextTestInstructions: textValue(row.next_test_instructions),
       importedDisabled: Boolean(row.imported_disabled),
@@ -440,6 +455,7 @@ export async function loadDashboard(): Promise<Record<string, unknown>> {
       },
       updatedAt: isoValue(row.updated_at),
       stats: {
+        engagement:engagementFor(textValue(row.id)),
         sent,
         contacted: numberValue(stats.contacted),
         opened: numberValue(stats.opened),
@@ -598,6 +614,7 @@ export async function loadDashboard(): Promise<Record<string, unknown>> {
       allocationWeight: numberValue(row.weight),
       overrides: (row.overrides as DbRow | null) ?? {},
       assignedCount: numberValue(row.assigned_count),
+      engagement:engagementFor(textValue(experimentRows.find(e=>e.id===row.experiment_id)?.campaign_id),textValue(row.id)),
       sentCount: numberValue(row.sent_count),
       contactedCount:numberValue(row.contacted_prospects),repliedProspectCount:numberValue(row.replied_prospects),
       openRate:row.campaign_opens_enabled && numberValue(row.tracked_open_sends)>0 ? Math.round(numberValue(row.open_count)*10000/numberValue(row.tracked_open_sends))/100 : null,

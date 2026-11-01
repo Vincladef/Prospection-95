@@ -364,3 +364,16 @@ it("shows unavailable measurements instead of zero rates",()=>{
  expect(screen.getAllByText("Non mesuré")).toHaveLength(2);
  expect(screen.getAllByText("—").length).toBeGreaterThanOrEqual(6);
 });
+
+it("saves advanced analytics as independent opt-in options using the existing tracking",async()=>{
+ cleanup();
+ renderCampaigns([], [{...campaign,trackingOpensEnabled:true,trackingClicksEnabled:true}]);
+ fireEvent.click(screen.getByText(/Suivi des interactions/));
+ const advanced=screen.getByRole("checkbox",{name:"Analyser les réouvertures et leur fréquence"});
+ const delay=screen.getByRole("checkbox",{name:/Estimation de lecture/});
+ expect(advanced).not.toBeChecked();expect(delay).toBeDisabled();
+ fireEvent.click(advanced);expect(delay).toBeEnabled();fireEvent.click(delay);
+ fireEvent.click(screen.getAllByRole("button",{name:"Enregistrer"})[0]);
+ await waitFor(()=>expect(apiMocks.updateCampaign).toHaveBeenCalledWith(campaign.id,expect.objectContaining({advancedInteractionsEnabled:true,readDelayEnabled:true})));
+ cleanup();
+});

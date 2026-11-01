@@ -451,3 +451,35 @@ Quand des J0 et des relances sont éligibles simultanément, les premiers emails
 J0 passent avant R1–R5 pour les places disponibles dans le quota. Cette règle
 remplace les anciennes mentions de priorité aux relances. Les relances restent
 en file ; aucun plafond, délai minimum ni contrôle de conversation n'est levé.
+
+### Signaux d'engagement avancés (042)
+
+Lire `agent_api.interaction_metrics` et, si utile, `agent_api.interaction_timeline`
+avant de comparer les variantes. Les options `advanced_interactions_enabled` et
+`read_delay_enabled` sont facultatives, désactivées par défaut et figées sur
+chaque email au départ. Une absence de chronologie n'est pas un résultat nul.
+Les observations sont limitées à une fenêtre glissante de 90 jours ; ne pas
+reconstituer les anciennes ouvertures depuis un compteur agrégé.
+
+`open_requests` et `repeated_open_messages` mesurent des chargements de pixel,
+pas des lectures humaines. `mean_open_interval_seconds` décrit leur fréquence
+technique. `proxy_open_requests`, `automated_open_requests` et
+`direct_open_requests` distinguent des classes estimées d'agents ; « browser »
+ne garantit pas un humain. Les proxys peuvent précharger et cacher les images,
+les robots peuvent imiter un navigateur, et une image bloquée ne produit aucun
+signal. `open_reliability` reste `noisy`.
+
+`mean_open_to_click_seconds` est uniquement le délai observé entre un chargement
+et un clic de navigateur apparent, avec `delay_samples` comme taille de groupe.
+Ce délai peut inclure une pause ou une ouverture d'onglet ; ce n'est PAS un temps
+de lecture. `reading_time_seconds` reste NULL. Ne pas convertir ce délai en
+attention, compréhension, score certain ou durée de lecture estimée. Une paire
+absente, incohérente, proxy ou robot ne fournit pas ce délai expérimental.
+
+L'IA peut utiliser ces signaux secondaires pour proposer progressivement des
+tests (objet, longueur, clarté du lien, etc.), en indiquant la couverture, l'âge
+des envois, les données manquantes et la fiabilité. Privilégier les réponses
+humaines et résultats commerciaux. Ne pas déclarer une gagnante à partir de
+chargements de pixels seuls, ni modifier les seuils de prospects uniques, les
+quotas ou la cadence sur la seule base de ces signaux bruités. Ne pas activer
+automatiquement un suivi supplémentaire dans le but d'obtenir des données.

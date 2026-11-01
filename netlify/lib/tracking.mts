@@ -240,12 +240,12 @@ export async function recordInteraction(input: {
     `with message_context as (
        select m.id as message_id, conv.campaign_id, conv.prospect_id,
               a.experiment_id, a.variant_id, a.id as assignment_id,
-              case when $2 = 'open' then c.tracking_opens_enabled else c.tracking_clicks_enabled end as enabled
+              case when $2 = 'open' then c.tracking_opens_enabled AND coalesce(m.tracking_opens_enabled,c.tracking_opens_enabled) else c.tracking_clicks_enabled AND coalesce(m.tracking_clicks_enabled,c.tracking_clicks_enabled) end as enabled
        from app.email_messages m
        join app.conversations conv on conv.id = m.conversation_id
        join app.campaigns c on c.id = conv.campaign_id
        left join app.experiment_assignments a on a.id = conv.experiment_assignment_id
-       where m.id = $1::uuid and m.direction = 'outbound'
+       where m.id = $1::uuid and m.direction = 'outbound' and m.technical_confirmation
      ), observed as (
        insert into app.tracking_events
          (message_id, event_type, observed_at, scanner_likelihood, counted,
@@ -265,6 +265,8 @@ export async function recordInteraction(input: {
          scanner_likelihood = least(app.tracking_events.scanner_likelihood, excluded.scanner_likelihood),
          metadata = app.tracking_events.metadata || excluded.metadata
        returning message_id
+     ), advanced_observation as (
+       select app.record_interaction_bucket(message_id,$2,$7) from observed
      ), experiment_observation as (
        insert into app.experiment_events
          (experiment_id, variant_id, assignment_id, prospect_id, message_id,
@@ -279,7 +281,7 @@ export async function recordInteraction(input: {
        on conflict (idempotency_key) do nothing
        returning id
      )
-     select exists(select 1 from observed) as recorded`,
+     select exists(select 1 from observed) as recorded, (select count(*) from advanced_observation) as sampled`,
     [input.payload.m, input.payload.k, tokenFingerprint, confidence, source, linkHost, agentClass, scannerLikelihood],
   );
   return Boolean(row?.recorded);

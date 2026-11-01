@@ -27,6 +27,8 @@ interface LeasedMessage {
   references_header: string[];
   credential_id: string;
   display_name: string | null;
+  advanced_interactions_enabled: boolean;
+  read_delay_enabled: boolean;
   tracking_opens_enabled: boolean;
   tracking_clicks_enabled: boolean;
 }
@@ -80,6 +82,8 @@ export default async function dispatchOutbox(_request: Request, _context: Contex
               m.to_addresses, m.subject, m.body_text, m.body_html,
               m.internet_message_id, m.in_reply_to, m.references_header,
               a.credential_id::text, a.display_name,
+              coalesce(c.advanced_interactions_enabled,false) as advanced_interactions_enabled,
+              coalesce(c.read_delay_enabled,false) as read_delay_enabled,
               coalesce(c.tracking_opens_enabled, false) as tracking_opens_enabled,
               coalesce(c.tracking_clicks_enabled, false) as tracking_clicks_enabled
        from app.lease_outbox_jobs($1, 1, 300) leased
@@ -180,8 +184,8 @@ export default async function dispatchOutbox(_request: Request, _context: Contex
       clicksEnabled: job.tracking_clicks_enabled,
       baseUrl: job.tracking_opens_enabled || job.tracking_clicks_enabled ? trackingBaseUrl() : "",
     });
-    await sqlQuery(`update app.email_messages set tracking_opens_enabled=$2,tracking_clicks_enabled=$3 where id=$1::uuid`,
-      [job.message_id,job.tracking_opens_enabled,job.tracking_clicks_enabled]);
+    await sqlQuery(`update app.email_messages set tracking_opens_enabled=$2,tracking_clicks_enabled=$3,advanced_interactions_enabled=$4,read_delay_enabled=$5 where id=$1::uuid`,
+      [job.message_id,job.tracking_opens_enabled,job.tracking_clicks_enabled,!!job.advanced_interactions_enabled && job.tracking_opens_enabled,!!job.read_delay_enabled && !!job.advanced_interactions_enabled && job.tracking_opens_enabled && job.tracking_clicks_enabled]);
     let checkFailed=false;
     const guarded=job.job_kind==="reply" || job.job_kind==="prospection" && job.step!=="J0";
     const result = await sendGmailMessage({

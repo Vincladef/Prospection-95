@@ -1,3 +1,4 @@
+import { EngagementStats } from "./EngagementStats";
 import { type DragEvent, type FormEvent, type ReactNode, useEffect, useMemo, useRef, useState } from "react";
 import { api } from "../lib/api";
 import type { Campaign, CampaignFolder, Experiment, GmailAccount, InstructionAttachment, Prospect, SequenceContent } from "../types";
@@ -80,6 +81,7 @@ function campaignPayload(campaign: Campaign) {
     replyIterations: campaign.replyIterations,
     trackingOpensEnabled: campaign.trackingOpensEnabled,
     trackingClicksEnabled: campaign.trackingClicksEnabled,
+    advancedInteractionsEnabled:campaign.advancedInteractionsEnabled ?? false,readDelayEnabled:campaign.readDelayEnabled ?? false,
     experimentPolicy: campaign.experimentPolicy,
     nextTestInstructions: campaign.nextTestInstructions,
     sequence: campaign.sequence,
@@ -328,12 +330,13 @@ function CampaignEditor({
       </header>
 
       {showStats ? <div className="campaign-stats-backdrop" role="presentation" onMouseDown={(event) => { if (event.currentTarget === event.target) setShowStats(false); }}><section className="campaign-stats-dialog" role="dialog" aria-modal="true" aria-labelledby="campaign-stats-title"><header><div><h3 id="campaign-stats-title">Statistiques · {campaign.name}</h3><small>Données réelles enregistrées dans Neon</small></div><button type="button" aria-label="Fermer" onClick={() => setShowStats(false)}>×</button></header><div className="campaign-stats-grid"><div><strong>{campaign.stats.sent}</strong><span>emails envoyés</span></div><div><strong>{campaign.stats.contacted}</strong><span>prospects contactés</span></div><div><strong>{campaign.stats.opened}</strong><span>emails ouverts</span><small>{campaign.stats.openRate == null ? "Non mesuré" : `${campaign.stats.openRate}% d’ouverture`}</small></div><div><strong>{campaign.stats.clicked}</strong><span>emails cliqués</span><small>{campaign.stats.clickRate == null ? "Non mesuré" : `${campaign.stats.clickRate}% de clic`}</small></div><div><strong>{campaign.stats.replied}</strong><span>prospects avec réponse humaine</span></div><div><strong>{campaign.stats.unclassifiedReplies}</strong><span>réponses à classer</span></div></div>
+        <details className="advanced-engagement"><summary>Signaux d’engagement avancés · indicatifs</summary><EngagementStats metrics={campaign.stats.engagement}/></details>
         <section className="campaign-ab-stats" aria-labelledby="campaign-ab-stats-title">
           <div className="campaign-ab-stats-heading"><strong id="campaign-ab-stats-title">Résultats des tests A/B</strong><span>{relatedExperiments.length ? `${relatedExperiments.length} test${relatedExperiments.length > 1 ? "s" : ""}` : "Aucun test configuré"}</span></div>
           {relatedExperiments.map((experiment, experimentIndex) => <details key={experiment.id} open={experimentIndex === 0} className="campaign-ab-test"><summary><span>{experiment.name}</span><small>{experiment.status === "recruiting" ? "En cours" : experiment.status === "draft" ? "Préparé" : experiment.status === "awaiting_observations" ? "Observation" : experiment.status === "mature" ? "À analyser" : "Terminé"} · {experiment.variants.length} version{experiment.variants.length > 1 ? "s" : ""}{experiment.winnerVariantLabel ? ` · gagnante ${experiment.winnerVariantLabel}` : ""}</small></summary>{populationInterpretationWarning(experiment) ? <p className="campaign-ab-warning">⚠ {populationInterpretationWarning(experiment)}</p> : null}<div className="campaign-ab-table-wrap"><table className="campaign-ab-table"><thead><tr><th>Version</th><th>Attribués</th><th>Contactés</th><th>Ouvertures</th><th>Clics</th><th>Réponses</th><th>À classer</th><th>Positives</th><th>RDV</th></tr></thead><tbody>{experiment.variants.map((variant) => {
             const rate = (value: number | null | undefined) => value == null ? "—" : `${value} %`;
             return <tr key={variant.id}><th><span className="campaign-ab-letter">{variant.label}</span><small>{variant.name || (variant.label === "A" ? "Référence" : `Version ${variant.label}`)}</small></th><td>{variant.assignedCount}</td><td>{variant.contactedCount ?? variant.sentCount}<small>{variant.sentCount} emails</small></td><td>{variant.openCount}<small>{rate(variant.openRate)}</small></td><td>{variant.clickCount}<small>{rate(variant.clickRate)}</small></td><td>{variant.repliedProspectCount ?? variant.humanReplyCount}<small>{rate(variant.replyRate)}</small></td><td>{variant.unclassifiedReplyCount}</td><td>{variant.positiveReplyCount}</td><td>{variant.confirmedMeetingCount}</td></tr>;
-          })}</tbody></table></div></details>)}
+          })}</tbody></table></div><details className="advanced-engagement"><summary>Comparer les signaux avancés</summary>{experiment.variants.map(v=><section key={v.id}><h4>Variante {v.label}</h4><EngagementStats metrics={v.engagement}/></section>)}</details></details>)}
           {!relatedExperiments.length ? <p>Les résultats par version apparaîtront ici dès qu’un test sera créé.</p> : null}
         </section>
         <p>Les ouvertures et clics sont comptés par email au moins une fois. Les ouvertures peuvent inclure les proxys d’images des messageries.</p><footer><span>{campaign.stats.lastSentAt ? `Dernier envoi : ${new Date(campaign.stats.lastSentAt).toLocaleString("fr-FR")}` : "Aucun envoi confirmé"}</span><button className="win-button primary" type="button" onClick={() => setShowStats(false)}>Fermer</button></footer></section></div> : null}
@@ -421,6 +424,10 @@ function CampaignEditor({
             <div className="v48-tracking-body">
               <label><input type="checkbox" checked={draft.trackingOpensEnabled} onChange={(event) => setDraft((current) => ({ ...current, trackingOpensEnabled: event.target.checked }))} /> Détecter les ouvertures</label>
               <label><input type="checkbox" checked={draft.trackingClicksEnabled} onChange={(event) => setDraft((current) => ({ ...current, trackingClicksEnabled: event.target.checked }))} /> Mesurer les clics sur les liens</label>
+              <label><input type="checkbox" disabled={!draft.trackingOpensEnabled} checked={draft.advancedInteractionsEnabled} onChange={e=>setDraft(d=>({...d,advancedInteractionsEnabled:e.target.checked}))}/> Analyser les réouvertures et leur fréquence</label>
+              <label><input type="checkbox" disabled={!draft.advancedInteractionsEnabled||!draft.trackingOpensEnabled||!draft.trackingClicksEnabled} checked={draft.readDelayEnabled} onChange={e=>setDraft(d=>({...d,readDelayEnabled:e.target.checked}))}/> Estimation de lecture : délai avant clic (expérimental)</label>
+              <small>La durée de lecture réelle n’est pas mesurable. Le délai ouverture → clic reste approximatif. Les analyses réutilisent le pixel existant : aucun script ni image supplémentaire.</small>
+              <small>Le suivi des interactions doit respecter les règles d’information et de consentement applicables. <a href="https://www.cnil.fr/fr/recommandation-pixel-suivi-courriels" target="_blank" rel="noreferrer">Recommandations CNIL</a></small>
               <small>Suivi signé appliqué aux prochains envois. Une ouverture est une observation technique : les proxys d’images comme Gmail peuvent la déclencher sans lecture humaine.</small>
             </div>
           </details>

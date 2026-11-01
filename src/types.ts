@@ -41,6 +41,8 @@ export interface Campaign {
   replyIterations: string[];
   trackingOpensEnabled: boolean;
   trackingClicksEnabled: boolean;
+  advancedInteractionsEnabled?:boolean;
+  readDelayEnabled?:boolean;
   experimentPolicy: "continue" | "stabilize";
   nextTestInstructions: string;
   importedDisabled: boolean;
@@ -51,6 +53,7 @@ export interface Campaign {
 }
 
 export interface CampaignStats {
+  engagement?:EngagementMetrics|null;
   sent: number;
   contacted: number;
   opened: number;
@@ -219,6 +222,7 @@ export interface ExperimentVariant {
   allocationWeight: number;
   overrides: Record<string, unknown>;
   assignedCount: number;
+  engagement?:EngagementMetrics|null;
   sentCount: number;
   contactedCount?: number;
   repliedProspectCount?: number;
@@ -299,4 +303,10 @@ export interface ImportPreview {
   alreadyContacted: number;
   duplicates: number;
   warnings: string[];
+}
+
+export interface EngagementMetrics {
+ measuredMessages:number;observedMessages:number;openRequests:number|null;repeatedOpenMessages:number|null;
+ proxyOpenRequests:number;automatedOpenRequests:number;directOpenRequests:number;
+ meanOpenIntervalSeconds:number|null;delaySamples:number;meanOpenToClickSeconds:number|null;
 }

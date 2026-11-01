@@ -19,7 +19,7 @@ SELECT to_regnamespace('app') IS NOT NULL
    AND to_regnamespace('agent_api') IS NOT NULL
    AND to_regnamespace('audit') IS NOT NULL AS all_schemas_exist;
 
-SELECT count(*) = 41 AS all_migrations_registered
+SELECT count(*) = 42 AS all_migrations_registered
 FROM app.schema_migrations
 WHERE version IN (
   '001_foundation',
@@ -62,7 +62,8 @@ WHERE version IN (
   '038_deliverability_decisions',
   '039_reply_reliability',
   '040_sequence_safety_and_metrics',
-  '041_initial_message_priority'
+  '041_initial_message_priority',
+  '042_advanced_interactions'
 );
 
 SELECT EXISTS (
@@ -390,3 +391,9 @@ SELECT to_regprocedure('app.prospection_earliest_at(uuid)') IS NOT NULL
 SELECT position('ORDER BY CASE WHEN m.step = ''J0'' THEN 0 ELSE 1 END' IN pg_get_functiondef('app.schedule_due_messages(integer)'::regprocedure))>0
  AND position('ORDER BY CASE WHEN j.job_kind=''prospection'' AND j.step=''J0'' THEN 0' IN pg_get_functiondef('app.lease_outbox_jobs(text,integer,integer)'::regprocedure))>0
  AS initial_messages_take_priority;
+
+SELECT to_regclass('agent_api.interaction_metrics') IS NOT NULL
+ AND to_regclass('agent_api.interaction_timeline') IS NOT NULL
+ AND NOT has_table_privilege('prospection95_agent','app.interaction_buckets','SELECT')
+ AND has_table_privilege('prospection95_agent','agent_api.interaction_metrics','SELECT')
+ AS advanced_interactions_are_guarded;

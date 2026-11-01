@@ -36,3 +36,12 @@ describe("signed interaction tracking", () => {
     expect(payloads[0].u).toBe("https://example.com/article");
   });
 });
+
+it("uses exactly one image and leaves the text and disabled tracking untouched",async()=>{
+ const input={messageId,text:"Bonjour\nhttps://example.com/article",html:null,opensEnabled:true,clicksEnabled:true,baseUrl:"https://prospection-95.netlify.app",now:new Date(nowSeconds*1000),signer:async(p:TrackingTokenPayload)=>encodeTrackingToken(p,key)};
+ const result=await prepareTrackedMessage(input);
+ expect(result.text).toBe(input.text);
+ expect(result.html?.match(/<img\b/g)).toHaveLength(1);
+ expect(result.html).not.toMatch(/<script|iframe|setInterval|javascript:/i);
+ expect(await prepareTrackedMessage({...input,opensEnabled:false,clicksEnabled:false})).toEqual({text:input.text,html:null});
+});

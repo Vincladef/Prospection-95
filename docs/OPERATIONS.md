@@ -467,3 +467,46 @@ elles ne sont ni annulées ni avancées. Un flux continu de J0 peut donc les
 repousser : il n'y a pas de réservation artificielle de quota pour les relances.
 Cette règle remplace les anciennes mentions de priorité aux relances.
 Validation : `db/tests/041_initial_message_priority.sql`, sans envoi externe.
+
+## Interactions avancées (042)
+
+Options facultatives dans « Suivi des interactions » : réouvertures/fréquence et
+délai ouverture→clic expérimental. Elles n'ajoutent aucun pixel, script, requête
+périodique, cookie, nouvelle URL ou prestataire aux emails. Le texte alternatif,
+le pixel unique signé et les redirections existants sont conservés. Aucun impact
+nul sur le spam ne peut être garanti : les traceurs existants peuvent déjà avoir
+un effet selon la messagerie. Désactiver ouvertures/clics retire le suivi des
+prochains envois ; le nouveau traitement n'augmente pas leur contenu.
+
+Les compteurs historiques restent dans `tracking_events`. Une chronologie
+nouvelle est agrégée par heure et classe d'agent dans `interaction_buckets` :
+aucune adresse IP, User-Agent brut ni identifiant d'appareil n'y est stocké.
+`sync-mailboxes` purge jusqu'à 1 000 lignes expirées à chaque passage, via un
+index temporel, au-delà de 90 jours ; aucun nouveau cron n'est ajouté. Les vues
+ignorent aussi immédiatement les lignes hors fenêtre. Les rôles IA accèdent
+uniquement aux agrégats de campagne/variante et à la chronologie horaire agrégée.
+
+Les statistiques sont indicatives. Les chargements répétés ne prouvent pas des
+lectures répétées. Les proxys/caches masquent ou préchargent des ouvertures. Le
+délai ouverture→clic exclut les classes proxy/robot mais reste approximatif : un
+navigateur apparent ne garantit pas un humain. Aucun temps de lecture réel n'est
+mesurable dans un email Gmail standard ; la valeur reste indisponible. Le suivi
+historique ne permet pas de reconstruire des horodatages individuels manquants.
+
+Conformité examinée au 1er novembre 2026 : la CNIL distingue le consentement aux
+traceurs de l'autorisation de prospection, y compris en B2B, et exige une analyse
+par finalité. L'exemption de délivrabilité est encadrée et n'autorise pas à elle
+seule l'optimisation marketing des variantes. L'interface rappelle les obligations
+sans ajouter de registre ou de blocage de consentement, conformément au choix
+explicite du propriétaire. La minimisation technique n'est pas une certification
+de conformité de l'usage : information, base légale, consentement lorsqu'il est
+requis, retrait et exercice des droits restent à organiser par le responsable.
+
+Sources : https://www.cnil.fr/fr/recommandation-pixel-suivi-courriels et
+https://www.cnil.fr/fr/faq-recommandation-pixels-courriers-electroniques ; limites
+techniques des préchargements : documentation Apple Mail Privacy Protection.
+
+Recette : `db/tests/042_advanced_interactions.sql`, tests unitaires du pixel,
+options de campagne et affichage des données manquantes. Aucun email réel n'est
+envoyé pour ces tests. Les métriques n'affectent ni la validation, ni les délais,
+ni les plafonds, ni la priorité J0/R1–R5.
