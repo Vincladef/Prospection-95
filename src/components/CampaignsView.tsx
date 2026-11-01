@@ -421,14 +421,19 @@ function CampaignEditor({
 
           <details className="v48-campaign-tracking">
             <summary>Suivi des interactions <span>{draft.trackingOpensEnabled || draft.trackingClicksEnabled ? "Configuré" : "Désactivé"}</span></summary>
-            <div className="v48-tracking-body">
+            <div className="v48-tracking-body interaction-settings">
+              <fieldset><legend>Collecte</legend>
               <label><input type="checkbox" checked={draft.trackingOpensEnabled} onChange={(event) => setDraft((current) => ({ ...current, trackingOpensEnabled: event.target.checked }))} /> Détecter les ouvertures</label>
               <label><input type="checkbox" checked={draft.trackingClicksEnabled} onChange={(event) => setDraft((current) => ({ ...current, trackingClicksEnabled: event.target.checked }))} /> Mesurer les clics sur les liens</label>
+              </fieldset>
+              <fieldset><legend>Analyses</legend>
               <label><input type="checkbox" disabled={!draft.trackingOpensEnabled} checked={draft.advancedInteractionsEnabled} onChange={e=>setDraft(d=>({...d,advancedInteractionsEnabled:e.target.checked}))}/> Analyser les réouvertures et leur fréquence</label>
-              <label><input type="checkbox" disabled={!draft.advancedInteractionsEnabled||!draft.trackingOpensEnabled||!draft.trackingClicksEnabled} checked={draft.readDelayEnabled} onChange={e=>setDraft(d=>({...d,readDelayEnabled:e.target.checked}))}/> Analyser le délai entre ouverture et clic</label>
+              <label><input type="checkbox" disabled={!draft.trackingOpensEnabled||!draft.trackingClicksEnabled} checked={draft.readDelayEnabled} onChange={e=>setDraft(d=>({...d,readDelayEnabled:e.target.checked}))}/> Analyser le délai entre ouverture et clic</label>
               <label><input type="checkbox" disabled={!draft.trackingOpensEnabled} checked={draft.readingTimeEnabled} onChange={e=>setDraft(d=>({...d,readingTimeEnabled:e.target.checked}))}/> Mesurer le temps de lecture</label>
-              <small>Jusqu’à 50 secondes, avec une résolution d’une seconde sur les clients compatibles. Première ouverture mesurable par email de prospection. Le pixel existant mesure la durée de connexion ; les proxys et les clients non identifiés sont exclus. Aucune image ni aucun script supplémentaire.</small>
-              <small>Suivi signé appliqué aux prochains envois. Une ouverture est une observation technique : les proxys d’images comme Gmail peuvent la déclencher sans lecture humaine.</small>
+              <small>Réouvertures et lecture : ouvertures requises. Délai ouverture-clic : ouvertures et clics requis. Chaque analyse se choisit séparément.</small>
+              </fieldset>
+              <details className="interaction-help"><summary>À propos des mesures</summary><p>Le temps de lecture est indicatif : durée de connexion au pixel, jusqu’à 50 secondes, avec une résolution d’une seconde sur les clients compatibles. Première ouverture mesurable par email de prospection ; proxys et clients non identifiés exclus.</p><p>Les analyses réutilisent le suivi existant, sans image ni script supplémentaire. Les choix s’appliquent aux prochains envois ; les données déjà recueillies sont conservées.</p></details>
+
             </div>
           </details>
         </section>

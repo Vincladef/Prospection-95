@@ -576,3 +576,16 @@ local est bloqué par l’accès réseau au composant Netlify ; le même code a 
 construit et exécuté avec succès sur Netlify. Les fixtures HTTP sont isolées sur
 la branche Neon de validation ; aucune statistique réelle n’est alimentée par
 ces essais.
+
+
+### Analyses indépendantes (044)
+
+Le délai ouverture-clic ne nécessite plus l’analyse des réouvertures, ni dans
+l’interface ni à l’envoi ni dans Neon. Il nécessite uniquement les ouvertures et
+les clics, activés au départ de l’email et dans la campagne lors de la collecte.
+Les réouvertures et le temps de lecture nécessitent seulement les ouvertures.
+Les préférences des analyses sont conservées si une collecte est désactivée ;
+aucune collecte supplémentaire n’est activée automatiquement. Les observations
+horaires sont partagées entre fréquence et délai, sans nouvelle requête, image,
+ni reconstruction de l’historique. Les statistiques et règles de fiabilité restent
+inchangées. Recette SQL : db/tests/044_independent_interactions.sql.

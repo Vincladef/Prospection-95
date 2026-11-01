@@ -371,10 +371,9 @@ it("saves advanced analytics as independent opt-in options using the existing tr
  fireEvent.click(screen.getByText(/Suivi des interactions/));
  const advanced=screen.getByRole("checkbox",{name:"Analyser les réouvertures et leur fréquence"});
  const delay=screen.getByRole("checkbox",{name:/Analyser le délai entre ouverture et clic/});
- expect(advanced).not.toBeChecked();expect(delay).toBeDisabled();
- fireEvent.click(advanced);expect(delay).toBeEnabled();fireEvent.click(delay);
+ expect(advanced).not.toBeChecked();expect(delay).toBeEnabled();fireEvent.click(delay);
  fireEvent.click(screen.getAllByRole("button",{name:"Enregistrer"})[0]);
- await waitFor(()=>expect(apiMocks.updateCampaign).toHaveBeenCalledWith(campaign.id,expect.objectContaining({advancedInteractionsEnabled:true,readDelayEnabled:true})));
+ await waitFor(()=>expect(apiMocks.updateCampaign).toHaveBeenCalledWith(campaign.id,expect.objectContaining({advancedInteractionsEnabled:false,readDelayEnabled:true})));
  cleanup();
 });
 

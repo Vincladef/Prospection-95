@@ -188,7 +188,7 @@ export default async function dispatchOutbox(_request: Request, _context: Contex
       baseUrl: job.tracking_opens_enabled || job.tracking_clicks_enabled ? trackingBaseUrl() : "",
     });
     await sqlQuery(`update app.email_messages set tracking_opens_enabled=$2,tracking_clicks_enabled=$3,advanced_interactions_enabled=$4,read_delay_enabled=$5,reading_time_enabled=$6 where id=$1::uuid`,
-      [job.message_id,job.tracking_opens_enabled,job.tracking_clicks_enabled,!!job.advanced_interactions_enabled && job.tracking_opens_enabled,!!job.read_delay_enabled && !!job.advanced_interactions_enabled && job.tracking_opens_enabled && job.tracking_clicks_enabled,job.job_kind === "prospection" && !!job.reading_time_enabled && job.tracking_opens_enabled]);
+      [job.message_id,job.tracking_opens_enabled,job.tracking_clicks_enabled,!!job.advanced_interactions_enabled && job.tracking_opens_enabled,!!job.read_delay_enabled && job.tracking_opens_enabled && job.tracking_clicks_enabled,job.job_kind === "prospection" && !!job.reading_time_enabled && job.tracking_opens_enabled]);
     let checkFailed=false;
     const guarded=job.job_kind==="reply" || job.job_kind==="prospection" && job.step!=="J0";
     const result = await sendGmailMessage({

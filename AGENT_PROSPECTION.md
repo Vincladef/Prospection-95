@@ -513,3 +513,16 @@ pas de durée. Même une connexion directe peut être interrompue par le réseau
 Ne pas généraliser l’échantillon mesurable à tous les destinataires ; croiser
 avec les réponses humaines et résultats commerciaux avant une conclusion A/B/C.
 Les limites de mesure n’affectent jamais les envois ni les plafonds des comptes.
+
+
+### Analyses indépendantes (044)
+
+Le délai ouverture-clic ne nécessite plus l’analyse des réouvertures, ni dans
+l’interface ni à l’envoi ni dans Neon. Il nécessite uniquement les ouvertures et
+les clics, activés au départ de l’email et dans la campagne lors de la collecte.
+Les réouvertures et le temps de lecture nécessitent seulement les ouvertures.
+Les préférences des analyses sont conservées si une collecte est désactivée ;
+aucune collecte supplémentaire n’est activée automatiquement. Les observations
+horaires sont partagées entre fréquence et délai, sans nouvelle requête, image,
+ni reconstruction de l’historique. Les statistiques et règles de fiabilité restent
+inchangées. Recette SQL : db/tests/044_independent_interactions.sql.
