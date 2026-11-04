@@ -1,5 +1,5 @@
 import { getAccessToken } from "./auth";
-import type { ApiErrorPayload, BlacklistPage, Campaign, DashboardData, GmailTestSendResult, GmailVerificationResult, ImportPreview } from "../types";
+import type { ApiErrorPayload, BlacklistPage, Campaign, DashboardData, GmailTestSendResult, GmailVerificationResult, ImportPreview,MailboxPage,MailboxDetail } from "../types";
 
 export class ApiError extends Error {
   readonly status: number;
@@ -34,6 +34,12 @@ async function request<T>(path: string, init: RequestInit = {}): Promise<T> {
 }
 
 export const api = {
+  mailbox: (params:URLSearchParams,signal?:AbortSignal)=>request<MailboxPage>(`/mailbox?${params}`,{signal}),
+  mailboxDetail:(id:string,signal?:AbortSignal,before?:string)=>request<MailboxDetail>(`/mailbox/${encodeURIComponent(id)}${before?`?before=${encodeURIComponent(before)}`:""}`,{signal}),
+  mailboxState:(id:string,payload:Record<string,unknown>)=>request<{version:number}>(`/mailbox/${encodeURIComponent(id)}/state`,{method:"POST",body:JSON.stringify(payload)}),
+  mailboxDraft:(id:string,version:number,body:string)=>request<{version:number}>(`/mailbox/${encodeURIComponent(id)}/draft`,{method:"POST",body:JSON.stringify({version,body})}),
+  mailboxSend:(id:string,version:number,lastMessageId:string,key:string)=>request<{id:string;status:string}>(`/mailbox/${encodeURIComponent(id)}/send`,{method:"POST",body:JSON.stringify({version,lastMessageId,key})}),
+  mailboxRefresh:(id:string)=>request(`/mailbox/${encodeURIComponent(id)}/refresh`,{method:"POST"}),
   dashboard: () => request<DashboardData>("/dashboard"),
   blacklist: (query: string, page: number, signal?: AbortSignal) =>
     request<BlacklistPage>(`/exclusions?${new URLSearchParams({ q: query, page: String(page) })}`, { signal }),

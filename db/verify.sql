@@ -1,6 +1,13 @@
 -- Vérifications non destructives à lancer après toutes les migrations.
 -- Chaque ligne doit retourner true ou la valeur documentée.
 
+SELECT to_regclass('app.mailbox_threads') IS NOT NULL
+ AND has_table_privilege('prospection95_app','app.mailbox_threads','UPDATE')
+ AND NOT has_table_privilege('prospection95_agent','app.mailbox_threads','SELECT')
+ AND NOT has_function_privilege('prospection95_crm','app.mailbox_queue_reply(uuid,bigint,uuid,text)','EXECUTE')
+ AND position('mailbox_reply_is_current' IN pg_get_functiondef('app.outbox_commit_is_ready(uuid,uuid)'::regprocedure))>0
+ AS unified_mailbox_is_guarded;
+
 SELECT to_regprocedure('app.reply_source_is_first_exchange(uuid)') IS NOT NULL
   AND to_regprocedure('app.reply_attachment_context(uuid,uuid)') IS NOT NULL
   AND NOT EXISTS(SELECT 1 FROM app.campaigns WHERE reply_instructions<>'')
@@ -19,7 +26,7 @@ SELECT to_regnamespace('app') IS NOT NULL
    AND to_regnamespace('agent_api') IS NOT NULL
    AND to_regnamespace('audit') IS NOT NULL AS all_schemas_exist;
 
-SELECT count(*) = 46 AS all_migrations_registered
+SELECT count(*) = 47 AS all_migrations_registered
 FROM app.schema_migrations
 WHERE version IN (
   '001_foundation',
@@ -67,7 +74,8 @@ WHERE version IN (
   '043_reading_duration',
   '044_independent_interaction_analyses',
   '045_contextual_interactions',
-  '046_automatic_interaction_analyses'
+  '046_automatic_interaction_analyses',
+  '047_unified_mailbox'
 );
 
 SELECT EXISTS (

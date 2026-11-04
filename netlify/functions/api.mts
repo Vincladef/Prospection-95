@@ -14,6 +14,7 @@ import { handleError, HttpError, json, noContent, parseJson } from "../lib/http.
 import { commitStagedImport, stageImport } from "../lib/import-store.mts";
 import { importPayloadSchema } from "../lib/importer.mts";
 import { readInstructionAttachment, removeInstructionAttachment, saveInstructionAttachment } from "../lib/instruction-attachments.mts";
+import { listMailbox,mailboxDetail,mailboxMutation } from "../lib/mailbox.mts";
 
 const uuid = z.string().uuid();
 const version = z.number().int().positive();
@@ -1041,6 +1042,9 @@ async function updateExperimentVariant(request: Request, id: string, identity: A
 }
 
 async function privateRoute(request: Request, parts: string[], identity: AdminIdentity, requestId: string): Promise<Response> {
+  if(parts[0]==="mailbox" && parts.length===1){requireMethod(request,"GET");return listMailbox(request);}
+  if(parts[0]==="mailbox" && parts.length===2){requireMethod(request,"GET");return mailboxDetail(routeUuid(parts[1]),request);}
+  if(parts[0]==="mailbox" && parts.length===3){requireMethod(request,"POST");return mailboxMutation(routeUuid(parts[1]),parts[2],request,identity,requestId);}
   if (parts[0] === "dashboard" && parts.length === 1) { requireMethod(request, "GET"); return json(await loadDashboard()); }
   if (parts[0] === "settings" && parts.length === 1) { requireMethod(request, "PATCH"); return updateSettings(request, identity, requestId); }
   if (parts[0] === "emergency-stop" && parts.length === 1) { requireMethod(request, "POST"); return emergencyStop(request, identity, requestId); }

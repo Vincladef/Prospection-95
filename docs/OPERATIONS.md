@@ -451,9 +451,9 @@ bloqué pendant DATA n'est accepté. La course résiduelle entre ce tout dernier
 contrôle et l'acceptation distante ne peut pas être supprimée par une transaction
 commune à Gmail et Neon ; une acceptation déjà donnée ne peut être rappelée.
 
-Le worker conserve uniquement les messages rattachés à une conversation.
-Les newsletters et autres courriels sans rapport font avancer le curseur mais
-ne sont plus recopiés dans Neon. Le nettoyage historique nécessite l'accord
+Depuis 047, le worker conserve aussi les échanges de correspondance sans campagne
+pour la boîte unifiée ; voir `docs/UNIFIED_MAILBOX.md`. Les newsletters automatiques
+sans rapport font avancer le curseur sans être recopiées. Le nettoyage historique nécessite l'accord
 explicite du propriétaire et exclut toutes les références du CRM.
 
 

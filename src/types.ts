@@ -315,6 +315,23 @@ export interface InteractionProfile {
  provider:string;transport:string;automation:boolean|null;requests:number;samples:number;measuredProspects:number;
  meanSeconds:number|null;capped:number;attempts:number;failed:number;budget:number;
 }
+export type MailboxFolder = "inbox"|"action"|"waiting"|"archive"|"other";
+export interface MailboxThread {
+ id:string;accountId:string;accountEmail:string;conversationId:string|null;prospectId:string|null;
+ campaignId:string|null;campaignName:string|null;name:string;email:string;organization:string|null;subject:string;
+ category:"normal"|"automatic"|"warmup";archived:boolean;unread:boolean;priority:boolean;needsReply:boolean;version:number;
+ lastMessageId:string;lastMessageAt:string;snippet:string;lastDirection:string;lastSyncedAt:string|null;syncError:string|null;pendingSync:number;
+}
+export interface MailboxPage {
+ threads:MailboxThread[];total:number;page:number;counts:Record<MailboxFolder|"unread",number>;
+ accounts:Array<{id:string;email:string;status:string;lastSyncAt:string|null;lastErrorCode:string|null;lastUid:string;caughtUpAt:string|null}>;
+}
+export interface MailboxMessage {id:string;direction:string;kind:string;subject:string;body:string;from:string;to:string[];cc:string[];status:string;at:string}
+export interface MailboxDetail {
+ thread:MailboxThread&{draftBody:string;draftVersion:number;draftSyncedVersion:number;draftRemoteBody:string|null;canReply:boolean;followupsStoppedAt:string|null;nextFollowupAt:string|null};
+ messages:MailboxMessage[];hasOlder:boolean;
+ send:{id:string;status:string;errorCode:string|null;body:string}|null;
+}
 export interface EngagementMetrics {
  contexts?:InteractionProfile[];
  reading?:ReadingMetrics|null;

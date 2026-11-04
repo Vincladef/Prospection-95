@@ -1,5 +1,6 @@
 import { sqlOne, sqlQuery } from "./db.mts";
 import { classifyOperationalMessage, fetchMailboxDelta, type SyncedMessage } from "./imap.mts";
+import { observeMailboxMessage, recordStandaloneMessage } from "./mailbox-storage.mts";
 
 export interface MailboxAccount { id: string; email: string; credentialId: string }
 
@@ -49,10 +50,13 @@ export async function recordMailboxMessages(account: MailboxAccount, messages: S
       // Reconcile our own copies as Sent messages, never as inbound replies.
       const outgoing = sentMailbox || message.sent || message.from.some(from => from.toLowerCase() === account.email.toLowerCase());
       const conversationId = await matchingConversation(account.id, account.email, message, outgoing);
-      if (!conversationId) continue;
+      if (!conversationId) {
+        if (await recordStandaloneMessage(account.id,account.email,message,outgoing)) recorded+=1;
+        continue;
+      }
       if (outgoing) {
         if (!conversationId || !message.from.length || !message.to.length) continue;
-        await sqlOne(`
+        const stored = await sqlOne<{id:string}>(`
           select (app.record_sent_message(
             $1::uuid, $2::uuid, $3, $4::text[], $5, $6, $7,
             $8, $9, $10::text[], $11, $12::bigint, $13::bigint,
@@ -62,14 +66,15 @@ export async function recordMailboxMessages(account: MailboxAccount, messages: S
           message.subject, message.text, message.html, message.internetMessageId,
           message.inReplyTo, message.references, message.mailbox, message.uidValidity,
           message.uid, message.date ?? new Date().toISOString(),
-          JSON.stringify({ synchronizedFrom: "sent", prospectionMessageId: message.prospectionMessageId ?? null, draftRequestId: message.draftRequestId ?? null })]);
+          JSON.stringify({ synchronizedFrom: "sent", prospectionMessageId: message.prospectionMessageId ?? null, draftRequestId: message.draftRequestId ?? null,warmup:!!message.warmup })]);
+        if(stored)await observeMailboxMessage(account.id,message,stored.id);
         recorded += 1;
         continue;
       }
       const kind = inboundKind(message, conversationId);
       const from = message.from[0];
       if (!from) continue;
-      await sqlOne(`
+      const stored = await sqlOne<{id:string}>(`
         select (app.record_inbound_message(
           $1::uuid, $2::uuid, $3, $4, $5::text[], $6, $7, $8,
           '{}'::text[], $9, $10, $11::text[], $17, null, $12,
@@ -82,7 +87,11 @@ export async function recordMailboxMessages(account: MailboxAccount, messages: S
           autoSubmitted: message.autoSubmitted,
           precedence: message.precedence,
           permanentBounce: message.isBounce ? message.isPermanentBounce : false,
+          warmup: !!message.warmup,
+          unread: message.unread ?? true,
+          archived: message.archived ?? false,
         }), message.gmailThreadId ?? null]);
+      if(stored)await observeMailboxMessage(account.id,message,stored.id);
       recorded += 1;
     }
   return recorded;

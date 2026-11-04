@@ -33,6 +33,8 @@ describe("operational IMAP classification", () => {
   it("recognizes automatic and bounce signals without inventing a human reply", () => {
     expect(classifyOperationalMessage(message({ autoSubmitted: "auto-replied" }))).toBe("automatic_reply");
     expect(classifyOperationalMessage(message({ isBounce: true }))).toBe("bounce");
+    expect(classifyOperationalMessage(message({warmup:true}))).toBe("automatic_reply");
+    expect(classifyOperationalMessage(message({listId:"list.example.test"}))).toBe("automatic_reply");
   });
 
   it("distinguishes permanent DSN failures from temporary bounces", () => {

@@ -1,7 +1,7 @@
 import { useEffect, useState, type ReactNode } from "react";
 import { authClient } from "../lib/auth";
 
-export type Page = "messages" | "campaigns" | "settings";
+export type Page = "messages" | "campaigns" | "mailbox" | "settings";
 
 interface ShellProps {
   children: ReactNode;
@@ -17,6 +17,7 @@ interface ShellProps {
 const pages: Array<{ id: Page; label: string; icon: string }> = [
   { id: "messages", label: "Messages", icon: "▦" },
   { id: "campaigns", label: "Campagnes", icon: "📁" },
+  { id: "mailbox", label: "✉ Boîte mail", icon: "✉" },
   { id: "settings", label: "Paramètres", icon: "⚙" },
 ];
 

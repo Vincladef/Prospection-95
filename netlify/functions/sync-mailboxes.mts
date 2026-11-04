@@ -26,11 +26,11 @@ async function claimMailbox(): Promise<ClaimedMailbox | null> {
                clock_timestamp() - interval '7 days') as recent_since
       from app.gmail_accounts a
       cross join lateral (
-        select mailbox_name from (values ('INBOX'), ('__SENT__'), ('__LIVE_ALL__'), ('__LIVE_SENT__')) boxes(mailbox_name)
-        where boxes.mailbox_name = 'INBOX' or a.role in ('sender','primary')
+        select mailbox_name from (values ('INBOX'), ('__SENT__'), ('__LIVE_ALL__'), ('__LIVE_SENT__'), ('__UNIFIED_ALL__')) boxes(mailbox_name)
+        where boxes.mailbox_name in ('INBOX','__UNIFIED_ALL__') or a.role in ('sender','primary')
       ) box
       left join app.imap_cursors c on c.account_id = a.id and c.mailbox_name = box.mailbox_name
-      where a.deleted_at is null and a.status = 'active'
+      where a.deleted_at is null and a.status in ('active','suspended')
         and a.credential_id is not null
         and (c.last_attempt_at is null or c.last_attempt_at < clock_timestamp() - interval '2 minutes')
       order by c.last_success_at nulls first, a.last_sync_at nulls first, a.created_at

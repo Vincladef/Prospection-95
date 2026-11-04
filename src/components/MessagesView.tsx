@@ -25,6 +25,7 @@ interface MessagesViewProps {
   };
   onOpenCampaign: (campaignId: string) => void;
   onMutated: () => Promise<void>;
+  selectedProspectId?:string|null;
 }
 
 const editableStatuses = cellStatuses;
@@ -168,7 +169,7 @@ const MessageRow = memo(function MessageRow({
   );
 });
 
-export function MessagesView({ campaigns, prospects, totals, onOpenCampaign, onMutated }: MessagesViewProps) {
+export function MessagesView({ campaigns, prospects, totals, onOpenCampaign, onMutated,selectedProspectId }: MessagesViewProps) {
   const [query, setQuery] = useState("");
   const deferredQuery = useDeferredValue(query);
   const [campaignId, setCampaignId] = useState("all");
@@ -176,6 +177,9 @@ export function MessagesView({ campaigns, prospects, totals, onOpenCampaign, onM
   const [sort, setSort] = useState("recent");
   const [compact, setCompact] = useState(false);
   const [editing, setEditing] = useState<Prospect | null>(null);
+  useEffect(()=>{if(!selectedProspectId)return;const prospect=prospects.find(p=>p.id===selectedProspectId);
+    if(prospect){setQuery(prospect.email??prospect.name);setCampaignId("all");setStatusFilter("all");setEditing(prospect);}
+  },[selectedProspectId]);
   const tableScroll = useRef<HTMLDivElement>(null);
   const rail = useRef<HTMLDivElement>(null);
   const railInner = useRef<HTMLDivElement>(null);

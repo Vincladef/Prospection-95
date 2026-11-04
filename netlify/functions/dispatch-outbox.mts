@@ -7,12 +7,14 @@ import { refreshConversation } from "../lib/mailbox-sync.mts";
 import { sendGmailMessage } from "../lib/gmail.mts";
 import { prepareTrackedMessage, trackingBaseUrl } from "../lib/tracking.mts";
 import { workerFailure, workerResult } from "../lib/worker-response.mts";
+import { refreshUnifiedConversation } from "../lib/unified-mailbox-sync.mts";
 
 interface LeasedMessage {
   id: string;
   job_kind: string;
   step: string;
   conversation_id: string | null;
+  mailbox_thread_id: string | null;
   lease_token: string;
   attempt_count: number;
   max_attempts: number;
@@ -77,7 +79,7 @@ export default async function dispatchOutbox(_request: Request, _context: Contex
     );
     const job = await sqlOne<LeasedMessage>(
       `select leased.id::text, leased.job_kind, leased.step, leased.conversation_id::text, leased.lease_token::text, leased.attempt_count,
-              leased.max_attempts, m.id::text as message_id, m.from_address,
+              leased.max_attempts, m.id::text as message_id, m.mailbox_thread_id::text, m.from_address,
               m.to_addresses, m.subject, m.body_text, m.body_html,
               m.internet_message_id, m.in_reply_to, m.references_header,
               a.credential_id::text, a.display_name,
@@ -95,10 +97,15 @@ export default async function dispatchOutbox(_request: Request, _context: Contex
       await finishCertainFailure(job, "invalid_mail_envelope", false);
       return workerResult(worker, { ok: false, jobId: job.id, state: "failed", code: "invalid_mail_envelope" });
     }
-    if (job.job_kind === "reply" || (job.job_kind === "prospection" && job.step !== "J0")) {
+    if (job.job_kind === "mailbox_reply" || job.job_kind === "reply" || (job.job_kind === "prospection" && job.step !== "J0")) {
       try {
-        if (!job.conversation_id) throw new Error("conversation_missing");
-        await refreshConversation(job.conversation_id);
+        if(job.job_kind==="mailbox_reply"){
+          if(!job.mailbox_thread_id)throw new Error("mailbox_thread_missing");
+          await refreshUnifiedConversation(job.mailbox_thread_id);
+        }else{
+          if (!job.conversation_id) throw new Error("conversation_missing");
+          await refreshConversation(job.conversation_id);
+        }
       } catch {
         await sqlQuery(`update app.outbox_jobs set status='deferred',due_at=clock_timestamp()+interval '2 minutes',
           lease_owner=null,lease_token=null,lease_expires_at=null,attempt_count=greatest(0,attempt_count-1),
@@ -186,7 +193,7 @@ export default async function dispatchOutbox(_request: Request, _context: Contex
     await sqlQuery(`update app.email_messages set tracking_opens_enabled=$2,tracking_clicks_enabled=$3,advanced_interactions_enabled=$4,read_delay_enabled=$5,reading_time_enabled=$6 where id=$1::uuid`,
       [job.message_id,job.tracking_opens_enabled,job.tracking_clicks_enabled,job.tracking_opens_enabled,job.tracking_opens_enabled && job.tracking_clicks_enabled,job.job_kind === "prospection" && !!job.reading_time_enabled && job.tracking_opens_enabled]);
     let checkFailed=false;
-    const guarded=job.job_kind==="reply" || job.job_kind==="prospection" && job.step!=="J0";
+    const guarded=job.job_kind==="mailbox_reply" || job.job_kind==="reply" || job.job_kind==="prospection" && job.step!=="J0";
     const result = await sendGmailMessage({
       fromEmail: job.from_address,
       fromName: job.display_name,
@@ -200,9 +207,11 @@ export default async function dispatchOutbox(_request: Request, _context: Contex
       references: persistedMessage.references_header,
     }, guarded ? async()=>{
       try {
-        await refreshConversation(job.conversation_id!);
+        if(job.job_kind==="mailbox_reply")await refreshUnifiedConversation(job.mailbox_thread_id!);
+        else await refreshConversation(job.conversation_id!);
         const row=await sqlOne<{ready:boolean;eligible:boolean}>(`select app.outbox_commit_is_ready(j.id,$2::uuid) as ready,
-          case when j.job_kind='reply' then app.reply_source_is_current(w.source_message_id)
+          case when j.job_kind='mailbox_reply' then app.mailbox_reply_is_current(j.id)
+            when j.job_kind='reply' then app.reply_source_is_current(w.source_message_id)
             else app.prospection_message_is_eligible(j.message_id) end as eligible
           from app.outbox_jobs j left join app.reply_workflows w on w.output_message_id=j.message_id where j.id=$1::uuid`,[job.id,job.lease_token]);
         if(row?.eligible && !row.ready)checkFailed=true;

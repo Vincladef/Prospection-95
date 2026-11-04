@@ -3,7 +3,7 @@ import { beforeEach, describe, expect, it, vi } from "vitest";
 
 const mocks = vi.hoisted(() => ({
   enabled: vi.fn(), randomInt: vi.fn(), delay: vi.fn(), sqlOne: vi.fn(),
-  sqlQuery: vi.fn(), send: vi.fn(), refresh: vi.fn(),prepare:vi.fn(),
+  sqlQuery: vi.fn(), send: vi.fn(), refresh: vi.fn(),prepare:vi.fn(),refreshUnified:vi.fn(),
 }));
 vi.mock("node:crypto", () => ({ randomUUID: () => "test-worker", randomInt: mocks.randomInt }));
 vi.mock("node:timers/promises", () => ({ setTimeout: mocks.delay }));
@@ -12,6 +12,7 @@ vi.mock("../db.mts", () => ({ sqlOne: mocks.sqlOne, sqlQuery: mocks.sqlQuery }))
 vi.mock("../gmail.mts", () => ({ sendGmailMessage: mocks.send }));
 vi.mock("../tracking.mts", () => ({ prepareTrackedMessage: mocks.prepare, trackingBaseUrl: vi.fn() }));
 vi.mock("../mailbox-sync.mts", () => ({refreshConversation:mocks.refresh}));
+vi.mock("../unified-mailbox-sync.mts",()=>({refreshUnifiedConversation:mocks.refreshUnified}));
 
 import dispatch, { config } from "../../functions/dispatch-outbox.mts";
 const run = () => dispatch(new Request("https://example.test"), {} as Context);
@@ -64,6 +65,18 @@ const leased = { id:"job",lease_token:"lease",job_kind:"prospection",step:"R1",c
   attempt_count:1,max_attempts:5,message_id:"message",from_address:"sender@example.test",to_addresses:["contact@example.test"],
   subject:"Re: proposition",body_text:"Relance",body_html:null,credential_id:"credential",references_header:[],
   tracking_opens_enabled:false,tracking_clicks_enabled:false };
+
+it("checks the standalone Gmail thread again at SMTP commit for a manual reply",async()=>{
+ mocks.randomInt.mockReturnValue(0);mocks.refreshUnified.mockResolvedValue(undefined);
+ mocks.prepare.mockResolvedValue({text:"Réponse",html:null});
+ mocks.sqlOne.mockResolvedValueOnce({count:0}).mockResolvedValueOnce({...leased,job_kind:"mailbox_reply",step:"reply",conversation_id:null,mailbox_thread_id:"thread"})
+  .mockResolvedValueOnce({id:"job"}).mockResolvedValueOnce({id:"job",status:"running"})
+  .mockResolvedValueOnce({internet_message_id:"<stable@test>",in_reply_to:"<parent@test>",references_header:[]})
+  .mockResolvedValueOnce({ready:true,eligible:true});
+ mocks.send.mockImplementation(async(mail,gate)=>{expect(mail.fromEmail).toBe("sender@example.test");expect(mail.inReplyTo).toBe("<parent@test>");expect(await gate()).toBe(true);return{state:"accepted",response:"250 OK"};});
+ expect(await(await run()).json()).toMatchObject({state:"accepted"});expect(mocks.refreshUnified).toHaveBeenCalledTimes(2);
+ expect(mocks.refreshUnified).toHaveBeenCalledWith("thread");expect(mocks.refresh).not.toHaveBeenCalled();
+});
 
 it("defers an unverified follow-up without exhausting retries or calling SMTP", async () => {
   mocks.randomInt.mockReturnValue(0);

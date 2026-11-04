@@ -30,6 +30,11 @@ export interface SyncedMessage {
   draftRequestId?: string | null;
   prospectionMessageId?: string | null;
   sent?: boolean;
+  gmailMessageId?: string | null;
+  unread?: boolean;
+  archived?: boolean;
+  warmup?: boolean;
+  listId?: string | null;
 }
 
 export interface MailboxDelta {
@@ -50,7 +55,7 @@ export function isPermanentBounceDiagnostic(isBounce: boolean, subject: string, 
 }
 
 async function mailboxPath(client: ImapFlow, requested: string): Promise<string> {
-  if (requested === "__LIVE_ALL__") {
+  if (requested === "__LIVE_ALL__" || requested === "__UNIFIED_ALL__") {
     const mailboxes = await client.list();
     const all = mailboxes.find((mailbox) => mailbox.specialUse === "\\All");
     if (!all) throw new Error("gmail_all_mailbox_not_found");
@@ -71,6 +76,7 @@ export async function fetchMailboxDelta(input: {
   bootstrapSince?: Date;
   correspondent?: string;
   identifiers?: string[];
+  threadId?: string;
 }): Promise<MailboxDelta> {
   const credential = await readCredential(input.credentialId);
   if (!["gmail_sender", "gmail_primary", "test_inbox"].includes(credential.kind)) {
@@ -118,6 +124,7 @@ export async function fetchMailboxDelta(input: {
       // part of the mailbox STATUS, so an empty delta can be returned
       // immediately and non-empty searches can be bounded to a real UID.
       const found = await client.search({ draft: false, deleted: false,
+        ...(input.threadId ? { threadId: input.threadId } : {}),
         ...(input.correspondent ? { or: [{ from: input.correspondent }, { to: input.correspondent },
           ...(input.identifiers ?? []).flatMap(id => ["In-Reply-To","References"].map(key => ({ header: { [key]: id } })))] } : {}),
         uid: `${startUid}:${mailboxLastUid}`,
@@ -133,7 +140,7 @@ export async function fetchMailboxDelta(input: {
       if (!candidateUids.length) return { uidValidity, lastUid: mailboxLastUid, messages, resetRequired, hasMore: false };
       for await (const item of client.fetch(
         candidateUids.join(","),
-        { uid: true, flags: true, labels: true, threadId: true, internalDate: true, source: { start: 0, maxLength: 512_000 } },
+        { uid: true, flags: true, labels: true, emailId: true, threadId: true, internalDate: true, source: { start: 0, maxLength: 512_000 } },
         { uid: true },
       )) {
         if (item.uid < startUid) continue;
@@ -170,6 +177,11 @@ export async function fetchMailboxDelta(input: {
           html: typeof parsed.html === "string" ? parsed.html : null,
           date: parsed.date?.toISOString() ?? (item.internalDate ? new Date(item.internalDate).toISOString() : null),
           gmailThreadId: item.threadId ?? null,
+          gmailMessageId: item.emailId ?? null,
+          unread: !(item.flags?.has("\\Seen") ?? true),
+          archived: item.labels ? !item.labels.has("\\Inbox") : input.cursor.mailbox !== "INBOX",
+          warmup: [...headers.keys()].some(key => /^(?:x-.*(?:warmup|warm-up|bobwork)|x-warmup)/i.test(key)),
+          listId: headers.get("list-id")?.toString() ?? null,
           draftRequestId: headers.get("x-prospection95-draft")?.toString().match(/draft-([0-9a-f-]{36})@/i)?.[1] ?? null,
           prospectionMessageId: headers.get("x-prospection95-message-id")?.toString() ?? null,
           sent: item.labels?.has("\\Sent") ?? false,
@@ -209,7 +221,7 @@ export function classifyOperationalMessage(message: SyncedMessage):
   if (message.isBounce) return "bounce";
   if (
     (message.autoSubmitted && !/^no$/i.test(message.autoSubmitted)) ||
-    /^(?:bulk|list|junk)$/i.test(message.precedence ?? "")
+    /^(?:bulk|list|junk)$/i.test(message.precedence ?? "") || message.warmup || message.listId
   ) return "automatic_reply";
   return "human_or_unknown";
 }
