@@ -4,7 +4,7 @@ import type {Campaign,MailboxDetail,MailboxFolder,MailboxMessage,MailboxPage,Mai
 import "./MailboxView.css";
 
 const folders:Array<[MailboxFolder,string,string]>=[["inbox","▣","Réception"],["action","◷","À traiter"],["waiting","↗","En attente de réponse"],["archive","▤","Archives"],["other","⚙","Automatiques / warm-up"]];
-const explanations:Record<MailboxFolder,string>={inbox:"Conversations avec au moins une réponse reçue, y compris celles en attente de réponse.",action:"Une réponse ou une décision est attendue de votre part.",waiting:"Vous avez répondu au correspondant ; sa prochaine réponse est attendue.",archive:"Conversations classées et conservées.",other:"Notifications automatiques, rebonds et warm-ups, à part."};
+const explanations:Record<MailboxFolder,string>={inbox:"Conversations issues de la prospection Prospection 95, avec au moins une réponse reçue.",action:"Une réponse ou une décision est attendue de votre part.",waiting:"Vous avez répondu au correspondant ; sa prochaine réponse est attendue.",archive:"Conversations classées et conservées.",other:"Notifications automatiques liées à vos conversations de prospection."};
 function dateLabel(date:string,long=false){return new Date(date).toLocaleString("fr-FR",{timeZone:"Europe/Paris",...(long?{day:"numeric",month:"short",year:"numeric",hour:"2-digit",minute:"2-digit"}:{day:"numeric",month:"short"})});}
 function initials(name:string){return name.split(/[\s@.]+/).slice(0,2).map(x=>x[0]).join("").toUpperCase();}
 function threadStatus(t:MailboxThread){return t.category==="warmup"?"Warm-up":t.category==="automatic"?"Automatique":t.archived?"Archivé":t.needsReply?"À répondre":t.lastDirection==="outbound"?"En attente":"Traité";}
@@ -33,7 +33,7 @@ export function MailboxView({campaigns,onOpenCampaign,onOpenProspect}:{campaigns
  const accountLabel=data?.accounts.find(a=>a.id===account)?.email??"Tous les comptes Gmail";
  const counts=data?.counts;const accounts=data?.accounts??[];
  return <section className="unified-mailbox" aria-label="Boîte mail unifiée">
-  <div className="view-head"><div><h1>Boîte de réception unifiée</h1><p>Uniquement les conversations avec les personnes qui vous ont répondu au moins une fois.</p></div>
+  <div className="view-head"><div><h1>Boîte de réception unifiée</h1><p>Les réponses à vos campagnes Prospection 95, réunies dans une seule boîte.</p></div>
    <div className="metrics"><span><b>{counts?.unread??0}</b> non lus</span><span><b>{counts?.action??0}</b> à traiter</span><span><b>{accounts.length}</b> comptes</span></div></div>
   {error?<div role="alert" className="mail-error">{error} <button onClick={refresh}>Réessayer</button></div>:null}
   <section className="mail-window">

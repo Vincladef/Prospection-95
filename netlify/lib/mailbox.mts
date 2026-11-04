@@ -4,6 +4,7 @@ import { HttpError, json, parseJson } from "./http.mts";
 import { auditEvent } from "./audit.mts";
 import type { AdminIdentity } from "./auth.mts";
 import {gmailConversationUrl} from "./mailbox-url.mts";
+import {prospectionMailboxScope} from "./mailbox-scope.mts";
 
 const summary = `t.id::text, t.account_id::text as "accountId", a.email as "accountEmail",
  t.conversation_id::text as "conversationId",t.prospect_id::text as "prospectId",
@@ -28,6 +29,7 @@ export async function listMailbox(request: Request): Promise<Response> {
  if(!params.success) throw new HttpError(400,"invalid_query","Filtres de boîte mail invalides.");
  const v=params.data;
  const scope=`a.deleted_at is null and t.last_message_id is not null
+  and ${prospectionMailboxScope}
   and exists(select 1 from app.email_messages response
    where response.mailbox_thread_id=t.id and response.direction='inbound' and response.status='received'
     and coalesce(response.raw_headers->>'warmup','false')<>'true'
@@ -80,7 +82,7 @@ export async function mailboxDetail(id:string,request:Request):Promise<Response>
     and e.internet_message_id is not null and (e.technical_confirmation or e.status='received')
     order by (e.mailbox_account_id=t.account_id) desc nulls last,
       coalesce(e.received_at,e.smtp_accepted_at,e.sent_at,e.created_at) desc,e.id desc limit 1) as "gmailInternetMessageId"
-  ${joins} where t.id=$1::uuid and a.deleted_at is null`,[id]);
+  ${joins} where t.id=$1::uuid and a.deleted_at is null and ${prospectionMailboxScope}`,[id]);
  if(!row)throw new HttpError(404,"mailbox_thread_not_found","Conversation introuvable.");
  const {gmailThreadId,gmailInternetMessageId,...thread}=row;
  const gmailUrl=gmailConversationUrl(thread.accountEmail,gmailThreadId,gmailInternetMessageId);
@@ -102,6 +104,8 @@ export async function mailboxDetail(id:string,request:Request):Promise<Response>
 }
 
 export async function mailboxMutation(id:string,action:string,request:Request,identity:AdminIdentity,requestId:string):Promise<Response> {
+ const allowed=await sqlOne(`select t.id::text from app.mailbox_threads t where t.id=$1::uuid and ${prospectionMailboxScope}`,[id]);
+ if(!allowed)throw new HttpError(404,"mailbox_thread_not_found","Cette conversation ne provient pas de la prospection Prospection 95.");
  let result:unknown;
  if(action==="draft") {
   const v=await parseJson(request,z.object({version:z.number().int().positive(),body:z.string().max(100000)}));

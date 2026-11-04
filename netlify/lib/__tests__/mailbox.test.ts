@@ -36,20 +36,29 @@ describe("unified mailbox API",()=>{
   expect(result.thread.gmailThreadId).toBeUndefined();
  });
  it("saves a draft and queues Gmail synchronization atomically",async()=>{
-  mocks.one.mockResolvedValue({version:8});
+  mocks.one.mockResolvedValueOnce({id}).mockResolvedValueOnce({version:8});
   expect(await(await mailboxMutation(id,"draft",post({version:7,body:"Bonjour"}),identity,id)).json()).toEqual({version:8});
-  expect(mocks.one).toHaveBeenCalledOnce();const [sql,params]=mocks.one.mock.calls[0];
+  expect(mocks.one).toHaveBeenCalledTimes(2);const [sql,params]=mocks.one.mock.calls[1];
   expect(params).toEqual([id,7,"Bonjour"]);expect(sql).toContain("where id=$1::uuid and draft_version=$2");expect(sql).toContain("from changed");
  });
  it("does not enqueue a Gmail action after a concurrent edit conflicts",async()=>{
+  mocks.one.mockResolvedValueOnce({id});
   await expect(mailboxMutation(id,"state",post({version:7,archived:true}),identity,id)).rejects.toMatchObject({status:409});
-  expect(mocks.one).toHaveBeenCalledOnce();expect(mocks.one.mock.calls[0][0]).toContain("from changed cross join");
+  expect(mocks.one).toHaveBeenCalledTimes(2);expect(mocks.one.mock.calls[1][0]).toContain("from changed cross join");
   expect(mocks.audit).not.toHaveBeenCalled();
  });
  it("sends through the existing outbox with a stable key and never accepts a sender override",async()=>{
-  mocks.one.mockResolvedValue({id,status:"pending"});
+  mocks.one.mockResolvedValueOnce({id}).mockResolvedValueOnce({id,status:"pending"});
   const result=await mailboxMutation(id,"send",post({version:8,lastMessageId:campaign,key:id,from:"attacker@example.test"}),identity,id);
-  expect(result.status).toBe(202);expect(mocks.one.mock.calls[0][1]).toEqual([id,8,campaign,id]);
-  expect(mocks.one.mock.calls[0][0]).toContain("app.mailbox_queue_reply");
+  expect(result.status).toBe(202);expect(mocks.one.mock.calls[1][1]).toEqual([id,8,campaign,id]);
+  expect(mocks.one.mock.calls[1][0]).toContain("app.mailbox_queue_reply");
+ });
+ it.each(["draft","state","send","refresh"])("rejects %s on a conversation outside P95 prospecting before performing any action",async action=>{
+  await expect(mailboxMutation(id,action,post({}),identity,id)).rejects.toMatchObject({status:404,code:"mailbox_thread_not_found"});
+  expect(mocks.one).toHaveBeenCalledOnce();expect(mocks.query).not.toHaveBeenCalled();expect(mocks.audit).not.toHaveBeenCalled();
+ });
+ it("does not expose the history of an unrelated Gmail thread",async()=>{
+  await expect(mailboxDetail(id,new Request(`https://example.test/api/mailbox/${id}`))).rejects.toMatchObject({status:404});
+  expect(mocks.query).not.toHaveBeenCalled();
  });
 });

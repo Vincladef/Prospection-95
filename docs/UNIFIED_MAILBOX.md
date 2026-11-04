@@ -1,10 +1,13 @@
 # Boîte mail unifiée (047)
 
-L’onglet Boîte mail suit les échanges réels. Messages conserve les séquences
+L’onglet Boîte mail suit les réponses à la prospection Prospection 95. Messages conserve les séquences
 J0–R5, leur rédaction, leur validation et leur programmation. Le stockage des
 emails reste `app.email_messages` ; les fils de correspondance ajoutent leur
 état, leur brouillon et, lorsque disponible, le lien vers la conversation CRM.
-Un échange sans campagne n’entraîne aucune création de prospect fictif.
+Un fil n’est admissible qu’avec un envoi de prospection techniquement confirmé,
+créé par l’application ou son agent et associé à un job de prospection terminé
+dans l’outbox du même compte et de la même conversation. Une adresse présente
+dans le CRM ou un envoi manuel Gmail ne suffisent pas à prouver cette origine.
 
 La boîte affiche uniquement les fils ayant reçu au moins une réponse non
 automatique du correspondant. Cette règle s’applique à tous les dossiers,
@@ -12,8 +15,10 @@ recherches et compteurs. Après une réponse manuelle, le fil reste accessible
 dans En attente de réponse grâce à son historique entrant. Les contacts sans
 réponse restent gérés dans Messages. Les rebonds, absences, warm-ups et messages
 classés automatiques ou sans rapport ne suffisent pas à faire apparaître un fil.
-Sans lien CRM, l’association à une réponse utilise les en-têtes de réponse ou un
-envoi confirmé antérieur dans le même fil. Aucun email ni brouillon n’est supprimé.
+Les échanges personnels, les fils sans campagne et ceux dépourvus de preuve
+d’envoi Prospection 95 sont exclus des listes, compteurs, recherches et accès
+directs à un fil. Les nouveaux échanges externes ne sont plus recopiés. Les
+données déjà présentes sont conservées ; aucune suppression Gmail n’est effectuée.
 
 L’interface reprend la maquette HTML V4 : dossiers, liste et lecteur, filtres
 campagne/Gmail combinables, recherche, priorités, historique repliable et réponse
@@ -34,10 +39,14 @@ objet n’est utilisé. Le raccourci reste désactivé en l’absence d’identi
 
 `sync-mailboxes` conserve son ingestion CRM et ajoute un curseur indépendant
 `__UNIFIED_ALL__` pour reprendre progressivement l’historique de tous les comptes
-connectés. Les comptes suspendus restent lisibles. Les newsletters automatiques
-sans lien connu ne sont pas recopiées ; les réponses automatiques, rebonds et
+connectés, en ne conservant que les messages rattachés au CRM. Le worker de suivi
+des fils ne sélectionne que les conversations de prospection admissibles. Les
+comptes suspendus restent lisibles. Les réponses automatiques, rebonds et
 warm-ups reconnus par leurs en-têtes sont séparés de la réception commerciale.
 Un warm-up dépourvu de signal technique identifiable peut rester non reconnu.
+Exception de reprise : une ancienne réponse manuelle hors CRM déjà engagée par
+le propriétaire conserve son rapprochement Envoyés et son contrôle des nouveaux
+messages ; ce chemin ne crée aucun nouveau fil externe et reste masqué.
 
 `sync-unified-mailbox` est un worker court et reprenable : trois opérations
 au plus puis un fil par invocation. Les baux par fil sérialisent les opérations

@@ -2,6 +2,7 @@ import { sqlOne,sqlQuery } from "./db.mts";
 import { gmailThreadState,syncMailboxDraft } from "./mailbox-gmail.mts";
 import { fetchMailboxDelta } from "./imap.mts";
 import { recordMailboxMessages } from "./mailbox-sync.mts";
+import {prospectionMailboxScope} from "./mailbox-scope.mts";
 
 interface ThreadContext {
  id:string;account_id:string;email:string;credential_id:string;correspondent:string;subject:string;
@@ -88,6 +89,7 @@ export async function refreshMailboxThread():Promise<boolean>{
  const selected=await sqlOne<{id:string;token:string}>(`with candidate as (
   select t.id from app.mailbox_threads t join app.gmail_accounts a on a.id=t.account_id
   where a.deleted_at is null and a.credential_id is not null and a.status in ('active','suspended')
+   and ${prospectionMailboxScope}
    and (t.refresh_attempt_at is null or t.refresh_attempt_at<clock_timestamp()-interval '2 minutes')
    and (t.sync_lease_expires_at is null or t.sync_lease_expires_at<clock_timestamp())
    and (t.last_synced_at is null or t.last_synced_at<clock_timestamp()-interval '5 minutes'
