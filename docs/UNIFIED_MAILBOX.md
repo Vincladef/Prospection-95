@@ -6,6 +6,15 @@ emails reste `app.email_messages` ; les fils de correspondance ajoutent leur
 état, leur brouillon et, lorsque disponible, le lien vers la conversation CRM.
 Un échange sans campagne n’entraîne aucune création de prospect fictif.
 
+La boîte affiche uniquement les fils ayant reçu au moins une réponse non
+automatique du correspondant. Cette règle s’applique à tous les dossiers,
+recherches et compteurs. Après une réponse manuelle, le fil reste accessible
+dans En attente de réponse grâce à son historique entrant. Les contacts sans
+réponse restent gérés dans Messages. Les rebonds, absences, warm-ups et messages
+classés automatiques ou sans rapport ne suffisent pas à faire apparaître un fil.
+Sans lien CRM, l’association à une réponse utilise les en-têtes de réponse ou un
+envoi confirmé antérieur dans le même fil. Aucun email ni brouillon n’est supprimé.
+
 L’interface reprend la maquette HTML V4 : dossiers, liste et lecteur, filtres
 campagne/Gmail combinables, recherche, priorités, historique repliable et réponse
 directement sous l’échange. Sur tablette et mobile, ouvrir un fil remplace la

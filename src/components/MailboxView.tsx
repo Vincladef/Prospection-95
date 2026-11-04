@@ -4,7 +4,7 @@ import type {Campaign,MailboxDetail,MailboxFolder,MailboxMessage,MailboxPage,Mai
 import "./MailboxView.css";
 
 const folders:Array<[MailboxFolder,string,string]>=[["inbox","▣","Réception"],["action","◷","À traiter"],["waiting","↗","En attente de réponse"],["archive","▤","Archives"],["other","⚙","Automatiques / warm-up"]];
-const explanations:Record<MailboxFolder,string>={inbox:"Toutes les conversations utiles, y compris celles en attente de réponse.",action:"Une réponse ou une décision est attendue de votre part.",waiting:"Dernier message envoyé depuis l’un de vos comptes ; réponse du correspondant attendue.",archive:"Conversations classées et conservées.",other:"Notifications automatiques, rebonds et warm-ups, à part."};
+const explanations:Record<MailboxFolder,string>={inbox:"Conversations avec au moins une réponse reçue, y compris celles en attente de réponse.",action:"Une réponse ou une décision est attendue de votre part.",waiting:"Vous avez répondu au correspondant ; sa prochaine réponse est attendue.",archive:"Conversations classées et conservées.",other:"Notifications automatiques, rebonds et warm-ups, à part."};
 function dateLabel(date:string,long=false){return new Date(date).toLocaleString("fr-FR",{timeZone:"Europe/Paris",...(long?{day:"numeric",month:"short",year:"numeric",hour:"2-digit",minute:"2-digit"}:{day:"numeric",month:"short"})});}
 function initials(name:string){return name.split(/[\s@.]+/).slice(0,2).map(x=>x[0]).join("").toUpperCase();}
 function threadStatus(t:MailboxThread){return t.category==="warmup"?"Warm-up":t.category==="automatic"?"Automatique":t.archived?"Archivé":t.needsReply?"À répondre":t.lastDirection==="outbound"?"En attente":"Traité";}
@@ -33,7 +33,7 @@ export function MailboxView({campaigns,onOpenCampaign,onOpenProspect}:{campaigns
  const accountLabel=data?.accounts.find(a=>a.id===account)?.email??"Tous les comptes Gmail";
  const counts=data?.counts;const accounts=data?.accounts??[];
  return <section className="unified-mailbox" aria-label="Boîte mail unifiée">
-  <div className="view-head"><div><h1>Boîte de réception unifiée</h1><p>Un seul endroit pour suivre les réponses, les conversations à traiter et celles en attente.</p></div>
+  <div className="view-head"><div><h1>Boîte de réception unifiée</h1><p>Uniquement les conversations avec les personnes qui vous ont répondu au moins une fois.</p></div>
    <div className="metrics"><span><b>{counts?.unread??0}</b> non lus</span><span><b>{counts?.action??0}</b> à traiter</span><span><b>{accounts.length}</b> comptes</span></div></div>
   {error?<div role="alert" className="mail-error">{error} <button onClick={refresh}>Réessayer</button></div>:null}
   <section className="mail-window">
@@ -51,7 +51,7 @@ export function MailboxView({campaigns,onOpenCampaign,onOpenProspect}:{campaigns
    <div className={`mail-grid ${reading?"reading":""}`}>
     <aside className="mail-side" aria-label="Dossiers"><div className="sidelabel">Conversations</div>
      {folders.map(([id,icon,label])=><button key={id} className={`folder ${folder===id?"active":""} ${id==="other"?"secondary-folder":""}`} aria-current={folder===id?"page":undefined} onClick={()=>setFolder(id)}><span>{icon} {label}</span><span className="number">{counts?.[id]??0}</span></button>)}
-     <p className="side-note">Les campagnes et leurs séquences restent dans l’onglet Messages. Ici, vous suivez vos échanges.</p>
+     <p className="side-note">Les contacts qui n’ont pas encore répondu restent dans l’onglet Messages.</p>
     </aside>
     <div className="thread-column" aria-label="Liste des conversations" aria-busy={loading}>
      <div className="list-top"><div className="filter-tabs">{[["all","Toutes"],["unread","Non lues"],["priority","Prioritaires"]].map(([id,label])=><button key={id} aria-pressed={filter===id} className={filter===id?"selected":""} onClick={()=>setFilter(id)}>{label}</button>)}</div>

@@ -27,6 +27,16 @@ export async function listMailbox(request: Request): Promise<Response> {
  if(!params.success) throw new HttpError(400,"invalid_query","Filtres de boîte mail invalides.");
  const v=params.data;
  const scope=`a.deleted_at is null and t.last_message_id is not null
+  and exists(select 1 from app.email_messages response
+   where response.mailbox_thread_id=t.id and response.direction='inbound' and response.status='received'
+    and coalesce(response.raw_headers->>'warmup','false')<>'true'
+    and (response.kind='reply' or response.kind='unrelated' and (
+     response.in_reply_to is not null or cardinality(response.references_header)>0
+     or exists(select 1 from app.email_messages prior
+      where prior.mailbox_thread_id=t.id and prior.direction='outbound' and prior.technical_confirmation
+       and coalesce(prior.smtp_accepted_at,prior.sent_at,prior.created_at)<coalesce(response.received_at,response.created_at))))
+    and not exists(select 1 from app.inbound_analyses analysis where analysis.message_id=response.id
+     and analysis.classification in ('automatic_reply','out_of_office','bounce','unrelated')))
   and ($1::uuid is null or t.account_id=$1::uuid)
   and ($2::text is null or ($2='none' and c.campaign_id is null) or c.campaign_id::text=$2)
   and ($3='' or t.subject ilike '%'||$3||'%' or t.correspondent ilike '%'||$3||'%' or p.full_name ilike '%'||$3||'%'
