@@ -3,6 +3,7 @@ import { sqlOne, sqlQuery } from "./db.mts";
 import { HttpError, json, parseJson } from "./http.mts";
 import { auditEvent } from "./audit.mts";
 import type { AdminIdentity } from "./auth.mts";
+import {gmailConversationUrl} from "./mailbox-url.mts";
 
 const summary = `t.id::text, t.account_id::text as "accountId", a.email as "accountEmail",
  t.conversation_id::text as "conversationId",t.prospect_id::text as "prospectId",
@@ -67,13 +68,22 @@ export async function listMailbox(request: Request): Promise<Response> {
 }
 
 export async function mailboxDetail(id:string,request:Request):Promise<Response> {
- const thread=await sqlOne(`select ${summary},t.draft_body as "draftBody",t.draft_version::int as "draftVersion",
+ const row=await sqlOne<{accountEmail:string;gmailThreadId:string|null;gmailInternetMessageId:string|null}>(`select ${summary},t.draft_body as "draftBody",t.draft_version::int as "draftVersion",
   t.draft_synced_version::int as "draftSyncedVersion",t.draft_remote_body as "draftRemoteBody",
   a.status='active' and a.paused_at is null and a.credential_id is not null and not app.is_excluded(t.correspondent)
    and exists(select 1 from app.settings where singleton and outbound_enabled and not emergency_stop) as "canReply",
-  c.followups_stopped_at as "followupsStoppedAt",c.next_step_due_at as "nextFollowupAt"
+  c.followups_stopped_at as "followupsStoppedAt",c.next_step_due_at as "nextFollowupAt",
+  (select e.gmail_thread_id from app.email_messages e where e.mailbox_thread_id=t.id
+    and e.mailbox_account_id=t.account_id and e.gmail_thread_id is not null
+    order by coalesce(e.received_at,e.smtp_accepted_at,e.sent_at,e.created_at) desc,e.id desc limit 1) as "gmailThreadId",
+  (select e.internet_message_id from app.email_messages e where e.mailbox_thread_id=t.id
+    and e.internet_message_id is not null and (e.technical_confirmation or e.status='received')
+    order by (e.mailbox_account_id=t.account_id) desc nulls last,
+      coalesce(e.received_at,e.smtp_accepted_at,e.sent_at,e.created_at) desc,e.id desc limit 1) as "gmailInternetMessageId"
   ${joins} where t.id=$1::uuid and a.deleted_at is null`,[id]);
- if(!thread)throw new HttpError(404,"mailbox_thread_not_found","Conversation introuvable.");
+ if(!row)throw new HttpError(404,"mailbox_thread_not_found","Conversation introuvable.");
+ const {gmailThreadId,gmailInternetMessageId,...thread}=row;
+ const gmailUrl=gmailConversationUrl(thread.accountEmail,gmailThreadId,gmailInternetMessageId);
  const before=z.string().uuid().optional().safeParse(new URL(request.url).searchParams.get("before")??undefined);
  if(!before.success)throw new HttpError(400,"invalid_query","Date de pagination invalide.");
  const messages=await sqlQuery(`select * from (
@@ -88,7 +98,7 @@ export async function mailboxDetail(id:string,request:Request):Promise<Response>
  const send=await sqlOne(`select j.id::text,j.status::text,j.last_error_code as "errorCode",m.body_text as body
   from app.outbox_jobs j join app.email_messages m on m.id=j.message_id
   where m.mailbox_thread_id=$1::uuid and j.job_kind='mailbox_reply' order by j.created_at desc limit 1`,[id]);
- return json({thread,messages:messages.slice(0,50).reverse(),hasOlder:messages.length>50,send});
+ return json({thread:{...thread,gmailUrl},messages:messages.slice(0,50).reverse(),hasOlder:messages.length>50,send});
 }
 
 export async function mailboxMutation(id:string,action:string,request:Request,identity:AdminIdentity,requestId:string):Promise<Response> {

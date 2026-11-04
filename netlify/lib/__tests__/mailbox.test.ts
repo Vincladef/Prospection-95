@@ -28,6 +28,13 @@ describe("unified mailbox API",()=>{
   expect(mocks.query.mock.calls[0][1]).toEqual([id,campaign]);
   expect(mocks.query.mock.calls[0][0]).toContain("(at,id)<");
  });
+ it("returns a Gmail link with the selected thread account and a full precision thread identifier",async()=>{
+  mocks.one.mockResolvedValueOnce({id,accountEmail:"sender@example.test",gmailThreadId:"1234567890123456789",gmailInternetMessageId:"<reply@example.test>"});
+  const result=await(await mailboxDetail(id,new Request(`https://example.test/api/mailbox/${id}`))).json();
+  expect(result.thread.gmailUrl).toBe("https://mail.google.com/mail/u/?authuser=sender%40example.test#all/112210f47de98115");
+  expect(mocks.one.mock.calls[0][0]).toContain("e.mailbox_account_id=t.account_id");
+  expect(result.thread.gmailThreadId).toBeUndefined();
+ });
  it("saves a draft and queues Gmail synchronization atomically",async()=>{
   mocks.one.mockResolvedValue({version:8});
   expect(await(await mailboxMutation(id,"draft",post({version:7,body:"Bonjour"}),identity,id)).json()).toEqual({version:8});

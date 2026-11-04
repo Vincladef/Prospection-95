@@ -21,6 +21,15 @@ directement sous l’échange. Sur tablette et mobile, ouvrir un fil remplace la
 liste ; le bouton Conversations permet d’y revenir. Le texte des emails est
 rendu comme texte : les scripts et images de suivi reçus ne sont pas exécutés.
 
+Les messages envoyés apparaissent dans des cartes bleues, décalées à droite,
+avec une étiquette Envoyé ; les messages reçus ont une bordure verte à gauche
+et une étiquette Reçu. Sur mobile, les cartes prennent toute la largeur.
+Le bouton Ouvrir dans Gmail ouvre le fil dans un nouvel onglet en sélectionnant
+le compte associé. L’identifiant IMAP du fil est converti de décimal en
+hexadécimal sans perte de précision. À défaut, le lien recherche le Message-ID
+RFC exact dans tous les dossiers du même compte ; aucun lien approximatif par
+objet n’est utilisé. Le raccourci reste désactivé en l’absence d’identifiant.
+
 ## Synchronisation
 
 `sync-mailboxes` conserve son ingestion CRM et ajoute un curseur indépendant

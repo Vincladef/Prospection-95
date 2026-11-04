@@ -72,8 +72,9 @@ export function MailboxView({campaigns,onOpenCampaign,onOpenProspect}:{campaigns
 }
 
 function MailMessage({message}:{message:MailboxMessage}){
- return <article className={`mail-message ${message.direction==="outbound"?"outbound":""}`}>
-  <div className="sender-header"><div className="sender-person"><span className="big-avatar">{message.direction==="outbound"?"↗":initials(message.from)}</span><div><strong>{message.direction==="outbound"?"Vous":message.from}</strong><div className="address">De : {message.from}<br/>À : {message.to.join(", ")}{message.cc?.length?` · Cc : ${message.cc.join(", ")}`:""}</div></div></div><time>{dateLabel(message.at,true)}</time></div>
+ const outgoing=message.direction==="outbound";
+ return <article className={`mail-message ${outgoing?"outbound":"inbound"}`} aria-label={outgoing?"Message envoyé":"Message reçu"}>
+  <div className="sender-header"><div className="sender-person"><span className="big-avatar" aria-hidden="true">{outgoing?"↗":initials(message.from)}</span><div className="sender-identity"><span className="message-direction">{outgoing?"↗ Envoyé":"↙ Reçu"}</span><strong>{outgoing?"Vous":message.from}</strong><div className="address">De : {message.from}<br/>À : {message.to.join(", ")}{message.cc?.length?` · Cc : ${message.cc.join(", ")}`:""}</div></div></div><time>{dateLabel(message.at,true)}</time></div>
   <div className="message-body">{message.body||"Message sans contenu texte."}</div>
  </article>;
 }
@@ -94,6 +95,7 @@ function MailboxReader({id,tick,onChanged,onBack,onOpenCampaign,onOpenProspect}:
  const t=data.thread;const all=[...older,...data.messages].filter((m,i,list)=>list.findIndex(x=>x.id===m.id)===i);const latest=all[all.length-1];
  return <section className="reader" aria-label="Lecture de la conversation">
   <div className="reader-toolbar"><button className="mobile-back" onClick={onBack}>← Conversations</button><span className="reader-action-label">Conversation</span><div className="reader-actions">
+   {t.gmailUrl?<a className="win-button gmail-conversation-link" href={t.gmailUrl} target="_blank" rel="noopener noreferrer" title={`Ouvrir ce fil dans Gmail (${t.accountEmail})`}>Ouvrir dans Gmail ↗</a>:<button className="win-button gmail-conversation-link" disabled title="Le lien Gmail sera disponible après la synchronisation du fil.">Ouvrir dans Gmail ↗</button>}
    <button className="icon-button" disabled={busy} title={t.priority?"Retirer la priorité":"Marquer prioritaire"} aria-label={t.priority?"Retirer la priorité":"Marquer prioritaire"} onClick={()=>void change({priority:!t.priority})}>{t.priority?"★":"☆"}</button>
    <button className="icon-button" disabled={busy} title="Marquer comme non lue" aria-label="Marquer comme non lue" onClick={()=>void change({unread:true})}>✉</button>
    <button className="win-button" disabled={busy} onClick={()=>void change({needsReply:!t.needsReply})}>{t.needsReply?"✓ Traité":"◷ À traiter"}</button>
