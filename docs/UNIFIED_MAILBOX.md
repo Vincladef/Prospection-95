@@ -8,6 +8,12 @@ Un fil n’est admissible qu’avec un envoi de prospection techniquement confir
 créé par l’application ou son agent et associé à un job de prospection terminé
 dans l’outbox du même compte et de la même conversation. Une adresse présente
 dans le CRM ou un envoi manuel Gmail ne suffisent pas à prouver cette origine.
+Les messages sont reliés à cet envoi par leur Message-ID, In-Reply-To,
+References ou l’identifiant de fil Gmail du même compte, en suivant la chaîne
+des réponses. Un rapprochement par adresse seule est exclu de l’affichage.
+Les résumés, l’historique, la recherche et le lien Gmail utilisent cette même
+chaîne vérifiée. Un résultat ambigu bloque une nouvelle réponse dans l’éditeur
+et propose l’ouverture de Gmail pour vérifier le dernier échange.
 
 La boîte affiche uniquement les fils ayant reçu au moins une réponse non
 automatique du correspondant. Cette règle s’applique à tous les dossiers,

@@ -69,3 +69,9 @@ it("protects a pending or uncertain send from a second click",async()=>{
  vi.mocked(api.mailboxDetail).mockResolvedValue({...detail(),send:{id:"job",status:"uncertain",errorCode:"timeout",body:"Réponse"}});
  renderView();expect(await screen.findByRole("button",{name:"Envoyer ↗"})).toBeDisabled();expect(screen.getByText(/Résultat SMTP incertain/)).toBeInTheDocument();
 });
+it("keeps an ambiguous Gmail context from sending to an unrelated message",async()=>{
+ const d=detail();d.thread.canReply=false;d.thread.replyContextChanged=true;vi.mocked(api.mailboxDetail).mockResolvedValue(d);
+ renderView();expect(await screen.findByRole("button",{name:"Envoyer ↗"})).toBeDisabled();
+ expect(screen.getByText(/La conversation Gmail a changé/)).toBeInTheDocument();
+ expect(screen.getByRole("link",{name:"Ouvrir dans Gmail ↗"})).toBeInTheDocument();
+});

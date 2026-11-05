@@ -2,7 +2,7 @@ import { sqlOne,sqlQuery } from "./db.mts";
 import { gmailThreadState,syncMailboxDraft } from "./mailbox-gmail.mts";
 import { fetchMailboxDelta } from "./imap.mts";
 import { recordMailboxMessages } from "./mailbox-sync.mts";
-import {prospectionMailboxScope} from "./mailbox-scope.mts";
+import {prospectionMailboxScope,prospectionLinkedMessageIds} from "./mailbox-scope.mts";
 
 interface ThreadContext {
  id:string;account_id:string;email:string;credential_id:string;correspondent:string;subject:string;
@@ -11,14 +11,19 @@ interface ThreadContext {
  parent_id:string|null;parent_references:string[];history_uid:number;history_uidvalidity:string|null;
 }
 async function context(id:string):Promise<ThreadContext|null>{
- return sqlOne<ThreadContext>(`select t.*,t.id::text,t.account_id::text,a.email,a.credential_id::text,
-  t.draft_version::int,t.draft_synced_version::int,
+ return sqlOne<ThreadContext>(`select t.id::text,t.account_id::text,a.email,a.credential_id::text,t.correspondent,
+  t.draft_body,t.draft_version::int,t.draft_synced_version::int,t.gmail_draft_message_id,t.gmail_draft_hash,
+  t.history_uid,t.history_uidvalidity,
   (select e.gmail_thread_id from app.email_messages e where e.mailbox_thread_id=t.id
-    and e.mailbox_account_id=t.account_id and e.gmail_thread_id is not null order by e.created_at desc limit 1) as thread_id,
-  array(select distinct internet_message_id from app.email_messages where mailbox_thread_id=t.id and internet_message_id is not null limit 100) as identifiers,
-  parent.internet_message_id as parent_id,parent.references_header as parent_references
+    and e.mailbox_account_id=t.account_id and e.gmail_thread_id is not null
+    and (t.conversation_id is null or e.id in (${prospectionLinkedMessageIds})) order by e.created_at desc limit 1) as thread_id,
+  array(select distinct e.internet_message_id from app.email_messages e where e.mailbox_thread_id=t.id and e.internet_message_id is not null
+    and (t.conversation_id is null or e.id in (${prospectionLinkedMessageIds})) limit 100) as identifiers,
+  parent.internet_message_id as parent_id,parent.references_header as parent_references,coalesce(parent.subject,t.subject) as subject
   from app.mailbox_threads t join app.gmail_accounts a on a.id=t.account_id
-  left join app.email_messages parent on parent.id=t.last_message_id
+  left join lateral(select e.* from app.email_messages e where e.mailbox_thread_id=t.id
+    and (t.conversation_id is null or e.id in (${prospectionLinkedMessageIds}))
+    order by coalesce(e.received_at,e.smtp_accepted_at,e.sent_at,e.created_at) desc,e.id desc limit 1) parent on true
   where t.id=$1::uuid and a.deleted_at is null and a.credential_id is not null`,[id]);
 }
 export async function refreshUnifiedConversation(id:string):Promise<void>{

@@ -15,7 +15,7 @@ describe("unified mailbox API",()=>{
   const [sql,params]=mocks.query.mock.calls[0];
   expect(params).toEqual([id,campaign,"O'Reilly","waiting","all",50]);
   expect(sql).not.toContain("O'Reilly");expect(sql).toContain("t.account_id=$1::uuid");expect(sql).toContain("c.campaign_id::text=$2");
-  expect(sql).toContain("t.category='normal'");expect(sql).toContain("latest.direction='outbound'");
+  expect(sql).toContain("latest.kind");expect(sql).toContain("latest.direction='outbound'");
  });
  it("rejects malformed filters before querying the database",async()=>{
   await expect(listMailbox(new Request("https://example.test/api/mailbox?account=not-a-uuid"))).rejects.toMatchObject({status:400});
@@ -48,14 +48,19 @@ describe("unified mailbox API",()=>{
   expect(mocks.audit).not.toHaveBeenCalled();
  });
  it("sends through the existing outbox with a stable key and never accepts a sender override",async()=>{
-  mocks.one.mockResolvedValueOnce({id}).mockResolvedValueOnce({id,status:"pending"});
+  mocks.one.mockResolvedValueOnce({id}).mockResolvedValueOnce({id}).mockResolvedValueOnce({id,status:"pending"});
   const result=await mailboxMutation(id,"send",post({version:8,lastMessageId:campaign,key:id,from:"attacker@example.test"}),identity,id);
-  expect(result.status).toBe(202);expect(mocks.one.mock.calls[1][1]).toEqual([id,8,campaign,id]);
-  expect(mocks.one.mock.calls[1][0]).toContain("app.mailbox_queue_reply");
+  expect(result.status).toBe(202);expect(mocks.one.mock.calls[2][1]).toEqual([id,8,campaign,id]);
+  expect(mocks.one.mock.calls[2][0]).toContain("app.mailbox_queue_reply");
  });
  it.each(["draft","state","send","refresh"])("rejects %s on a conversation outside P95 prospecting before performing any action",async action=>{
   await expect(mailboxMutation(id,action,post({}),identity,id)).rejects.toMatchObject({status:404,code:"mailbox_thread_not_found"});
   expect(mocks.one).toHaveBeenCalledOnce();expect(mocks.query).not.toHaveBeenCalled();expect(mocks.audit).not.toHaveBeenCalled();
+ });
+ it("does not enqueue a reply when the last stored message cannot be linked to the prospecting exchange",async()=>{
+  mocks.one.mockResolvedValueOnce({id});
+  await expect(mailboxMutation(id,"send",post({version:8,lastMessageId:campaign,key:id}),identity,id)).rejects.toMatchObject({status:409,code:"mailbox_reply_blocked"});
+  expect(mocks.one).toHaveBeenCalledTimes(2);expect(mocks.audit).not.toHaveBeenCalled();
  });
  it("does not expose the history of an unrelated Gmail thread",async()=>{
   await expect(mailboxDetail(id,new Request(`https://example.test/api/mailbox/${id}`))).rejects.toMatchObject({status:404});

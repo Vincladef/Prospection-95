@@ -4,14 +4,14 @@ import { HttpError, json, parseJson } from "./http.mts";
 import { auditEvent } from "./audit.mts";
 import type { AdminIdentity } from "./auth.mts";
 import {gmailConversationUrl} from "./mailbox-url.mts";
-import {prospectionMailboxScope} from "./mailbox-scope.mts";
+import {prospectionMailboxScope,prospectionLinkedMessageIds,mailboxLatestCategory,mailboxNeedsReply} from "./mailbox-scope.mts";
 
 const summary = `t.id::text, t.account_id::text as "accountId", a.email as "accountEmail",
  t.conversation_id::text as "conversationId",t.prospect_id::text as "prospectId",
  c.campaign_id::text as "campaignId",campaign.name as "campaignName",
  coalesce(nullif(p.full_name,''),t.correspondent) as name,t.correspondent as email,
- org.name as organization,t.subject,t.category,t.archived,t.unread,t.priority,t.needs_reply as "needsReply",
- t.version::int,t.last_message_id::text as "lastMessageId",t.last_message_at as "lastMessageAt",
+ org.name as organization,latest.subject,(${mailboxLatestCategory}) as category,t.archived,t.unread,t.priority,(${mailboxNeedsReply}) as "needsReply",
+ t.version::int,latest.id::text as "lastMessageId",coalesce(latest.received_at,latest.smtp_accepted_at,latest.sent_at,latest.created_at) as "lastMessageAt",
  left(latest.body_text,180) as snippet,latest.direction as "lastDirection",
  t.last_synced_at as "lastSyncedAt",t.last_error_code as "syncError",
  (select count(*)::int from app.mailbox_sync_jobs q where q.thread_id=t.id and q.status in ('pending','running')) as "pendingSync"`;
@@ -19,7 +19,9 @@ const joins = `from app.mailbox_threads t join app.gmail_accounts a on a.id=t.ac
  left join app.conversations c on c.id=t.conversation_id
  left join app.campaigns campaign on campaign.id=c.campaign_id
  left join app.prospects p on p.id=t.prospect_id left join app.organizations org on org.id=p.organization_id
- left join app.email_messages latest on latest.id=t.last_message_id`;
+ left join lateral(select actual.* from app.email_messages actual where actual.mailbox_thread_id=t.id
+  and actual.id in (${prospectionLinkedMessageIds})
+  order by coalesce(actual.received_at,actual.smtp_accepted_at,actual.sent_at,actual.created_at) desc,actual.id desc limit 1) latest on true`;
 
 export async function listMailbox(request: Request): Promise<Response> {
  const params = z.object({account: z.string().uuid().optional(),campaign:z.union([z.string().uuid(),z.literal("none")]).optional(),
@@ -32,6 +34,9 @@ export async function listMailbox(request: Request): Promise<Response> {
   and ${prospectionMailboxScope}
   and exists(select 1 from app.email_messages response
    where response.mailbox_thread_id=t.id and response.direction='inbound' and response.status='received'
+    and response.id in (${prospectionLinkedMessageIds})
+    and not exists(select 1 from app.email_messages sent_copy where sent_copy.mailbox_thread_id=t.id
+      and sent_copy.direction='outbound' and sent_copy.technical_confirmation and sent_copy.internet_message_id=response.internet_message_id)
     and coalesce(response.raw_headers->>'warmup','false')<>'true'
     and (response.kind='reply' or response.kind='unrelated' and (
      response.in_reply_to is not null or cardinality(response.references_header)>0
@@ -42,24 +47,24 @@ export async function listMailbox(request: Request): Promise<Response> {
      and analysis.classification in ('automatic_reply','out_of_office','bounce','unrelated')))
   and ($1::uuid is null or t.account_id=$1::uuid)
   and ($2::text is null or ($2='none' and c.campaign_id is null) or c.campaign_id::text=$2)
-  and ($3='' or t.subject ilike '%'||$3||'%' or t.correspondent ilike '%'||$3||'%' or p.full_name ilike '%'||$3||'%'
+  and ($3='' or latest.subject ilike '%'||$3||'%' or t.correspondent ilike '%'||$3||'%' or p.full_name ilike '%'||$3||'%'
    or org.name ilike '%'||$3||'%' or exists(select 1 from app.email_messages search
-      where search.mailbox_thread_id=t.id and search.body_text ilike '%'||$3||'%'))`;
+      where search.mailbox_thread_id=t.id and search.id in (${prospectionLinkedMessageIds}) and search.body_text ilike '%'||$3||'%'))`;
  const bindings=[v.account??null,v.campaign??null,v.q];
- const folder=`case $4 when 'other' then t.category<>'normal' when 'archive' then t.archived and t.category='normal'
-  when 'action' then not t.archived and t.category='normal' and t.needs_reply
-  when 'waiting' then not t.archived and t.category='normal' and not t.needs_reply and latest.direction='outbound'
-  else not t.archived and t.category='normal' end
+ const folder=`case $4 when 'other' then (${mailboxLatestCategory})<>'normal' when 'archive' then t.archived and (${mailboxLatestCategory})='normal'
+  when 'action' then not t.archived and (${mailboxLatestCategory})='normal' and (${mailboxNeedsReply})
+  when 'waiting' then not t.archived and (${mailboxLatestCategory})='normal' and not (${mailboxNeedsReply}) and latest.direction='outbound'
+  else not t.archived and (${mailboxLatestCategory})='normal' end
   and ($5='all' or $5='unread' and t.unread or $5='priority' and t.priority)`;
  const results=await Promise.all([
-  sqlQuery(`select ${summary} ${joins} where ${scope} and ${folder} order by t.last_message_at desc,t.id desc limit 50 offset $6`,[...bindings,v.folder,v.filter,(v.page-1)*50]),
+  sqlQuery(`select ${summary} ${joins} where ${scope} and ${folder} order by coalesce(latest.received_at,latest.smtp_accepted_at,latest.sent_at,latest.created_at) desc,t.id desc limit 50 offset $6`,[...bindings,v.folder,v.filter,(v.page-1)*50]),
   sqlOne(`select count(*)::int as total ${joins} where ${scope} and ${folder}`,[...bindings,v.folder,v.filter]),
-  sqlOne(`select count(*) filter(where t.category='normal' and not t.archived)::int as inbox,
-   count(*) filter(where t.category='normal' and not t.archived and t.needs_reply)::int as action,
-   count(*) filter(where t.category='normal' and not t.archived and not t.needs_reply and latest.direction='outbound')::int as waiting,
-   count(*) filter(where t.category='normal' and t.archived)::int as archive,
-   count(*) filter(where t.category<>'normal')::int as other,
-   count(*) filter(where t.category='normal' and not t.archived and t.unread)::int as unread
+  sqlOne(`select count(*) filter(where (${mailboxLatestCategory})='normal' and not t.archived)::int as inbox,
+   count(*) filter(where (${mailboxLatestCategory})='normal' and not t.archived and (${mailboxNeedsReply}))::int as action,
+   count(*) filter(where (${mailboxLatestCategory})='normal' and not t.archived and not (${mailboxNeedsReply}) and latest.direction='outbound')::int as waiting,
+   count(*) filter(where (${mailboxLatestCategory})='normal' and t.archived)::int as archive,
+   count(*) filter(where (${mailboxLatestCategory})<>'normal')::int as other,
+   count(*) filter(where (${mailboxLatestCategory})='normal' and not t.archived and t.unread)::int as unread
    ${joins} where ${scope}`,bindings),
   sqlQuery(`select a.id::text,a.email,a.status,a.last_sync_at as "lastSyncAt",a.last_error_code as "lastErrorCode",
     coalesce(c.last_uid,0)::text as "lastUid",c.caught_up_at as "caughtUpAt"
@@ -72,14 +77,15 @@ export async function listMailbox(request: Request): Promise<Response> {
 export async function mailboxDetail(id:string,request:Request):Promise<Response> {
  const row=await sqlOne<{accountEmail:string;gmailThreadId:string|null;gmailInternetMessageId:string|null}>(`select ${summary},t.draft_body as "draftBody",t.draft_version::int as "draftVersion",
   t.draft_synced_version::int as "draftSyncedVersion",t.draft_remote_body as "draftRemoteBody",
-  a.status='active' and a.paused_at is null and a.credential_id is not null and not app.is_excluded(t.correspondent)
+  latest.id=t.last_message_id and a.status='active' and a.paused_at is null and a.credential_id is not null and not app.is_excluded(t.correspondent)
    and exists(select 1 from app.settings where singleton and outbound_enabled and not emergency_stop) as "canReply",
+  latest.id is distinct from t.last_message_id as "replyContextChanged",
   c.followups_stopped_at as "followupsStoppedAt",c.next_step_due_at as "nextFollowupAt",
   (select e.gmail_thread_id from app.email_messages e where e.mailbox_thread_id=t.id
-    and e.mailbox_account_id=t.account_id and e.gmail_thread_id is not null
+    and e.mailbox_account_id=t.account_id and e.gmail_thread_id is not null and e.id in (${prospectionLinkedMessageIds})
     order by coalesce(e.received_at,e.smtp_accepted_at,e.sent_at,e.created_at) desc,e.id desc limit 1) as "gmailThreadId",
   (select e.internet_message_id from app.email_messages e where e.mailbox_thread_id=t.id
-    and e.internet_message_id is not null and (e.technical_confirmation or e.status='received')
+    and e.internet_message_id is not null and (e.technical_confirmation or e.status='received') and e.id in (${prospectionLinkedMessageIds})
     order by (e.mailbox_account_id=t.account_id) desc nulls last,
       coalesce(e.received_at,e.smtp_accepted_at,e.sent_at,e.created_at) desc,e.id desc limit 1) as "gmailInternetMessageId"
   ${joins} where t.id=$1::uuid and a.deleted_at is null and ${prospectionMailboxScope}`,[id]);
@@ -89,12 +95,12 @@ export async function mailboxDetail(id:string,request:Request):Promise<Response>
  const before=z.string().uuid().optional().safeParse(new URL(request.url).searchParams.get("before")??undefined);
  if(!before.success)throw new HttpError(400,"invalid_query","Date de pagination invalide.");
  const messages=await sqlQuery(`select * from (
-  select distinct on (coalesce(internet_message_id,id::text)) id::text,direction,kind,subject,body_text as body,
-    from_address as "from",to_addresses as "to",cc_addresses as cc,status,
-    coalesce(received_at,smtp_accepted_at,sent_at,created_at) as at
-  from app.email_messages where mailbox_thread_id=$1::uuid
-    and (technical_confirmation or status='received')
-  order by coalesce(internet_message_id,id::text),technical_confirmation desc,created_at
+  select distinct on (coalesce(m.internet_message_id,m.id::text)) m.id::text,m.direction,m.kind,m.subject,m.body_text as body,
+    m.from_address as "from",m.to_addresses as "to",m.cc_addresses as cc,m.status,
+    coalesce(m.received_at,m.smtp_accepted_at,m.sent_at,m.created_at) as at
+  from app.email_messages m join app.mailbox_threads t on t.id=m.mailbox_thread_id where t.id=$1::uuid
+    and m.id in (${prospectionLinkedMessageIds}) and (m.technical_confirmation or m.status='received')
+  order by coalesce(m.internet_message_id,m.id::text),m.technical_confirmation desc,m.created_at
  ) history where ($2::uuid is null or (at,id)<(select coalesce(received_at,smtp_accepted_at,sent_at,created_at),id::text
    from app.email_messages where id=$2::uuid and mailbox_thread_id=$1::uuid)) order by at desc,id desc limit 51`,[id,before.data??null]);
  const send=await sqlOne(`select j.id::text,j.status::text,j.last_error_code as "errorCode",m.body_text as body
@@ -119,6 +125,9 @@ export async function mailboxMutation(id:string,action:string,request:Request,id
   return json(row);
  } else if(action==="send") {
   const v=await parseJson(request,z.object({version:z.number().int().positive(),lastMessageId:z.string().uuid(),key:z.string().uuid()}));
+  const current=await sqlOne(`select t.id from app.mailbox_threads t where t.id=$1::uuid and t.last_message_id=$2::uuid
+    and t.last_message_id in (${prospectionLinkedMessageIds})`,[id,v.lastMessageId]);
+  if(!current)throw new HttpError(409,"mailbox_reply_blocked","La conversation Gmail a changé. Ouvrez-la dans Gmail pour vérifier le dernier échange.");
   try { result=await sqlOne(`select j.id::text,j.status::text from app.mailbox_queue_reply($1::uuid,$2,$3::uuid,$4) j`,[id,v.version,v.lastMessageId,v.key]); }
   catch(error) {
    if(/mailbox_|invalid_idempotency/.test((error as Error).message))throw new HttpError(409,"mailbox_reply_blocked","Envoi non engagé : la conversation a changé, un envoi est déjà en cours ou une protection bloque ce compte. Actualisez le fil ; le brouillon est conservé.");

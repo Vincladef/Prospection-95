@@ -328,7 +328,7 @@ export interface MailboxPage {
 }
 export interface MailboxMessage {id:string;direction:string;kind:string;subject:string;body:string;from:string;to:string[];cc:string[];status:string;at:string}
 export interface MailboxDetail {
- thread:MailboxThread&{gmailUrl:string|null;draftBody:string;draftVersion:number;draftSyncedVersion:number;draftRemoteBody:string|null;canReply:boolean;followupsStoppedAt:string|null;nextFollowupAt:string|null};
+ thread:MailboxThread&{gmailUrl:string|null;draftBody:string;draftVersion:number;draftSyncedVersion:number;draftRemoteBody:string|null;canReply:boolean;replyContextChanged?:boolean;followupsStoppedAt:string|null;nextFollowupAt:string|null};
  messages:MailboxMessage[];hasOlder:boolean;
  send:{id:string;status:string;errorCode:string|null;body:string}|null;
 }
