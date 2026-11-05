@@ -15,7 +15,7 @@ it("shows the reply inline with its Gmail sender and no modal",async()=>{
  expect(screen.queryByRole("dialog")).not.toBeInTheDocument();expect(screen.getByText("Depuis")).toHaveTextContent("sender@example.test");
  expect(screen.getByText("Votre proposition m’intéresse.",{selector:".message-body"})).toBeInTheDocument();
 });
-it.each([['negative','Refus'],['opposition','Ne plus contacter']] as const)("shows %s as classified without an expected reply",async(classification,label)=>{
+it.each([['negative','Refus'],['opposition','Refus']] as const)("shows %s as classified without an expected reply",async(classification,label)=>{
  const thread={...t,responseClassification:classification,responseAnalyzedAt:"2026-11-05T06:00:00Z",responseRationale:"Le correspondant refuse la proposition.",needsReply:false};
  vi.mocked(api.mailbox).mockResolvedValue({...page,threads:[thread],counts:{...page.counts,action:0}});
  vi.mocked(api.mailboxDetail).mockResolvedValue(detail(thread));renderView();

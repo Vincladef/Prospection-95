@@ -1,6 +1,11 @@
 -- Vérifications non destructives à lancer après toutes les migrations.
 -- Chaque ligne doit retourner true ou la valeur documentée.
 
+SELECT position('''ambiguous'',''negative''' IN pg_get_functiondef('app.reply_source_is_current(uuid)'::regprocedure))>0
+ AND position('NOT app.is_excluded' IN pg_get_functiondef('app.reply_source_is_current(uuid)'::regprocedure))>0
+ AND position('manual.technical_confirmation' IN pg_get_functiondef('app.reply_source_is_current(uuid)'::regprocedure))>0
+ AS simple_refusal_acknowledgement_is_guarded;
+
 SELECT to_regclass('app.mailbox_threads') IS NOT NULL
  AND has_table_privilege('prospection95_app','app.mailbox_threads','UPDATE')
  AND NOT has_table_privilege('prospection95_agent','app.mailbox_threads','SELECT')

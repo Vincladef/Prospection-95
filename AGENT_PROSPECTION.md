@@ -378,7 +378,7 @@ contourner les itérations configurées. Le backend seul matérialise le brouill
 ou la réponse automatique après la dernière passe.
 
 1. Lire et classer les messages pertinents depuis `unanalyzed_responses` avec
-   `classify_response`. Ne répondre ni à une opposition ni à un refus, une
+   `classify_response`. Ne répondre ni à une opposition, une
    absence, un automatisme, un rebond ou un message sans rapport.
 2. Relire `agent_api.pending_reply_iterations`. Chaque `source_message_id`
    constitue un cycle distinct, même si la conversation a déjà reçu une réponse.
@@ -598,3 +598,18 @@ worker fige les indicateurs secondaires depuis ces sources pour les nouveaux
 envois. Les compteurs horaires et le pixel existants sont réutilisés. Durées,
 contextes clients/proxys/automatisation, quotas, 90 jours de rétention et fiabilité
 restent inchangés. Recette : db/tests/046_automatic_interactions.sql.
+
+
+## Accusé de réception après un refus simple (migration 048)
+
+Un refus simple est `negative`, pas une opposition. Après migration 048,
+préparer une seule réponse brève, compréhensive et polie via le cycle
+`pending_reply_iterations` → `claim_reply_iteration` → `complete_reply_iteration`.
+Exemple de ton : « Merci pour votre retour, aucun souci. Je vous souhaite une
+bonne continuation. » Adapter au message réel ; aucune nouvelle proposition,
+question, invitation, lien de suivi ajouté ou tentative de persuasion.
+Respecter le mode brouillon/automatique configuré et toutes les protections.
+Ne répondre ni à une désinscription explicite ni à un contact exclu. Ne jamais
+lever automatiquement une exclusion existante. Un refus garde le libellé
+« Refus » même après ce remerciement ; les relances commerciales restent arrêtées.
+Avant migration 048, ne pas contourner un refus d’éligibilité du backend.
