@@ -25,6 +25,7 @@
 .unified-mailbox .mail-grid{display:grid;grid-template-columns:168px minmax(265px,350px) minmax(0,1fr);height:min(810px,calc(100dvh - 330px));min-height:570px;background:#fff}
 .unified-mailbox .mail-side{padding:12px 8px 15px;background:#e5e5e5;border-right:1px solid #aaa;overflow-y:auto;min-width:0}
 .unified-mailbox .sidelabel{font-size:10px;color:#6a6a6a;text-transform:uppercase;font-weight:bold;letter-spacing:.8px;padding:0 10px;margin:4px 0 7px}
+.unified-mailbox .classification-label{border-top:1px solid #bbb;padding-top:13px;margin-top:13px}
 .unified-mailbox .folder{display:flex;justify-content:space-between;align-items:center;gap:7px;width:100%;text-align:left;background:transparent;border:0;min-height:38px;padding:7px 9px;font-size:11px;color:#333;line-height:1.5}
 .unified-mailbox .folder:hover{background:#d5d9e4}
 .unified-mailbox .folder.active{background:#000080;color:#fff;font-weight:bold}

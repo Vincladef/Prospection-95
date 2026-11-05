@@ -5,9 +5,20 @@ import {api} from "../lib/api";
 import type {MailboxDetail,MailboxPage,MailboxThread,Campaign} from "../types";
 vi.mock("../lib/api",()=>({api:{mailbox:vi.fn(),mailboxDetail:vi.fn(),mailboxState:vi.fn(),mailboxDraft:vi.fn(),mailboxSend:vi.fn(),mailboxRefresh:vi.fn()}}));
 const t:MailboxThread={id:"thread-1",accountId:"account-1",accountEmail:"sender@example.test",conversationId:null,prospectId:null,campaignId:"campaign-1",campaignName:"Campagne test",name:"Alice Exemple",email:"alice@example.test",organization:"Organisation test",subject:"Re: Proposition",category:"normal",archived:false,unread:false,priority:false,needsReply:true,version:1,lastMessageId:"message-1",lastMessageAt:"2026-11-04T09:00:00Z",snippet:"Votre proposition m’intéresse.",lastDirection:"inbound",lastSyncedAt:null,syncError:null,pendingSync:0};
-const page:MailboxPage={threads:[t],total:1,page:1,counts:{inbox:1,action:1,waiting:0,archive:0,other:0,unread:0},accounts:[{id:"account-1",email:t.accountEmail,status:"active",lastSyncAt:null,lastErrorCode:null,lastUid:"0",caughtUpAt:null}]};
+const page:MailboxPage={threads:[t],total:1,page:1,counts:{inbox:1,action:1,waiting:0,archive:0,other:0,negative:0,positive:0,unread:0},accounts:[{id:"account-1",email:t.accountEmail,status:"active",lastSyncAt:null,lastErrorCode:null,lastUid:"0",caughtUpAt:null}]};
 function detail(thread=t):MailboxDetail{return {thread:{...thread,gmailUrl:"https://mail.google.com/mail/u/?authuser=sender%40example.test#all/112210f47de98115",draftBody:"",draftVersion:1,draftSyncedVersion:0,draftRemoteBody:null,canReply:true,followupsStoppedAt:"2026-11-04T09:00:00Z",nextFollowupAt:null},messages:[{id:"message-1",direction:"inbound",kind:"reply",subject:t.subject,body:t.snippet,from:t.email,to:[t.accountEmail],cc:[],status:"received",at:t.lastMessageAt}],hasOlder:false,send:null};}
 const renderView=()=>render(<MailboxView campaigns={[{id:"campaign-1",name:"Campagne test"} as Campaign]} onOpenCampaign={vi.fn()} onOpenProspect={vi.fn()}/>);
+it.each([["negative","− Refus"],["positive","+ Réponses positives"]])("opens the %s classification view while preserving campaign and account filters",async(folder,label)=>{
+ vi.mocked(api.mailbox).mockResolvedValue({...page,counts:{...page.counts,negative:2,positive:3}});
+ renderView();await screen.findByRole("textbox",{name:"Votre réponse"});
+ fireEvent.change(screen.getByLabelText("Filtrer les conversations par campagne"),{target:{value:"campaign-1"}});
+ fireEvent.change(screen.getByLabelText("Filtrer les conversations par adresse Gmail"),{target:{value:"account-1"}});
+ const button=screen.getByRole("button",{name:new RegExp(label.replace('+','\\+'))});fireEvent.click(button);
+ await waitFor(()=>{const params=vi.mocked(api.mailbox).mock.calls.at(-1)![0];
+  expect(params.get("folder")).toBe(folder);expect(params.get("campaign")).toBe("campaign-1");expect(params.get("account")).toBe("account-1");});
+ expect(button).toHaveAttribute("aria-current","page");expect(button).toHaveTextContent(folder==="negative"?"2":"3");
+ expect(screen.getByText("Classement")).toBeInTheDocument();
+});
 afterEach(()=>cleanup());
 beforeEach(()=>{vi.resetAllMocks();sessionStorage.clear();vi.mocked(api.mailbox).mockResolvedValue(page);vi.mocked(api.mailboxDetail).mockResolvedValue(detail());vi.mocked(api.mailboxRefresh).mockResolvedValue({});vi.mocked(api.mailboxState).mockResolvedValue({version:2});vi.mocked(api.mailboxDraft).mockResolvedValue({version:2});vi.mocked(api.mailboxSend).mockResolvedValue({id:"job",status:"pending"});});
 it("shows the reply inline with its Gmail sender and no modal",async()=>{

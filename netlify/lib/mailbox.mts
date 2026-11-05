@@ -35,7 +35,7 @@ const joins = `from app.mailbox_threads t join app.gmail_accounts a on a.id=t.ac
 
 export async function listMailbox(request: Request): Promise<Response> {
  const params = z.object({account: z.string().uuid().optional(),campaign:z.union([z.string().uuid(),z.literal("none")]).optional(),
-  folder:z.enum(["inbox","action","waiting","archive","other"]).default("inbox"),q:z.string().trim().max(300).default(""),
+  folder:z.enum(["inbox","action","waiting","archive","other","negative","positive"]).default("inbox"),q:z.string().trim().max(300).default(""),
   filter:z.enum(["all","unread","priority"]).default("all"),page:z.coerce.number().int().min(1).max(100000).default(1)
  }).safeParse(Object.fromEntries(new URL(request.url).searchParams));
  if(!params.success) throw new HttpError(400,"invalid_query","Filtres de boîte mail invalides.");
@@ -62,6 +62,8 @@ export async function listMailbox(request: Request): Promise<Response> {
       where search.mailbox_thread_id=t.id and search.id in (${prospectionLinkedMessageIds}) and search.body_text ilike '%'||$3||'%'))`;
  const bindings=[v.account??null,v.campaign??null,v.q];
  const folder=`case $4 when 'other' then (${mailboxLatestCategory})<>'normal' when 'archive' then t.archived and (${mailboxLatestCategory})='normal'
+  when 'negative' then (${mailboxLatestCategory})='normal' and response_analysis.classification in ('negative','opposition')
+  when 'positive' then (${mailboxLatestCategory})='normal' and response_analysis.classification='positive'
   when 'action' then not t.archived and (${mailboxLatestCategory})='normal' and (${mailboxNeedsReply})
   when 'waiting' then not t.archived and (${mailboxLatestCategory})='normal' and (${mailboxWaiting})
   else not t.archived and (${mailboxLatestCategory})='normal' end
@@ -74,6 +76,8 @@ export async function listMailbox(request: Request): Promise<Response> {
    count(*) filter(where (${mailboxLatestCategory})='normal' and not t.archived and (${mailboxWaiting}))::int as waiting,
    count(*) filter(where (${mailboxLatestCategory})='normal' and t.archived)::int as archive,
    count(*) filter(where (${mailboxLatestCategory})<>'normal')::int as other,
+   count(*) filter(where (${mailboxLatestCategory})='normal' and response_analysis.classification in ('negative','opposition'))::int as negative,
+   count(*) filter(where (${mailboxLatestCategory})='normal' and response_analysis.classification='positive')::int as positive,
    count(*) filter(where (${mailboxLatestCategory})='normal' and not t.archived and t.unread)::int as unread
    ${joins} where ${scope}`,bindings),
   sqlQuery(`select a.id::text,a.email,a.status,a.last_sync_at as "lastSyncAt",a.last_error_code as "lastErrorCode",

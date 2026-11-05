@@ -1,11 +1,11 @@
-import {useCallback,useEffect,useRef,useState} from "react";
+import {Fragment,useCallback,useEffect,useRef,useState} from "react";
 import {api} from "../lib/api";
 import type {Campaign,MailboxDetail,MailboxFolder,MailboxMessage,MailboxPage,MailboxThread} from "../types";
 import {responseIsClosed,responseLabels} from "../lib/response-classification";
 import "./MailboxView.css";
 
-const folders:Array<[MailboxFolder,string,string]>=[["inbox","▣","Réception"],["action","◷","À traiter"],["waiting","↗","En attente de réponse"],["archive","▤","Archives"],["other","⚙","Automatiques / warm-up"]];
-const explanations:Record<MailboxFolder,string>={inbox:"Conversations issues de la prospection Prospection 95, avec au moins une réponse reçue.",action:"Une réponse ou une décision est attendue de votre part.",waiting:"Vous avez répondu au correspondant ; sa prochaine réponse est attendue.",archive:"Conversations classées et conservées.",other:"Notifications automatiques liées à vos conversations de prospection."};
+const folders:Array<[MailboxFolder,string,string]>=[["inbox","▣","Réception"],["action","◷","À traiter"],["waiting","↗","En attente de réponse"],["archive","▤","Archives"],["negative","−","Refus"],["positive","+","Réponses positives"],["other","⚙","Automatiques / warm-up"]];
+const explanations:Record<MailboxFolder,string>={inbox:"Conversations issues de la prospection Prospection 95, avec au moins une réponse reçue.",action:"Une réponse ou une décision est attendue de votre part.",waiting:"Vous avez répondu au correspondant ; sa prochaine réponse est attendue.",archive:"Conversations classées et conservées.",negative:"Conversations dont la dernière réponse est classée comme refus par GPT, y compris les archives.",positive:"Conversations dont la dernière réponse est classée positive par GPT, y compris les archives.",other:"Notifications automatiques liées à vos conversations de prospection."};
 function dateLabel(date:string,long=false){return new Date(date).toLocaleString("fr-FR",{timeZone:"Europe/Paris",...(long?{day:"numeric",month:"short",year:"numeric",hour:"2-digit",minute:"2-digit"}:{day:"numeric",month:"short"})});}
 function initials(name:string){return name.split(/[\s@.]+/).slice(0,2).map(x=>x[0]).join("").toUpperCase();}
 function threadStatus(t:MailboxThread){return t.category==="warmup"?"Warm-up":t.category==="automatic"?"Automatique":t.archived?"Archivé":responseIsClosed(t.responseClassification)?"Traité":t.needsReply?"À répondre":t.lastDirection==="outbound"?"En attente":"Traité";}
@@ -52,7 +52,7 @@ export function MailboxView({campaigns,onOpenCampaign,onOpenProspect}:{campaigns
     <div className="sync-button"><span>{accounts.length} comptes connectés</span><button className="win-button" onClick={()=>{refresh();if(selected)void api.mailboxRefresh(selected).catch(e=>setError(e.message));}}>{loading?"↻ Chargement…":"↻ Actualiser"}</button></div></div>
    <div className={`mail-grid ${reading?"reading":""}`}>
     <aside className="mail-side" aria-label="Dossiers"><div className="sidelabel">Conversations</div>
-     {folders.map(([id,icon,label])=><button key={id} className={`folder ${folder===id?"active":""} ${id==="other"?"secondary-folder":""}`} aria-current={folder===id?"page":undefined} onClick={()=>setFolder(id)}><span>{icon} {label}</span><span className="number">{counts?.[id]??0}</span></button>)}
+     {folders.map(([id,icon,label])=><Fragment key={id}>{id==="negative"?<div className="sidelabel classification-label">Classement</div>:null}<button className={`folder ${folder===id?"active":""} ${id==="other"?"secondary-folder":""}`} aria-current={folder===id?"page":undefined} onClick={()=>setFolder(id)}><span>{icon} {label}</span><span className="number">{counts?.[id]??0}</span></button></Fragment>)}
      <p className="side-note">Les contacts qui n’ont pas encore répondu restent dans l’onglet Messages.</p>
     </aside>
     <div className="thread-column" aria-label="Liste des conversations" aria-busy={loading}>

@@ -316,7 +316,7 @@ export interface InteractionProfile {
  provider:string;transport:string;automation:boolean|null;requests:number;samples:number;measuredProspects:number;
  meanSeconds:number|null;capped:number;attempts:number;failed:number;budget:number;
 }
-export type MailboxFolder = "inbox"|"action"|"waiting"|"archive"|"other";
+export type MailboxFolder = "inbox"|"action"|"waiting"|"archive"|"other"|"negative"|"positive";
 export type ResponseClassification = "positive"|"negative"|"information"|"meeting"|"ambiguous"|"opposition"|"automatic_reply"|"out_of_office"|"bounce"|"unrelated";
 export interface MailboxThread {
  id:string;accountId:string;accountEmail:string;conversationId:string|null;prospectId:string|null;

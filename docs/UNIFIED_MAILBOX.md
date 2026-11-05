@@ -39,6 +39,15 @@ ancien. Aucune exclusion, campagne, relance ni donnée Gmail n’est modifiée p
 cette projection. Un refus simple reste accessible pour une réponse manuelle ;
 une opposition conserve le verrou d’exclusion existant.
 
+Deux vues « Refus » et « Réponses positives » sont regroupées sous « Classement »
+dans la navigation. Refus inclut `negative` et `opposition`, tous deux libellés
+Refus ; Réponses positives utilise uniquement la classification `positive`.
+Les vues et compteurs suivent la dernière réponse vérifiée, conservent les filtres
+campagne, compte Gmail et recherche, et incluent les conversations archivées.
+Un remerciement envoyé ne change pas le classement ; une nouvelle réponse
+classée remplace le classement précédent. Ces vues ne déplacent aucun mail
+et ne modifient ni les états de traitement ni les règles d’envoi.
+
 Dans Messages, « Dernier envoi » affiche discrètement la date et l’heure de
 l’envoi confirmé le plus récent, y compris une réponse manuelle. La date n’est
 pas déduite d’un brouillon, d’un clic ou de la dernière synchronisation.

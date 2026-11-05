@@ -9,6 +9,10 @@ const identity={subject:"fixture",email:"admin@example.test"};
 const post=(body:unknown)=>new Request("https://example.test/api/mailbox",{method:"POST",headers:{"content-type":"application/json"},body:JSON.stringify(body)});
 beforeEach(()=>{vi.resetAllMocks();mocks.query.mockResolvedValue([]);mocks.one.mockResolvedValue(null);});
 describe("unified mailbox API",()=>{
+ it.each(["negative","positive"])("accepts the %s classification view with the existing combined filters",async folder=>{
+  await listMailbox(new Request(`https://example.test/api/mailbox?folder=${folder}&account=${id}&campaign=${campaign}&filter=unread`));
+  expect(mocks.query.mock.calls[0][1]).toEqual([id,campaign,"",folder,"unread",0]);
+ });
  it("combines Gmail, campaign, folder and search in parameterised queries",async()=>{
   mocks.one.mockResolvedValue({total:0});
   await listMailbox(new Request(`https://example.test/api/mailbox?account=${id}&campaign=${campaign}&folder=waiting&q=O%27Reilly&page=2`));
