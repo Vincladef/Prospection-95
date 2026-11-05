@@ -2,9 +2,11 @@ import { cleanup, fireEvent, render, screen, waitFor, within } from "@testing-li
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import type { Campaign, Experiment } from "../types";
 import { CampaignsView } from "./CampaignsView";
+import { campaignVariantDefaults, materializeVariant, resolveVariantGroups } from "../lib/variant-configuration";
 
 const apiMocks = vi.hoisted(() => ({
   addExperimentVariant: vi.fn(),
+  createExperiment: vi.fn(),
   createCampaign: vi.fn(),
   moveCampaignToFolder: vi.fn(),
   updateExperimentVariant: vi.fn(),
@@ -177,7 +179,7 @@ describe("CampaignsView V53", () => {
     expect(variantB).toHaveClass("on");
     expect(screen.getByText("Recherche · version B")).toBeInTheDocument();
     expect(screen.getByDisplayValue("Recherche propre à la version B")).toBeInTheDocument();
-    expect(screen.getByRole("button", { name: "↶ Reprendre la configuration générale" })).toBeInTheDocument();
+    expect(screen.getByRole("button", { name: "↶ Reprendre A1" })).toBeInTheDocument();
   });
 
   it("adds the next version through the API", async () => {
@@ -394,12 +396,14 @@ it("saves real connection timing independently from clicks and removes the compl
  cleanup();
 });
 
-describe("campaign configuration and A/B editing regression", () => {
+describe("A1 is the reference of its test", () => {
   const configured: Campaign = {
     ...campaign,
-    sequence: { subject: "Objet général", subjectInstructions: "Consignes objet générales", steps: ["Modèle général", "R1", "R2", "R3", "R4", "R5"], stepInstructions: ["Consignes J0 générales", "I1", "I2", "I3", "I4", "I5"] },
+    sequence: { subject: "Objet initial", subjectInstructions: "Consignes objet", steps: ["Modèle initial", "R1", "R2", "R3", "R4", "R5"], stepInstructions: ["Consignes initiales", "I1", "I2", "I3", "I4", "I5"] },
   };
-  const test: Experiment = { ...experiment, variants: experiment.variants.map(v => ({ ...v, version: 3, overrides: { initial: { body: `Modèle ${v.label}`, metadata: "à conserver" }, followup0: { instructions: `Consignes R1 ${v.label}` } } })) };
+  const referenceOverrides = { initial: { body: "Modèle A1", bodyInstructions: "Consignes A1", metadata: "à conserver" }, subject: { subjectInstructions: "Objet A1" } };
+  const inherited = materializeVariant(resolveVariantGroups(campaignVariantDefaults(configured), referenceOverrides), {});
+  const test: Experiment = { ...experiment, variants: experiment.variants.map(v => ({ ...v, version: 3, overrides: v.label === "A" ? referenceOverrides : inherited })) };
   const initial = () => screen.getByLabelText("Consignes pour le premier email");
   const save = () => fireEvent.click(screen.getAllByRole("button", { name: "Enregistrer" })[0]);
   const choose = (label: string) => fireEvent.click(screen.getByRole("button", { name: new RegExp(`^${label}1`) }));
@@ -412,137 +416,121 @@ describe("campaign configuration and A/B editing regression", () => {
   });
   afterEach(cleanup);
 
-  it("edits the general first-email instructions even when A has a custom initial block", async () => {
+  it("selects editable A1 immediately and exposes no additional configuration level", () => {
     renderCampaigns([test], [configured]);
-    expect(screen.getByRole("button", { name: "Configuration générale" })).toHaveClass("on");
-    expect(initial()).toHaveValue("Consignes J0 générales");
-    expect(screen.getByLabelText("Modèle du premier email")).toHaveValue("Modèle général");
-    fireEvent.change(initial(), { target: { value: "Nouvelles consignes générales" } });
-    expect(initial()).toHaveValue("Nouvelles consignes générales");
-    choose("A");
-    expect(initial()).toHaveValue("Nouvelles consignes générales");
-    expect(initial()).toBeEnabled(); // Only the body was overridden in A.
-    expect(screen.getByLabelText("Modèle du premier email")).toHaveValue("Modèle A");
-    save();
-    await waitFor(() => expect(apiMocks.updateCampaign).toHaveBeenCalledOnce());
-    expect(apiMocks.updateCampaign.mock.calls[0][1].sequence.stepInstructions[0]).toBe("Nouvelles consignes générales");
-    expect(apiMocks.updateExperimentVariant).not.toHaveBeenCalled();
-  });
-
-  it.each(["A", "B"])("saves partial first-email, subject and follow-up overrides for %s and reloads them", async label => {
-    const view = renderCampaigns([test], [configured]);
-    choose(label);
-    expect(initial()).toHaveValue("Consignes J0 générales");
-    expect(screen.getByLabelText("Consignes pour personnaliser l’objet")).toBeDisabled();
-    fireEvent.click(group("subject").getByRole("button", { name: "✎ Personnaliser" }));
-    fireEvent.change(screen.getByLabelText("Consignes pour personnaliser l’objet"), { target: { value: `Objet ${label} modifié` } });
-    fireEvent.change(initial(), { target: { value: `J0 ${label} modifié` } });
-    fireEvent.change(screen.getByLabelText("Consignes pour la relance R1"), { target: { value: `R1 ${label} modifié` } });
-    fireEvent.click(screen.getByRole("button", { name: "Configuration générale" }));
-    expect(initial()).toHaveValue("Consignes J0 générales");
-    choose(label);
-    expect(initial()).toHaveValue(`J0 ${label} modifié`);
-    save();
-    await waitFor(() => expect(view.onMutated).toHaveBeenCalledOnce());
-    expect(apiMocks.updateCampaign).not.toHaveBeenCalled();
-    const variant = test.variants.find(v => v.label === label)!;
-    const [id, payload] = apiMocks.updateExperimentVariant.mock.calls[0];
-    expect(id).toBe(variant.id);
-    expect(payload).toMatchObject({ version: 3, overrides: { initial: { body: `Modèle ${label}`, bodyInstructions: `J0 ${label} modifié`, metadata: "à conserver" }, subject: { subjectInstructions: `Objet ${label} modifié` }, followup0: { body: "R1", instructions: `R1 ${label} modifié` } } });
-    view.unmount();
-    renderCampaigns([{ ...test, variants: test.variants.map(v => v.id === id ? { ...v, version: 4, overrides: payload.overrides } : v) }], [configured]);
-    choose(label);
-    expect(initial()).toHaveValue(`J0 ${label} modifié`);
-    expect(screen.getByLabelText("Consignes pour personnaliser l’objet")).toHaveValue(`Objet ${label} modifié`);
-    expect(screen.getByLabelText("Consignes pour la relance R1")).toHaveValue(`R1 ${label} modifié`);
+    expect(screen.getByRole("button", { name: /^A1/ })).toHaveClass("on");
+    expect(screen.queryByText("Configuration générale")).not.toBeInTheDocument();
+    expect(initial()).toHaveValue("Consignes A1"); expect(initial()).toBeEnabled();
+    expect(screen.getByLabelText("Modèle du premier email")).toHaveValue("Modèle A1");
+    expect(group("initial").queryByRole("button", { name: /Personnaliser/ })).not.toBeInTheDocument();
     expect(screen.getAllByRole("button", { name: "Enregistrer" })[0]).toBeDisabled();
   });
 
-  it("preserves an intentional empty instruction and lets a block inherit the general configuration again", async () => {
-    const custom = { ...test, variants: test.variants.map(v => ({ ...v, overrides: { ...v.overrides, initial: { bodyInstructions: "" } } })) };
-    renderCampaigns([custom], [configured]);
-    choose("A");
-    expect(initial()).toHaveValue("");
-    expect(screen.getByLabelText("Modèle du premier email")).toHaveValue("Modèle général");
-    fireEvent.click(group("initial").getByRole("button", { name: "↶ Reprendre la configuration générale" }));
-    expect(initial()).toHaveValue("Consignes J0 générales");
-    expect(initial()).toBeDisabled();
-    save();
-    await waitFor(() => expect(apiMocks.updateExperimentVariant).toHaveBeenCalledOnce());
-    expect(apiMocks.updateExperimentVariant.mock.calls[0][1].overrides).toEqual({ followup0: { instructions: "Consignes R1 A" } });
-  });
-
-  it("keeps B inherited from the general configuration rather than a customized A", () => {
-    renderCampaigns([{ ...test, variants: [ { ...test.variants[0], overrides: { initial: { bodyInstructions: "Consignes exclusives A" } } }, { ...test.variants[1], overrides: {} } ] }], [configured]);
-    choose("A"); expect(initial()).toHaveValue("Consignes exclusives A");
-    choose("B"); expect(initial()).toHaveValue("Consignes J0 générales"); expect(initial()).toBeDisabled();
-    fireEvent.click(group("initial").getByRole("button", { name: "✎ Personnaliser" }));
-    fireEvent.change(initial(), { target: { value: "" } });
-    expect(initial()).toHaveValue("");
-  });
-
-  it.each(["assigned", "running"])("clearly protects a variant that is %s while leaving the general configuration editable", mode => {
-    renderCampaigns([{ ...test, status: mode === "running" ? "recruiting" : "draft", variants: test.variants.map(v => ({ ...v, assignedCount: mode === "assigned" ? 1 : 0 })) }], [configured]);
-    choose("A");
-    expect(initial()).toBeDisabled();
-    expect(group("initial").getByRole("button", { name: "↶ Reprendre la configuration générale" })).toBeDisabled();
-    expect(screen.getByText(/consultation uniquement/)).toBeInTheDocument();
-    fireEvent.click(screen.getByRole("button", { name: "Configuration générale" }));
-    expect(initial()).toBeEnabled();
-    expect(apiMocks.updateExperimentVariant).not.toHaveBeenCalled();
-  });
-
-  it("retries only unsaved data after the campaign and A save successfully but B conflicts", async () => {
-    apiMocks.updateExperimentVariant.mockResolvedValueOnce({ variant: { id: test.variants[0].id, version: 4 } }).mockRejectedValueOnce(new Error("Conflit de version B"));
-    renderCampaigns([test], [configured]);
-    fireEvent.change(initial(), { target: { value: "Général modifié" } });
-    choose("A"); fireEvent.change(initial(), { target: { value: "A modifié" } });
-    choose("B"); fireEvent.change(initial(), { target: { value: "B conservé" } });
-    save();
-    await screen.findByText(/Enregistrement partiel.*Conflit de version B/);
-    expect(initial()).toHaveValue("B conservé");
-    save();
-    await waitFor(() => expect(apiMocks.updateExperimentVariant).toHaveBeenCalledTimes(3));
-    await waitFor(() => expect(screen.getAllByRole("button", { name: "Enregistrer" })[0]).toBeDisabled());
-    expect(apiMocks.updateCampaign).toHaveBeenCalledOnce();
-    expect(apiMocks.updateExperimentVariant.mock.calls.map(call => call[0])).toEqual([test.variants[0].id, test.variants[1].id, test.variants[1].id]);
-    expect(apiMocks.updateExperimentVariant.mock.calls[2][1]).toMatchObject({ version: 3, overrides: { initial: { bodyInstructions: "B conservé" } } });
-  });
-
-  it("retains the saved variant when a delayed dashboard refresh still carries its old version", async () => {
-    const props = { campaigns: [configured], folders: [], accounts: [], experiments: [test], attachments: [], prospects: [], totals: { pendingApproval: 0 }, onOpenSettings: vi.fn(), onMutated: vi.fn().mockResolvedValue(undefined) };
-    const view = render(<CampaignsView {...props} />);
-    choose("A"); fireEvent.change(initial(), { target: { value: "A sauvegardé" } }); save();
-    await waitFor(() => expect(props.onMutated).toHaveBeenCalledOnce());
-    await waitFor(() => expect(screen.getAllByRole("button", { name: "Enregistrer" })[0]).toBeDisabled());
-    view.rerender(<CampaignsView {...props} experiments={[{ ...test, variants: test.variants.map(v => ({ ...v })) }]} />);
-    expect(initial()).toHaveValue("A sauvegardé");
-    fireEvent.change(initial(), { target: { value: "A deuxième sauvegarde" } }); save();
-    await waitFor(() => expect(apiMocks.updateExperimentVariant).toHaveBeenCalledTimes(2));
-    expect(apiMocks.updateExperimentVariant.mock.calls[1][1].version).toBe(4);
-    await waitFor(() => expect(screen.getAllByRole("button", { name: "Enregistrer" })[0]).toBeDisabled());
-    fireEvent.change(initial(), { target: { value: "Saisie abandonnée" } });
-    fireEvent.click(screen.getByRole("button", { name: "Annuler" }));
-    expect(initial()).toHaveValue("A deuxième sauvegarde");
-  });
-
-  it("shows every minimum follow-up delay relative to the preceding send", () => {
+  it("keeps minimum follow-up delays relative to the preceding confirmed send", () => {
     renderCampaigns();
     ["+3 j après J0", "+7 j après R1", "+7 j après R2", "+14 j après R3", "+14 j après R4"].forEach(label => expect(screen.getByText(label)).toBeInTheDocument());
     expect(screen.getByText(/Délais minimaux après l’envoi précédent/)).toBeInTheDocument();
   });
 
-  it("keeps confirmed saves when refreshing the dashboard fails and uses the new versions on the next edit", async () => {
-    const { onMutated } = renderCampaigns([test], [configured]);
-    onMutated.mockRejectedValueOnce(new Error("Réseau indisponible"));
-    fireEvent.change(initial(), { target: { value: "Général enregistré" } });
-    choose("A"); fireEvent.change(initial(), { target: { value: "A enregistré" } }); save();
+  it("saves A1 and its inherited B1 blocks without changing campaign defaults or another test, then reloads them", async () => {
+    const other = { ...test, id: "other-test", variants: test.variants.map(v => ({ ...v, id: `other-${v.id}` })) };
+    const view = renderCampaigns([test, other], [configured]);
+    fireEvent.change(initial(), { target: { value: "Nouvelles consignes A1" } });
+    fireEvent.change(screen.getByLabelText("Consignes pour personnaliser l’objet"), { target: { value: "Nouvel objet A1" } });
+    fireEvent.change(screen.getByLabelText("Consignes pour la relance R1"), { target: { value: "Nouvelle relance A1" } });
+    choose("B");
+    expect(initial()).toHaveValue("Nouvelles consignes A1"); expect(initial()).toBeDisabled();
+    expect(group("initial").getByText("Identique à A1 · hérité")).toBeInTheDocument();
+    save(); await waitFor(() => expect(view.onMutated).toHaveBeenCalledOnce());
+    expect(apiMocks.updateCampaign).not.toHaveBeenCalled();
+    expect(apiMocks.updateExperimentVariant.mock.calls.map(call => call[0])).toEqual(test.variants.map(v => v.id));
+    const saved = new Map(apiMocks.updateExperimentVariant.mock.calls.map(([id, payload]) => [id, payload.overrides]));
+    expect(saved.get(test.variants[0].id)).toMatchObject({ initial: { body: "Modèle A1", bodyInstructions: "Nouvelles consignes A1", metadata: "à conserver" } });
+    expect(saved.get(test.variants[1].id)).toMatchObject({ initial: { body: "Modèle A1", bodyInstructions: "Nouvelles consignes A1" }, subject: { subjectInstructions: "Nouvel objet A1" }, followup0: { instructions: "Nouvelle relance A1" } });
+    view.unmount();
+    renderCampaigns([{ ...test, variants: test.variants.map(v => ({ ...v, version: 4, overrides: saved.get(v.id) })) }, other], [configured]);
+    expect(initial()).toHaveValue("Nouvelles consignes A1"); choose("B");
+    expect(initial()).toHaveValue("Nouvelles consignes A1"); expect(initial()).toBeDisabled();
+    expect(screen.getAllByRole("button", { name: "Enregistrer" })[0]).toBeDisabled();
+    fireEvent.change(screen.getByLabelText("Expérience"), { target: { value: other.id } });
+    expect(initial()).toHaveValue("Consignes A1");
+  });
+
+  it("customizes B1 independently and keeps its edits when switching back to A1", async () => {
+    const view = renderCampaigns([test], [configured]); choose("B");
+    fireEvent.click(group("initial").getByRole("button", { name: "✎ Personnaliser" }));
+    fireEvent.change(initial(), { target: { value: "Consignes B1 distinctes" } });
+    choose("A"); expect(initial()).toHaveValue("Consignes A1");
+    choose("B"); expect(initial()).toHaveValue("Consignes B1 distinctes");
+    save(); await waitFor(() => expect(view.onMutated).toHaveBeenCalledOnce());
+    expect(apiMocks.updateExperimentVariant).toHaveBeenCalledOnce();
+    expect(apiMocks.updateExperimentVariant.mock.calls[0]).toEqual([test.variants[1].id, expect.objectContaining({ version: 3, overrides: expect.objectContaining({ initial: expect.objectContaining({ bodyInstructions: "Consignes B1 distinctes" }) }) })]);
+    const persisted = apiMocks.updateExperimentVariant.mock.calls[0][1].overrides;
+    view.unmount(); renderCampaigns([{ ...test, variants: [test.variants[0], { ...test.variants[1], version: 4, overrides: persisted }] }], [configured]); choose("B");
+    expect(initial()).toHaveValue("Consignes B1 distinctes"); expect(initial()).toBeEnabled();
+  });
+
+  it("preserves historical B1 values, including partial overrides, until the user explicitly takes A1 again", async () => {
+    const legacy = { ...test, variants: [test.variants[0], { ...test.variants[1], overrides: { initial: { bodyInstructions: "Anciennes consignes B1" }, followup0: { instructions: "Relance B conservée" }, extension: { note: "à conserver" } } }] };
+    renderCampaigns([legacy], [configured]);
+    expect(screen.getAllByRole("button", { name: "Enregistrer" })[0]).toBeDisabled();
+    expect(screen.getByRole("button", { name: /^B1/ })).toHaveTextContent("3 perso.");
+    choose("B"); expect(initial()).toHaveValue("Anciennes consignes B1");
+    expect(screen.getByLabelText("Modèle du premier email")).toHaveValue("Modèle initial");
+    fireEvent.click(group("initial").getByRole("button", { name: "↶ Reprendre A1" }));
+    expect(initial()).toHaveValue("Consignes A1"); expect(initial()).toBeDisabled();
+    save(); await waitFor(() => expect(apiMocks.updateExperimentVariant).toHaveBeenCalledOnce());
+    expect(apiMocks.updateExperimentVariant.mock.calls[0][1].overrides).toMatchObject({ initial: { body: "Modèle A1", bodyInstructions: "Consignes A1" }, followup0: { instructions: "Relance B conservée" }, extension: { note: "à conserver" } });
+  });
+
+  it("preserves explicitly empty A1 instructions and propagates them to an inherited B1", async () => {
+    renderCampaigns([test], [configured]); fireEvent.change(initial(), { target: { value: "" } });
+    expect(initial()).toHaveValue(""); choose("B"); expect(initial()).toHaveValue(""); save();
+    await waitFor(() => expect(apiMocks.updateExperimentVariant).toHaveBeenCalledTimes(2));
+    expect(apiMocks.updateExperimentVariant.mock.calls[1][1].overrides.initial.bodyInstructions).toBe("");
+  });
+
+  it.each(["assigned", "running"])("protects a test reference that is %s", mode => {
+    renderCampaigns([{ ...test, status: mode === "running" ? "recruiting" : "draft", variants: test.variants.map(v => ({ ...v, assignedCount: mode === "assigned" && v.label === "B" ? 1 : 0 })) }], [configured]);
+    expect(initial()).toBeDisabled(); expect(screen.getByText(/consultation uniquement/)).toBeInTheDocument();
+    choose("B"); expect(initial()).toBeDisabled(); expect(group("initial").getByRole("button", { name: "✎ Personnaliser" })).toBeDisabled();
+  });
+
+  it("retries an inherited B1 save after A1 succeeds without losing the remaining change or resaving A1", async () => {
+    apiMocks.updateExperimentVariant.mockResolvedValueOnce({ variant: { id: test.variants[0].id, version: 4 } }).mockRejectedValueOnce(new Error("Conflit B1"));
+    renderCampaigns([test], [configured]); fireEvent.change(initial(), { target: { value: "Référence modifiée" } }); save();
+    await screen.findByText(/Enregistrement partiel.*Conflit B1/);
+    choose("B"); expect(initial()).toHaveValue("Référence modifiée");
+    expect(screen.getAllByRole("button", { name: "Enregistrer" })[0]).toBeEnabled(); save();
+    await waitFor(() => expect(apiMocks.updateExperimentVariant).toHaveBeenCalledTimes(3));
+    await waitFor(() => expect(screen.getAllByRole("button", { name: "Enregistrer" })[0]).toBeDisabled());
+    expect(apiMocks.updateExperimentVariant.mock.calls.map(call => call[0])).toEqual([test.variants[0].id, test.variants[1].id, test.variants[1].id]);
+    expect(apiMocks.updateExperimentVariant.mock.calls[2][1]).toMatchObject({ version: 3, overrides: { initial: { bodyInstructions: "Référence modifiée" } } });
+  });
+
+  it("keeps confirmed A1 and B1 saves when refreshing fails and ignores an old dashboard response", async () => {
+    const props = { campaigns: [configured], folders: [], accounts: [], experiments: [test], attachments: [], prospects: [], totals: { pendingApproval: 0 }, onOpenSettings: vi.fn(), onMutated: vi.fn().mockRejectedValueOnce(new Error("Réseau indisponible")).mockResolvedValue(undefined) };
+    const view = render(<CampaignsView {...props} />);
+    fireEvent.change(initial(), { target: { value: "A1 enregistré" } }); save();
     await screen.findByText(/Modifications enregistrées dans Neon ; actualisation impossible/);
     expect(screen.getAllByRole("button", { name: "Enregistrer" })[0]).toBeDisabled();
-    expect(onMutated).toHaveBeenCalledOnce();
-    fireEvent.change(initial(), { target: { value: "A deuxième édition" } }); save();
-    await waitFor(() => expect(apiMocks.updateExperimentVariant).toHaveBeenCalledTimes(2));
-    expect(apiMocks.updateCampaign).toHaveBeenCalledOnce();
-    expect(apiMocks.updateExperimentVariant.mock.calls[1][1].version).toBe(4);
+    view.rerender(<CampaignsView {...props} experiments={[{ ...test, variants: test.variants.map(v => ({ ...v })) }]} />);
+    expect(initial()).toHaveValue("A1 enregistré");
+    fireEvent.change(initial(), { target: { value: "A1 deuxième saisie" } });
+    fireEvent.click(screen.getByRole("button", { name: "Annuler" })); expect(initial()).toHaveValue("A1 enregistré");
+    fireEvent.change(initial(), { target: { value: "A1 deuxième sauvegarde" } }); save();
+    await waitFor(() => expect(apiMocks.updateExperimentVariant).toHaveBeenCalledTimes(4));
+    expect(apiMocks.updateExperimentVariant.mock.calls[2][1].version).toBe(4);
+    expect(apiMocks.updateExperimentVariant.mock.calls[3][1].version).toBe(4);
+  });
+
+  it("snapshots A1 as the reference of a new test and prevents adding a version from unsaved changes", async () => {
+    apiMocks.createExperiment.mockResolvedValue({ experiment: { id: "new-test" } });
+    renderCampaigns([test], [configured]); fireEvent.click(screen.getByRole("button", { name: "+ Nouveau test" }));
+    await waitFor(() => expect(apiMocks.createExperiment).toHaveBeenCalledOnce());
+    expect(apiMocks.createExperiment.mock.calls[0][0].variants[0].overrides).toMatchObject({ initial: { body: "Modèle A1", bodyInstructions: "Consignes A1" }, subject: { subjectInstructions: "Objet A1" } });
+    fireEvent.change(initial(), { target: { value: "Non enregistré" } });
+    expect(screen.getByRole("button", { name: "+ Version" })).toBeDisabled();
+    expect(screen.getByRole("button", { name: "+ Nouveau test" })).toBeDisabled();
   });
 });

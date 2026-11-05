@@ -15,6 +15,8 @@ import { commitStagedImport, stageImport } from "../lib/import-store.mts";
 import { importPayloadSchema } from "../lib/importer.mts";
 import { readInstructionAttachment, removeInstructionAttachment, saveInstructionAttachment } from "../lib/instruction-attachments.mts";
 import { listMailbox,mailboxDetail,mailboxMutation } from "../lib/mailbox.mts";
+import { campaignVariantDefaults, materializeVariant, resolveVariantGroups } from "../../src/lib/variant-configuration";
+import type { SequenceContent } from "../../src/types";
 
 const uuid = z.string().uuid();
 const version = z.number().int().positive();
@@ -987,14 +989,37 @@ async function addExperimentVariant(request: Request, experimentId: string, iden
     allocationWeight: z.number().positive().max(1_000).default(1),
     overrides: z.record(z.string(), z.unknown()).default({}),
   }));
+  const reference = await sqlOne<{
+    campaign_version: number; target_description: string; writing_iteration_instructions: string[];
+    reply_iteration_instructions: string[]; sequence_payload: SequenceContent;
+    reference_id: string | null; reference_version: number | null; reference_overrides: Record<string, unknown> | null;
+  }>(`select c.version::int as campaign_version, c.target_description, c.writing_iteration_instructions,
+       c.reply_iteration_instructions, sequence.sequence_payload,
+       reference.id::text as reference_id, reference.version as reference_version, reference.overrides as reference_overrides
+     from app.experiments e join app.campaigns c on c.id=e.campaign_id
+     cross join lateral app.current_campaign_sequence(c.id) sequence
+     left join lateral (select v.id,v.version,v.overrides from app.experiment_variants v
+       where v.experiment_id=e.id order by (v.code='A') desc,v.code limit 1) reference on true
+     where e.id=$1::uuid and e.status='draft'`, [experimentId]);
+  if (!reference) throw new HttpError(409, "experiment_variant_locked", "Ce test n’est plus modifiable.");
+  const referenceGroups = resolveVariantGroups(campaignVariantDefaults({
+    targetDescription: reference.target_description, writingIterations: reference.writing_iteration_instructions,
+    replyIterations: reference.reply_iteration_instructions, sequence: reference.sequence_payload,
+  }), reference.reference_overrides ?? {});
+  const overrides = materializeVariant(referenceGroups, value.overrides);
   const row = await sqlOne<{ id: string; label: string; name: string | null }>(
     `with locked as (
        select pg_advisory_xact_lock(hashtextextended($1::text, 95))
+     ), reference_lock as (
+       select v.id from app.experiment_variants v where v.id=$6::uuid and v.version=$7::int for share
      ), target as (
        select e.id
-       from app.experiments e cross join locked
-       where e.id = $1::uuid and e.status = 'draft'
+       from app.experiments e join app.campaigns c on c.id=e.campaign_id cross join locked
+       where e.id = $1::uuid and e.status = 'draft' and c.version=$5
+         and (($6::uuid is null and not exists (select 1 from app.experiment_variants v where v.experiment_id=e.id))
+           or exists (select 1 from reference_lock))
          and (select count(*) from app.experiment_variants v where v.experiment_id = e.id) < 12
+       for share of e,c
      ), next_code as (
        select chr(ascii('A') + candidate.n) as code
        from target
@@ -1011,9 +1036,9 @@ async function addExperimentVariant(request: Request, experimentId: string, iden
      select target.id, next_code.code, coalesce($2, 'Version ' || next_code.code), $3, $4::jsonb
      from target cross join next_code
      returning id::text, code as label, name`,
-    [experimentId, value.name ?? null, value.allocationWeight, JSON.stringify(value.overrides)],
+    [experimentId, value.name ?? null, value.allocationWeight, JSON.stringify(overrides), reference.campaign_version, reference.reference_id, reference.reference_version],
   );
-  if (!row) throw new HttpError(409, "experiment_variant_locked", "Ce test n’est plus modifiable ou contient déjà douze versions.");
+  if (!row) throw new HttpError(409, "experiment_variant_locked", "La référence a changé, le test n’est plus modifiable ou contient déjà douze versions. Actualise le test avant de réessayer.");
   await logMutation(identity, requestId, { action: "experiment_variant_created", entityType: "experiment_variant", entityId: row.id, metadata: { experimentId, label: row.label } });
   return json({ variant: row }, 201);
 }
@@ -1035,6 +1060,8 @@ async function updateExperimentVariant(request: Request, id: string, identity: A
      where v.id = $1::uuid and e.id = v.experiment_id and e.status = 'draft'
        and ($5::bigint is null or v.version=$5::bigint)
        and not exists (select 1 from app.experiment_assignments a where a.variant_id = v.id)
+       and (v.code<>'A' or not exists (select 1 from app.experiment_assignments a
+         join app.experiment_variants sibling on sibling.id=a.variant_id where sibling.experiment_id=e.id))
      returning v.id::text, v.code as label, v.version::int`,
     [id, value.name ?? null, value.allocationWeight ?? null, value.overrides === undefined ? null : JSON.stringify(value.overrides), value.version ?? null],
   );

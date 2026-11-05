@@ -51,24 +51,30 @@ d'un résultat SMTP incertain restent inchangées. Aucune migration n'est requis
 
 ## Édition des campagnes et variantes A/B
 
-L’éditeur distingue la « Configuration générale » de la campagne et chaque
-version A/B, y compris la référence A. Une variante hérite de la configuration
-générale ; elle n’hérite pas des personnalisations de A. « Personnaliser » crée
-un bloc propre à la version et « Reprendre la configuration générale » retire
-uniquement ce bloc. Un bloc partiel complète les champs généraux ; une consigne
-explicitement vide reste vide.
+A1 est la référence du premier test ; B1, C1, etc. en sont les variantes.
+Le deuxième test possède sa propre référence A2. L’éditeur ouvre directement
+la référence et n’expose aucun niveau de configuration supplémentaire.
 
-Les variantes d’un test préparé sans affectation sont modifiables. Les autres
-s’affichent en consultation, selon les protections existantes du backend. Les
-enregistrements utilisent le numéro de version chargé pour détecter les conflits.
-Si une sauvegarde en plusieurs étapes échoue, les étapes confirmées restent
-enregistrées et seules les saisies restantes sont à réessayer. Les actualisations
-anciennes n’écrasent pas une modification confirmée.
+Les blocs identiques à A sont hérités. « Personnaliser » crée une différence
+propre à la variante ; « Reprendre A1 » reprend le bloc de la référence du test.
+Une modification de A met à jour les blocs hérités des variantes préparées,
+sans toucher leurs blocs personnalisés ni les autres tests. Une consigne
+explicitement vide reste vide. Les différences historiques sont conservées
+comme personnalisations : ouvrir l’éditeur ne réécrit aucune donnée.
 
-Les consignes de l’objet et du premier email restent enregistrées séparément
-dans les instructions structurées J0. Les modèles sont versionnés ; les emails
-personnalisés et les travaux déjà commencés conservent leur contenu. Cette
-correction ne nécessite aucune migration ni réécriture des campagnes existantes.
+Le stockage existant conserve un instantané effectif des variantes, compatible
+avec les fonctions SQL de rédaction et de réponse. La création de B copie les
+valeurs effectives de A, puis applique ses différences. La requête verrouille
+et vérifie les versions de la référence et de la campagne pour détecter un
+changement concurrent. Un nouveau test copie sa référence, indépendante du
+précédent. Aucune migration ni réécriture de production n’est nécessaire.
+
+Les variantes d’un test préparé sans affectation restent modifiables. Dès
+qu’une variante est affectée, sa référence est protégée ; un test démarré reste
+en consultation. Les sauvegardes utilisent les numéros de version chargés.
+En cas d’échec partiel, seules les modifications encore non confirmées sont
+réessayées. Les actualisations anciennes n’écrasent pas les sauvegardes.
+Les emails personnalisés et les cycles déjà commencés gardent leur contenu.
 
 Les délais visibles dans Campagnes, Messages et le détail d’une séquence sont
 relatifs à l’envoi SMTP confirmé précédent : R1 +3 jours après J0, R2 +7 après

@@ -4,6 +4,7 @@ import { api } from "../lib/api";
 import type { Campaign, CampaignFolder, Experiment, GmailAccount, InstructionAttachment, Prospect, SequenceContent } from "../types";
 import { InstructionAttachments } from "./InstructionAttachments";
 import { followupTiming } from "../lib/sequence-timing";
+import { campaignVariantDefaults, editorVariantSnapshot, experimentReference, materializeVariant, resolveVariantGroups, sameVariantConfiguration, type VariantGroupKey, type VariantOverrides } from "../lib/variant-configuration";
 
 interface CampaignsViewProps {
   campaigns: Campaign[];
@@ -32,9 +33,6 @@ function resizeDraftPasses(passes: string[], requestedCount: number): string[] {
   return Array.from({ length: count }, (_, index) => passes[index] ?? "");
 }
 
-type VariantGroupKey = "search" | "iterations" | "subject" | "initial" | "followup0" | "followup1" | "followup2" | "followup3" | "followup4" | "reply";
-type VariantOverrides = Partial<Record<VariantGroupKey, Record<string, unknown>>>;
-
 function cloneOverrides(value: Record<string, unknown>): VariantOverrides {
   return JSON.parse(JSON.stringify(value || {})) as VariantOverrides;
 }
@@ -43,20 +41,6 @@ function variantSnapshot(experiments: Experiment[], campaignId: string): Record<
   return Object.fromEntries(experiments.filter((experiment) => experiment.campaignId === campaignId)
     .flatMap((experiment) => experiment.variants)
     .map((variant) => [variant.id, cloneOverrides(variant.overrides)]));
-}
-
-function variantGroup<T extends Record<string, unknown>>(overrides: VariantOverrides, key: VariantGroupKey, fallback: T): T {
-  const value = overrides[key];
-  if (!value || typeof value !== "object" || Array.isArray(value)) return fallback;
-  const merged: Record<string, unknown> = { ...fallback, ...value };
-  for (const name of Object.keys(fallback)) {
-    const original = fallback[name], candidate = value[name];
-    if ((typeof original === "string" && typeof candidate !== "string") ||
-      (Array.isArray(original) && (!Array.isArray(candidate) || !candidate.length || !candidate.every(item => typeof item === "string")))) {
-      merged[name] = original;
-    }
-  }
-  return merged as T;
 }
 
 function populationInterpretationWarning(experiment: Experiment): string | null {
@@ -126,7 +110,7 @@ function CampaignEditor({
   const [experimentBusy, setExperimentBusy] = useState(false);
   const [selectedExperimentId, setSelectedExperimentId] = useState<string | null>(null);
   const [selectedVariantId, setSelectedVariantId] = useState<string | null>(null);
-  const [variantDrafts, setVariantDrafts] = useState(() => variantSnapshot(experiments, campaign.id));
+  const [variantDrafts, setVariantDrafts] = useState(() => editorVariantSnapshot(campaign, experiments.filter(e => e.campaignId === campaign.id), variantSnapshot(experiments, campaign.id)));
   const [variantBaseline, setVariantBaseline] = useState(() => variantSnapshot(experiments, campaign.id));
   const variantVersions = useRef(Object.fromEntries(experiments.flatMap(e => e.variants).map(v => [v.id, v.version ?? 1])));
   const [message, setMessage] = useState<string | null>(null);
@@ -143,15 +127,34 @@ function CampaignEditor({
   const selectedExperiment = relatedExperiments.find((experiment) => experiment.id === selectedExperimentId)
     ?? relatedExperiments[0]
     ?? null;
-  const selectedVariant = selectedExperiment?.variants.find((variant) => variant.id === selectedVariantId) ?? null;
+  const referenceVariant = selectedExperiment ? experimentReference(selectedExperiment) : null;
+  const selectedVariant = selectedExperiment?.variants.find(variant => variant.id === selectedVariantId) ?? referenceVariant ?? null;
   const selectedOverrides = selectedVariant ? (variantDrafts[selectedVariant.id] ?? {}) : {};
-  const isGeneralConfiguration = !selectedVariant;
-  const variantLocked = !!selectedVariant && (selectedExperiment?.status !== "draft" || selectedVariant.assignedCount > 0);
-  const attachmentField = (base: string) => isGeneralConfiguration ? base : `variant:${selectedVariant?.id}:${base}`;
+  const isCampaignOnly = !selectedVariant;
+  const isReferenceVariant = !selectedVariant || selectedVariant.id === referenceVariant?.id;
+  const referenceLabel = `${referenceVariant?.label ?? "A"}${selectedExperiment ? relatedExperiments.indexOf(selectedExperiment) + 1 : 1}`;
+  const variantLocked = !!selectedVariant && (selectedExperiment?.status !== "draft" || selectedVariant.assignedCount > 0 ||
+    (isReferenceVariant && selectedExperiment?.variants.some(variant => variant.assignedCount > 0)));
+  const attachmentField = (base: string) => isCampaignOnly ? base : `variant:${selectedVariant?.id}:${base}`;
+  const defaults = campaignVariantDefaults(draft);
+  const referenceGroups = resolveVariantGroups(defaults, referenceVariant ? variantDrafts[referenceVariant.id] ?? {} : {});
+  // Exposed versions retain their stored content while a different draft is edited.
+  const selectedGroups = variantLocked && !isReferenceVariant
+    ? resolveVariantGroups(campaignVariantDefaults(baseline), variantBaseline[selectedVariant!.id] ?? {})
+    : resolveVariantGroups(isReferenceVariant ? defaults : referenceGroups, selectedOverrides);
   const campaignDirty = JSON.stringify(campaignPayload(draft)) !== JSON.stringify(campaignPayload(baseline));
-  const dirtyVariants = relatedExperiments.flatMap((experiment) => experiment.variants).filter((variant) =>
-    JSON.stringify(variantDrafts[variant.id] ?? {}) !== JSON.stringify(variantBaseline[variant.id] ?? {}),
-  );
+  function variantPayload(experiment: Experiment, variantId: string): VariantOverrides {
+    const reference = experimentReference(experiment);
+    const overrides = variantDrafts[variantId] ?? {};
+    return reference?.id === variantId ? cloneOverrides(overrides)
+      : materializeVariant(resolveVariantGroups(defaults, variantDrafts[reference?.id ?? ""] ?? {}), overrides);
+  }
+  const dirtyVariants = relatedExperiments.flatMap(experiment => experiment.variants.filter(variant => {
+    const reference = experimentReference(experiment);
+    if (reference?.id === variant.id) return !sameVariantConfiguration(variantDrafts[variant.id] ?? {}, variantBaseline[variant.id] ?? {});
+    if (experiment.status !== "draft" || variant.assignedCount > 0) return false;
+    return !sameVariantConfiguration(variantPayload(experiment, variant.id), materializeVariant(campaignVariantDefaults(baseline), variantBaseline[variant.id] ?? {}));
+  }).map(variant => ({ ...variant, experiment }))).sort((a, b) => Number(a.id !== experimentReference(a.experiment)?.id) - Number(b.id !== experimentReference(b.experiment)?.id));
   const dirty = campaignDirty || dirtyVariants.length > 0;
 
   useEffect(() => {
@@ -161,10 +164,10 @@ function CampaignEditor({
     const next = variantSnapshot(experiments, campaign.id);
     for (const variant of relatedExperiments.flatMap(e => e.variants)) {
       // A delayed dashboard response must not undo a locally confirmed save.
-      if ((variant.version ?? 1) < (variantVersions.current[variant.id] ?? 1)) next[variant.id] = variantDrafts[variant.id] ?? {};
+      if ((variant.version ?? 1) < (variantVersions.current[variant.id] ?? 1)) next[variant.id] = variantBaseline[variant.id] ?? {};
       else variantVersions.current[variant.id] = variant.version ?? 1;
     }
-    setVariantDrafts(next);
+    setVariantDrafts(editorVariantSnapshot(campaign, relatedExperiments, next));
     setVariantBaseline(next);
   }, [campaign, experiments, dirty, saving, baseline.version]);
 
@@ -177,7 +180,7 @@ function CampaignEditor({
       if ((variant.version ?? 1) < (variantVersions.current[variant.id] ?? 1)) next[variant.id] = variantBaseline[variant.id] ?? {};
       else variantVersions.current[variant.id] = variant.version ?? 1;
     }
-    setVariantDrafts(next);
+    setVariantDrafts(editorVariantSnapshot(latestCampaign, relatedExperiments, next));
     setVariantBaseline(next);
     setMessage(null);
   }
@@ -200,16 +203,16 @@ function CampaignEditor({
         setBaseline(savedCampaign);
       }
       for (const variant of dirtyVariants) {
-        const result = await api.updateExperimentVariant(variant.id, { overrides: variantDrafts[variant.id] ?? {}, version: variantVersions.current[variant.id] ?? 1 });
+        const overrides = variantPayload(variant.experiment, variant.id);
+        const result = await api.updateExperimentVariant(variant.id, { overrides, version: variantVersions.current[variant.id] ?? 1 });
         variantVersions.current[variant.id] = result.variant.version;
-        setVariantBaseline(current => ({ ...current, [variant.id]: cloneOverrides(variantDrafts[variant.id] ?? {}) }));
+        setVariantBaseline(current => ({ ...current, [variant.id]: cloneOverrides(overrides) }));
         wrote = true;
       }
       allSaved = true;
       await onSaved();
       setDraft(savedCampaign);
       setBaseline(savedCampaign);
-      setVariantBaseline(variantDrafts);
       setMessage(dirtyVariants.length ? "Campagne et versions A/B enregistrées dans Neon." : "Campagne enregistrée dans Neon.");
     } catch (error) {
       const prefix = allSaved ? "Modifications enregistrées dans Neon ; actualisation impossible. "
@@ -251,7 +254,7 @@ function CampaignEditor({
         thresholdReplies: 20,
         idempotencyKey: `ui-${campaign.id}-${Date.now()}`,
         variants: [
-          { label: "A", name: "Référence", allocationWeight: 1, overrides: {} },
+          { label: "A", name: "Référence", allocationWeight: 1, overrides: materializeVariant(referenceGroups, {}) },
         ],
       });
       setSelectedExperimentId(result.experiment.id);
@@ -272,7 +275,7 @@ function CampaignEditor({
       const result = await api.addExperimentVariant(selectedExperiment.id);
       setSelectedVariantId(result.variant.id);
       await onSaved();
-      setMessage(`Version ${result.variant.label} ajoutée. Elle reprend la configuration générale tant qu’aucun bloc n’est personnalisé.`);
+      setMessage(`Version ${result.variant.label} ajoutée. Elle reprend ${referenceLabel} tant qu’aucun bloc n’est personnalisé.`);
     } catch (error) {
       setMessage(error instanceof Error ? error.message : "Ajout de la version impossible");
     } finally {
@@ -281,13 +284,7 @@ function CampaignEditor({
   }
 
   function baseVariantGroup(key: VariantGroupKey): Record<string, unknown> {
-    if (key === "search") return { criteria: draft.targetDescription };
-    if (key === "iterations") return { draftPasses: draft.writingIterations };
-    if (key === "subject") return { subject: draft.sequence.subject, subjectInstructions: draft.sequence.subjectInstructions };
-    if (key === "initial") return { body: draft.sequence.steps[0], bodyInstructions: draft.sequence.stepInstructions[0] };
-    if (key === "reply") return { replyIterations: draft.replyIterations };
-    const index = Number(key.replace("followup", "")) + 1;
-    return { body: draft.sequence.steps[index], instructions: draft.sequence.stepInstructions[index] };
+    return referenceGroups[key];
   }
 
   function updateVariantGroup(key: VariantGroupKey, value: Record<string, unknown>) {
@@ -312,15 +309,15 @@ function CampaignEditor({
   }
 
   function variantBlock(key: VariantGroupKey, label: string, children: ReactNode) {
-    if (isGeneralConfiguration) return <div className="v35-base-group" data-v35-group={key}>{children}</div>;
+    if (isReferenceVariant) return <fieldset className="v35-inputs v35-base-group" data-v35-group={key} disabled={variantLocked}>{children}</fieldset>;
     const customized = Object.hasOwn(selectedOverrides, key);
     return (
       <div className={`v35-group ${customized ? "v35-custom" : "v35-inherited"}`} data-v35-group={key}>
         <div className="v35-group-head">
           <span>{label}</span>
           <div className="v35-group-tools">
-            <span className="v35-flag">{customized ? "Personnalisé" : "Configuration générale · héritée"}</span>
-            <button className="v35-group-action" type="button" disabled={variantLocked} onClick={() => customized ? inheritVariantGroup(key) : customizeVariantGroup(key)}>{customized ? "↶ Reprendre la configuration générale" : "✎ Personnaliser"}</button>
+            <span className="v35-flag">{customized ? "Personnalisé" : `Identique à ${referenceLabel} · hérité`}</span>
+            <button className="v35-group-action" type="button" disabled={variantLocked} onClick={() => customized ? inheritVariantGroup(key) : customizeVariantGroup(key)}>{customized ? `↶ Reprendre ${referenceLabel}` : "✎ Personnaliser"}</button>
           </div>
         </div>
         <fieldset className="v35-inputs" disabled={!customized||variantLocked}>{children}</fieldset>
@@ -328,16 +325,13 @@ function CampaignEditor({
     );
   }
 
-  const searchGroup = variantGroup(selectedOverrides, "search", { criteria: draft.targetDescription });
-  const iterationsGroup = variantGroup(selectedOverrides, "iterations", { draftPasses: draft.writingIterations });
-  const subjectGroup = variantGroup(selectedOverrides, "subject", { subject: draft.sequence.subject, subjectInstructions: draft.sequence.subjectInstructions });
-  const initialGroup = variantGroup(selectedOverrides, "initial", { body: draft.sequence.steps[0], bodyInstructions: draft.sequence.stepInstructions[0] });
-  const replyOverride = selectedOverrides.reply ?? {};
-  const replySteps = Array.isArray(replyOverride.replyIterations) ? replyOverride.replyIterations as string[]
-    : draft.replyIterations.map((text,index) => index === 0 && typeof replyOverride.replyInstructions === "string"
-      ? [replyOverride.replyInstructions,text].filter(Boolean).join("\n\n") : text);
+  const searchGroup = selectedGroups.search as { criteria: string };
+  const iterationsGroup = selectedGroups.iterations as { draftPasses: string[] };
+  const subjectGroup = selectedGroups.subject as { subject: string; subjectInstructions: string };
+  const initialGroup = selectedGroups.initial as { body: string; bodyInstructions: string };
+  const replySteps = selectedGroups.reply.replyIterations as string[];
   function setReplySteps(steps: string[]) {
-    if (isGeneralConfiguration) setDraft(current => ({ ...current, replyIterations: steps }));
+    if (isCampaignOnly) setDraft(current => ({ ...current, replyIterations: steps }));
     else updateVariantGroup("reply", { replyIterations: steps });
   }
 
@@ -479,7 +473,7 @@ function CampaignEditor({
                 {!relatedExperiments.length ? <option value="">Aucun test</option> : null}
                 {relatedExperiments.map((experiment, index) => <option value={experiment.id} key={experiment.id}>Test {index + 1} · {experiment.variants.length > 1 ? experiment.variants.map((variant) => variant.label).join(" / ") : "À configurer"} · {experiment.status === "recruiting" ? "En cours" : experiment.status === "draft" ? "Préparé" : "Terminé"}</option>)}
               </select>
-              <button type="button" disabled={experimentBusy} onClick={() => void createExperiment()}>+ Nouveau test</button>
+              <button type="button" disabled={experimentBusy || dirty || saving} title={dirty ? "Enregistre les modifications avant de créer un test" : undefined} onClick={() => void createExperiment()}>+ Nouveau test</button>
             </div>
           </div>
           {selectedExperiment ? (
@@ -504,37 +498,38 @@ function CampaignEditor({
             <div className="v35-topline">
               <div><strong>Versions du test · {selectedExperiment.name}</strong><small>{selectedExperiment.variants.length > 1 ? selectedExperiment.variants.map((variant) => variant.label).join(" / ") : "Référence A"}</small></div>
               <div className="v35-tabs v43-tabs" role="group" aria-label="Choisir une version">
-                <button type="button" className={isGeneralConfiguration?"on":""} onClick={()=>setSelectedVariantId(null)}>Configuration générale</button>
-                {selectedExperiment.variants.map((variant, index) => {
-                  const customCount = Object.keys(variantDrafts[variant.id] ?? {}).length;
-                  return <button type="button" className={selectedVariant?.id === variant.id ? "on" : ""} onClick={() => setSelectedVariantId(variant.id)} key={variant.id}>{variant.label}{relatedExperiments.indexOf(selectedExperiment) + 1}{index === 0 ? " · Référence" : ` · ${customCount} perso.`}</button>;
+                {selectedExperiment.variants.map((variant) => {
+                  const customCount = Object.keys(variantDrafts[variant.id] ?? {}).filter(key => key in referenceGroups).length;
+                  return <button type="button" className={selectedVariant?.id === variant.id ? "on" : ""} onClick={() => setSelectedVariantId(variant.id)} key={variant.id}>{variant.label}{relatedExperiments.indexOf(selectedExperiment) + 1}{variant.id === referenceVariant?.id ? " · Référence" : ` · ${customCount} perso.`}</button>;
                 })}
-                <button type="button" id="v35-add-version" disabled={experimentBusy || selectedExperiment.status !== "draft" || selectedExperiment.variants.length >= 12} onClick={() => void addVariant()}>+ Version</button>
+                <button type="button" id="v35-add-version" disabled={experimentBusy || dirty || saving || selectedExperiment.status !== "draft" || selectedExperiment.variants.length >= 12} title={dirty ? "Enregistre les modifications avant d’ajouter une version" : undefined} onClick={() => void addVariant()}>+ Version</button>
               </div>
             </div>
-            <div className="v35-options"><small>{isGeneralConfiguration?"Paramètres communs de la campagne. Chaque version les reprend sauf pour ses blocs personnalisés.":`${selectedVariant?.label}${relatedExperiments.indexOf(selectedExperiment)+1} · ${Object.keys(selectedOverrides).length} bloc(s) personnalisé(s).`}</small></div>
-            {variantLocked?<p className="v35-explain" role="status">Cette version est déjà utilisée ou le test n’est plus modifiable : consultation uniquement. La configuration générale reste modifiable.</p>:!isGeneralConfiguration?<p className="v35-explain">Les éléments gris reprennent la configuration générale. Clique sur « Personnaliser » pour modifier uniquement ce bloc, y compris pour A.</p>:null}
+            <div className="v35-options"><small>{isReferenceVariant ? `${referenceLabel} · Référence de ce test.` : `${selectedVariant?.label}${relatedExperiments.indexOf(selectedExperiment) + 1} · ${Object.keys(selectedOverrides).filter(key => key in referenceGroups).length} bloc(s) personnalisé(s) par rapport à ${referenceLabel}.`}</small></div>
+            {variantLocked ? <p className="v35-explain" role="status">Cette version est déjà utilisée ou le test n’est plus modifiable : consultation uniquement.</p>
+              : isReferenceVariant ? <p className="v35-explain">Modifie ici la référence {referenceLabel}. Les blocs identiques des autres versions de ce test reprennent ses modifications.</p>
+              : <p className="v35-explain">Les éléments gris reprennent {referenceLabel}. Clique sur « Personnaliser » pour modifier ce bloc dans cette version.</p>}
             <p className="v35-explain">Les emails personnalisés déjà enregistrés restent dans l’onglet Messages ; cette sauvegarde ne les réécrit pas.</p>
           </section>
         ) : null}
 
         <section className="target-section">
-          <div className="target-section-title"><h3>Critères et instructions de recherche des prospects</h3><small>{isGeneralConfiguration ? "Recherche générale" : `Recherche · version ${selectedVariant?.label}`}</small></div>
+          <div className="target-section-title"><h3>Critères et instructions de recherche des prospects</h3><small>{isCampaignOnly ? "Recherche" : isReferenceVariant ? `Recherche · référence ${referenceLabel}` : `Recherche · version ${selectedVariant?.label}`}</small></div>
           {variantBlock("search", "Recherche de prospects", <div className="target-field"><textarea rows={6} aria-label="Critères et instructions de recherche des prospects" value={searchGroup.criteria} onChange={(event) => {
-            if (isGeneralConfiguration) setDraft((current) => ({ ...current, targetDescription: event.target.value }));
+            if (isCampaignOnly) setDraft((current) => ({ ...current, targetDescription: event.target.value }));
             else updateVariantGroup("search", { ...searchGroup, criteria: event.target.value });
           }} /><InstructionAttachments attachments={attachments} scope="campaign" campaignId={campaign.id} fieldKey={attachmentField("search")} /></div>)}
         </section>
 
         <section className="target-section">
-          <div className="target-section-title"><h3>Itérations de rédaction IA</h3><small>{isGeneralConfiguration ? "Configuration générale" : `Version ${selectedVariant?.label}`}</small></div>
+          <div className="target-section-title"><h3>Itérations de rédaction IA</h3><small>{isCampaignOnly ? "Rédaction" : isReferenceVariant ? `Référence ${referenceLabel}` : `Version ${selectedVariant?.label}`}</small></div>
           {variantBlock("iterations", "Itérations", <div className="v23-pass-config"><div className="v23-pass-head"><label>Nombre d’itérations <input type="number" value={iterationsGroup.draftPasses.length} min={1} max={maximumDraftPasses} onChange={(event) => {
             const nextPasses = resizeDraftPasses(iterationsGroup.draftPasses, event.currentTarget.valueAsNumber);
-            if (isGeneralConfiguration) setDraft((current) => ({ ...current, writingIterations: nextPasses }));
+            if (isCampaignOnly) setDraft((current) => ({ ...current, writingIterations: nextPasses }));
             else updateVariantGroup("iterations", { ...iterationsGroup, draftPasses: nextPasses });
           }} /></label><span className="target-pill">{iterationsGroup.draftPasses.length} itération{iterationsGroup.draftPasses.length > 1 ? "s" : ""} successive{iterationsGroup.draftPasses.length > 1 ? "s" : ""}</span></div><div className="v23-pass-list">{iterationsGroup.draftPasses.map((pass, index) => <label className="v23-pass-step" key={index}><strong>Itération {index + 1}</strong><small>{index === 0 ? "Prépare une première version de la séquence : objet, premier email et relances." : "Améliore la version précédente en appliquant les consignes ci-dessous."}</small><textarea value={pass} onChange={(event) => {
             const nextPasses = iterationsGroup.draftPasses.map((currentPass, passIndex) => passIndex === index ? event.target.value : currentPass);
-            if (isGeneralConfiguration) setDraft((current) => ({ ...current, writingIterations: nextPasses }));
+            if (isCampaignOnly) setDraft((current) => ({ ...current, writingIterations: nextPasses }));
             else updateVariantGroup("iterations", { ...iterationsGroup, draftPasses: nextPasses });
           }} /></label>)}<InstructionAttachments attachments={attachments} scope="campaign" campaignId={campaign.id} fieldKey={attachmentField("iterations")} /></div><p className="v23-pass-help">Chaque prospect et sa version A/B suivent séparément ces itérations. Une activation planifiée traite une seule passe puis reprend la version archivée dans Neon au passage suivant.</p></div>)}
         </section>
@@ -542,19 +537,19 @@ function CampaignEditor({
         <section className="target-section">
           <div className="target-section-title"><h3>Premier email</h3><small>Objet et modèle personnalisables séparément</small></div>
           {variantBlock("subject", "Objet", <div className="target-field"><label className="target-field target-subject-field"><span>Objet type à personnaliser</span><input value={subjectGroup.subject} onChange={(event) => {
-            if (isGeneralConfiguration) setDraft((current) => ({ ...current, sequence: { ...current.sequence, subject: event.target.value } }));
+            if (isCampaignOnly) setDraft((current) => ({ ...current, sequence: { ...current.sequence, subject: event.target.value } }));
             else updateVariantGroup("subject", { ...subjectGroup, subject: event.target.value });
           }} /></label><details className="v25-instructions v25-subject-guidance"><summary>Instructions{subjectGroup.subjectInstructions.trim() ? " · renseignées" : ""}</summary><div className="v25-instructions-body"><label>Consignes pour personnaliser l’objet<textarea value={subjectGroup.subjectInstructions} onChange={(event) => {
-            if (isGeneralConfiguration) setDraft((current) => ({ ...current, sequence: { ...current.sequence, subjectInstructions: event.target.value } }));
+            if (isCampaignOnly) setDraft((current) => ({ ...current, sequence: { ...current.sequence, subjectInstructions: event.target.value } }));
             else updateVariantGroup("subject", { ...subjectGroup, subjectInstructions: event.target.value });
           }} /></label><InstructionAttachments attachments={attachments} scope="campaign" campaignId={campaign.id} fieldKey={attachmentField("subject-instructions")} /></div></details></div>)}
           {variantBlock("initial", "Premier message", <div className="target-field"><label className="target-field target-initial-field"><span>Modèle du premier email</span><textarea rows={8} value={initialGroup.body} onChange={(event) => {
-            if (isGeneralConfiguration) {
+            if (isCampaignOnly) {
               const steps = draft.sequence.steps.map((value, index) => index === 0 ? event.target.value : value) as SequenceContent["steps"];
               setDraft((current) => ({ ...current, sequence: { ...current.sequence, steps } }));
             } else updateVariantGroup("initial", { ...initialGroup, body: event.target.value });
           }} /></label><InstructionAttachments attachments={attachments} scope="campaign" campaignId={campaign.id} fieldKey={attachmentField("initial-model")} /><details className="v25-instructions"><summary>Instructions{initialGroup.bodyInstructions.trim() ? " · renseignées" : ""}</summary><div className="v25-instructions-body"><label>Consignes pour le premier email<textarea value={initialGroup.bodyInstructions} onChange={(event) => {
-            if (isGeneralConfiguration) {
+            if (isCampaignOnly) {
               const stepInstructions = draft.sequence.stepInstructions.map((value, index) => index === 0 ? event.target.value : value) as SequenceContent["stepInstructions"];
               setDraft((current) => ({ ...current, sequence: { ...current.sequence, stepInstructions } }));
             } else updateVariantGroup("initial", { ...initialGroup, bodyInstructions: event.target.value });
@@ -567,14 +562,14 @@ function CampaignEditor({
             {draft.sequence.steps.slice(1).map((_step, followupIndex) => {
               const index = followupIndex + 1;
               const key = `followup${followupIndex}` as VariantGroupKey;
-              const followupGroup = variantGroup(selectedOverrides, key, { body: draft.sequence.steps[index], instructions: draft.sequence.stepInstructions[index] });
+              const followupGroup = selectedGroups[key] as { body: string; instructions: string };
               return <div key={index}>{variantBlock(key, `R${index} · ${followupTiming[followupIndex].label}`, <article className="target-sequence-card"><span className="target-sequence-header"><strong>R{index}</strong><small>{followupTiming[followupIndex].label}</small></span><textarea value={followupGroup.body} onChange={(event) => {
-                if (isGeneralConfiguration) {
+                if (isCampaignOnly) {
                   const steps = draft.sequence.steps.map((value, stepIndex) => stepIndex === index ? event.target.value : value) as SequenceContent["steps"];
                   setDraft((current) => ({ ...current, sequence: { ...current.sequence, steps } }));
                 } else updateVariantGroup(key, { ...followupGroup, body: event.target.value });
               }} /><InstructionAttachments attachments={attachments} scope="campaign" campaignId={campaign.id} fieldKey={attachmentField(`r${index}-model`)} /><details className="v25-instructions"><summary>Instructions{followupGroup.instructions.trim() ? " · renseignées" : ""}</summary><div className="v25-instructions-body"><label>Consignes pour la relance R{index}<textarea value={followupGroup.instructions} onChange={(event) => {
-                if (isGeneralConfiguration) {
+                if (isCampaignOnly) {
                   const stepInstructions = draft.sequence.stepInstructions.map((value, stepIndex) => stepIndex === index ? event.target.value : value) as SequenceContent["stepInstructions"];
                   setDraft((current) => ({ ...current, sequence: { ...current.sequence, stepInstructions } }));
                 } else updateVariantGroup(key, { ...followupGroup, instructions: event.target.value });

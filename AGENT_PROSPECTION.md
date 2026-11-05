@@ -305,12 +305,21 @@ SELECT agent_api.propose_experiment(
   'positive_reply',
   '[
     {"code":"A","name":"Référence","weight":1,"overrides":{}},
-    {"code":"B","name":"Objet court","weight":1,"overrides":{"subject":"Question rapide"}}
+    {"code":"B","name":"Objet court","weight":1,"overrides":{"subject":{"subject":"Question rapide"}}}
   ]'::jsonb,
   $run_id,
   'experiment:campaign-id:subject:2026-10-v1'
 ) AS experiment_id;
 ```
+
+A est la référence du test ; B, C, etc. en sont des variantes. Lors de la
+construction d’une variante, reprendre les blocs effectifs de A puis appliquer
+les différences voulues. Les valeurs stockées constituent un instantané : ne pas
+supposer que des champs absents de B reprennent automatiquement les surcharges
+de A. Conserver les groupes structurés (`subject.subject`,
+`initial.bodyInstructions`, `iterations.draftPasses`, `reply.replyIterations`, etc.)
+pour que la rédaction et l’éditeur utilisent les mêmes consignes. Un nouveau test
+possède sa propre référence ; les cycles déjà commencés restent figés.
 
 Au moins deux variantes sont requises. Ne pas déclarer de gagnant au simple franchissement d'un seuil ; attendre la maturité, utiliser des dénominateurs comparables et documenter l'incertitude.
 
