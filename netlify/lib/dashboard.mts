@@ -448,8 +448,10 @@ export async function loadDashboard(): Promise<Record<string, unknown>> {
     const initialInstructions = (() => {
       const raw = templates.get(`${row.id}:J0`)?.instructions ?? "";
       try {
-        const parsed = JSON.parse(raw) as { subject?: unknown; body?: unknown };
-        return { subject: textValue(parsed.subject), body: textValue(parsed.body) };
+        const parsed = JSON.parse(raw) as { subject?: unknown; body?: unknown }|null;
+        if(parsed&&typeof parsed==="object"&&!Array.isArray(parsed)&&(typeof parsed.subject==="string"||typeof parsed.body==="string"))
+          return { subject: textValue(parsed.subject), body: textValue(parsed.body) };
+        return {subject:"",body:raw};
       } catch {
         return { subject: "", body: raw };
       }
@@ -654,6 +656,7 @@ export async function loadDashboard(): Promise<Record<string, unknown>> {
       label: textValue(row.code),
       name: nullableText(row.name),
       allocationWeight: numberValue(row.weight),
+      version: numberValue(row.version),
       overrides: (row.overrides as DbRow | null) ?? {},
       assignedCount: numberValue(row.assigned_count),
       engagement:engagementFor(textValue(experimentRows.find(e=>e.id===row.experiment_id)?.campaign_id),textValue(row.id)),

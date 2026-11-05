@@ -83,7 +83,7 @@ export const api = {
       body: JSON.stringify(payload),
     }),
   updateExperimentVariant: (id: string, payload: Record<string, unknown>) =>
-    request<{ variant: { id: string; label: string } }>(`/experiment-variants/${encodeURIComponent(id)}`, {
+    request<{ variant: { id: string; label: string; version:number } }>(`/experiment-variants/${encodeURIComponent(id)}`, {
       method: "PATCH",
       body: JSON.stringify(payload),
     }),

@@ -125,3 +125,30 @@ it("carries reading measurements to campaign and variant statistics with equal p
  expect(data.campaigns[0].stats.engagement.reading).toMatchObject({meanSeconds:16,samples:5,cappedSamples:1});
  expect(data.experiments[0].variants.map(v=>v.engagement.reading.meanSeconds)).toEqual([7,19]);
 });
+
+it.each([
+ [JSON.stringify({subject:"Objet personnalisé",body:"Consignes premier email"}),"Objet personnalisé","Consignes premier email"],
+ ["Consignes historiques en texte brut","","Consignes historiques en texte brut"],
+ ['"Consignes écrites entre guillemets"',"",'"Consignes écrites entre guillemets"'],
+ ["null","","null"],
+ [JSON.stringify({body:""}),"",""],
+])("reloads first-email instructions without losing legacy or explicitly empty content (%s)",async(instructions,subject,body)=>{
+ mocks.sqlQuery.mockImplementation(async(sql:string)=>{
+  if(sql.includes("select c.*"))return [{id:"c1"}];
+  if(sql.includes("select distinct on (campaign_id, step)"))return [{campaign_id:"c1",step:"J0",subject:"Modèle objet",body:"Modèle message",instructions},{campaign_id:"c1",step:"R1",body:"Relance",instructions:"Consignes R1"}];
+  return [];
+ });
+ const data=await loadDashboard() as {campaigns:Array<{sequence:{subjectInstructions:string;stepInstructions:string[]}}>};
+ expect(data.campaigns[0].sequence.subjectInstructions).toBe(subject);
+ expect(data.campaigns[0].sequence.stepInstructions).toEqual([body,"Consignes R1","","","",""]);
+});
+
+it("returns the persisted version and partial overrides of each A/B variant for safe editing",async()=>{
+ mocks.sqlQuery.mockImplementation(async(sql:string)=>{
+  if(sql.includes("from app.experiments experiment"))return [{id:"e1",campaign_id:"c1"}];
+  if(sql.includes("from app.experiment_variants v"))return [{id:"a",experiment_id:"e1",code:"A",version:"7",overrides:{initial:{bodyInstructions:"Instructions A"}}}];
+  return [];
+ });
+ const data=await loadDashboard() as {experiments:Array<{variants:Array<{version:number;overrides:unknown}>}>};
+ expect(data.experiments[0].variants[0]).toMatchObject({version:7,overrides:{initial:{bodyInstructions:"Instructions A"}}});
+});

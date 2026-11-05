@@ -49,6 +49,33 @@ quotas journaliers et de chauffe, pauses, exclusions et validations, en donnant
 la priorité aux J0 éligibles avant les relances dues. Les protections contre les doublons et le rejeu
 d'un résultat SMTP incertain restent inchangées. Aucune migration n'est requise.
 
+## Édition des campagnes et variantes A/B
+
+L’éditeur distingue la « Configuration générale » de la campagne et chaque
+version A/B, y compris la référence A. Une variante hérite de la configuration
+générale ; elle n’hérite pas des personnalisations de A. « Personnaliser » crée
+un bloc propre à la version et « Reprendre la configuration générale » retire
+uniquement ce bloc. Un bloc partiel complète les champs généraux ; une consigne
+explicitement vide reste vide.
+
+Les variantes d’un test préparé sans affectation sont modifiables. Les autres
+s’affichent en consultation, selon les protections existantes du backend. Les
+enregistrements utilisent le numéro de version chargé pour détecter les conflits.
+Si une sauvegarde en plusieurs étapes échoue, les étapes confirmées restent
+enregistrées et seules les saisies restantes sont à réessayer. Les actualisations
+anciennes n’écrasent pas une modification confirmée.
+
+Les consignes de l’objet et du premier email restent enregistrées séparément
+dans les instructions structurées J0. Les modèles sont versionnés ; les emails
+personnalisés et les travaux déjà commencés conservent leur contenu. Cette
+correction ne nécessite aucune migration ni réécriture des campagnes existantes.
+
+Les délais visibles dans Campagnes, Messages et le détail d’une séquence sont
+relatifs à l’envoi SMTP confirmé précédent : R1 +3 jours après J0, R2 +7 après
+R1, R3 +7 après R2, R4 +14 après R3 et R5 +14 après R4. Les horaires et quotas
+peuvent reporter l’envoi. Le calcul backend `app.prospection_earliest_at` reste
+inchangé.
+
 ## Environnements distants
 
 - dépôt : `Vincladef/Prospection-95`, production sur `main` ;

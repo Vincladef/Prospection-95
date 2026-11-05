@@ -1,6 +1,7 @@
 import { FormEvent, useEffect, useState } from "react";
 import type { Prospect } from "../types";
 import { replyStatusLabel, StatusBadge } from "./StatusBadge";
+import { followupTiming } from "../lib/sequence-timing";
 
 interface SequenceDrawerProps {
   prospect: Prospect;
@@ -9,7 +10,7 @@ interface SequenceDrawerProps {
 }
 
 const stepLabels = ["Message initial", "Relance R1", "Relance R2", "Relance R3", "Relance R4", "Relance R5"];
-const delays = ["J0", "J+3", "+7 jours", "+7 jours", "+14 jours", "+14 jours"];
+const delays = ["Premier envoi", ...followupTiming.map(step=>step.label)];
 
 export function SequenceDrawer({ prospect, onClose, onSave }: SequenceDrawerProps) {
   const [subject, setSubject] = useState(prospect.subject);

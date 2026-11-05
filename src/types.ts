@@ -222,6 +222,7 @@ export interface DeliverabilityProvider {
 }
 
 export interface ExperimentVariant {
+  version?: number;
   id: string;
   label: string;
   name: string | null;

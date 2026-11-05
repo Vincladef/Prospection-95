@@ -12,6 +12,7 @@ import type { Campaign, MessageStatus, Prospect } from "../types";
 import { SequenceDrawer } from "./SequenceDrawer";
 import { replyStatusLabel, statusLabel } from "./StatusBadge";
 import { lastOutboundAt, lastMessageActivity } from "../lib/message-chronology";
+import { followupTiming } from "../lib/sequence-timing";
 
 interface MessagesViewProps {
   campaigns: Campaign[];
@@ -328,11 +329,7 @@ export function MessagesView({ campaigns, prospects, totals, onOpenCampaign, onM
                 <th className="sticky-col sticky-status pin-status">Statut</th>
                 <th className="col-subject">Objet</th>
                 <th className="col-initial">Message initial</th>
-                <th>R1 <small>J+3</small></th>
-                <th>R2 <small>J+7</small></th>
-                <th>R3 <small>J+7</small></th>
-                <th>R4 <small>J+14</small></th>
-                <th>R5 <small>J+14</small></th>
+                {followupTiming.map(step=><th key={step.step} title={`${step.label}, après acceptation SMTP et selon les plages et quotas autorisés`}>{step.step} <small>{step.label}</small></th>)}
               </tr>
             </thead>
             <tbody>

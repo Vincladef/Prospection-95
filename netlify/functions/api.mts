@@ -1020,11 +1020,12 @@ async function addExperimentVariant(request: Request, experimentId: string, iden
 
 async function updateExperimentVariant(request: Request, id: string, identity: AdminIdentity, requestId: string): Promise<Response> {
   const value = await parseJson(request, z.object({
+    version: version.optional(),
     name: z.string().trim().min(1).max(180).optional(),
     allocationWeight: z.number().positive().max(1_000).optional(),
     overrides: z.record(z.string(), z.unknown()).optional(),
-  }).refine((candidate) => Object.keys(candidate).length > 0));
-  const row = await sqlOne<{ id: string; label: string }>(
+  }).refine((candidate) => candidate.name !== undefined || candidate.allocationWeight !== undefined || candidate.overrides !== undefined));
+  const row = await sqlOne<{ id: string; label: string; version: number }>(
     `update app.experiment_variants v set
        name = coalesce($2, v.name),
        weight = coalesce($3, v.weight),
@@ -1032,11 +1033,12 @@ async function updateExperimentVariant(request: Request, id: string, identity: A
        version = v.version + 1
      from app.experiments e
      where v.id = $1::uuid and e.id = v.experiment_id and e.status = 'draft'
+       and ($5::bigint is null or v.version=$5::bigint)
        and not exists (select 1 from app.experiment_assignments a where a.variant_id = v.id)
-     returning v.id::text, v.code as label`,
-    [id, value.name ?? null, value.allocationWeight ?? null, value.overrides === undefined ? null : JSON.stringify(value.overrides)],
+     returning v.id::text, v.code as label, v.version::int`,
+    [id, value.name ?? null, value.allocationWeight ?? null, value.overrides === undefined ? null : JSON.stringify(value.overrides), value.version ?? null],
   );
-  if (!row) throw new HttpError(409, "experiment_variant_locked", "Cette version a déjà été utilisée ou le test n’est plus modifiable.");
+  if (!row) throw new HttpError(409, "experiment_variant_locked", "Cette version a changé ailleurs, a déjà été utilisée ou le test n’est plus modifiable. Vos saisies sont conservées ; rechargez la version enregistrée.");
   await logMutation(identity, requestId, { action: "experiment_variant_updated", entityType: "experiment_variant", entityId: id, metadata: { label: row.label } });
   return json({ variant: row });
 }
