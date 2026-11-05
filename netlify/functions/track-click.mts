@@ -1,6 +1,28 @@
 import type { Config, Context } from "@netlify/functions";
 import { recordInteraction, verifyTrackingToken } from "../lib/tracking.mts";
 
+/**
+ * Historical emails contain a signed click target for an obsolete Substack hostname.
+ * Correct only this known article after signature verification. Leave other links
+ * untouched, preserving the original tracking token and its attribution.
+ */
+function canonicalizeLegacyArticleUrl(destination: string): string {
+  try {
+    const url = new URL(destination);
+    if (
+      url.protocol === "https:" &&
+      url.hostname.toLowerCase() === "vincentdenizdong.substack.com" &&
+      url.pathname === "/p/comment-choisit-on-ses-amis"
+    ) {
+      url.hostname = "vincentdenizot.substack.com";
+      return url.toString();
+    }
+  } catch {
+    // verifyTrackingToken already rejects malformed click destinations.
+  }
+  return destination;
+}
+
 export default async function trackClick(request: Request, context: Context): Promise<Response> {
   const token = context.params.token ?? "";
   const payload = await verifyTrackingToken(token).catch(() => null);
@@ -14,7 +36,7 @@ export default async function trackClick(request: Request, context: Context): Pr
   return new Response(null, {
     status: 302,
     headers: {
-      Location: payload.u,
+      Location: canonicalizeLegacyArticleUrl(payload.u),
       "Cache-Control": "private, no-store, max-age=0",
       "Referrer-Policy": "no-referrer",
       "X-Robots-Tag": "noindex, nofollow",
