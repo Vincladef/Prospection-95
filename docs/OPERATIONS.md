@@ -198,6 +198,20 @@ Les options se règlent campagne par campagne et ne modifient que les futurs env
 
 Les endpoints publics `/t/c/:token` et `/t/o/:token` n'acceptent que des jetons signés et expirables. La base conserve l'empreinte SHA-256 du jeton, le domaine du lien et une classe d'agent ; elle ne conserve ni adresse IP ni agent utilisateur brut. Une ouverture reste une observation technique potentiellement déclenchée par un proxy d'images comme Gmail. Ne jamais la présenter comme une lecture humaine certaine.
 
+Le backend utilise par défaut `https://95.denizdong.fr` pour les futurs liens
+de clic (`/t/c/`) et pixels (`/t/o/`, ou `/t/r/` pour la durée de lecture).
+Cette valeur publique est versionnée dans `tracking.mts` et ne dépend pas du
+domaine principal Netlify (`URL` ou `DEPLOY_PRIME_URL`). Aucune nouvelle variable
+Netlify n’est nécessaire. Un remplacement facultatif `TRACKING_BASE_URL`, limité
+aux Functions, doit être une origine HTTPS sans chemin, identifiants, paramètres
+ni fragment. Le domaine est un alias
+du même site Netlify : aucune nouvelle fonction, base ou clé de signature.
+`APP_BASE_URL` reste `https://prospection-95.netlify.app` pour l’interface.
+La préparation des liens intervient au moment de l’envoi : seuls les nouveaux
+liens changent, y compris pour les messages déjà en attente d’envoi. Les emails
+déjà envoyés ne sont pas réécrits. Conserver le site `prospection-95.netlify.app`,
+les routes historiques et la clé HMAC afin de servir leurs anciens liens.
+
 Recette réelle minimale :
 
 1. utiliser une campagne et un destinataire de recette explicitement identifiés ;

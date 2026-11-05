@@ -9,6 +9,7 @@ const TOKEN_TTL_SECONDS = 400 * 24 * 60 * 60;
 const TRACKING_KEY_STORE = "prospection95-tracking-keys";
 const TRACKING_KEY_NAME = "signed-interactions-v1";
 const TRACKING_KEY_REGION = "eu-central-1";
+const DEFAULT_TRACKING_BASE_URL = "https://95.denizdong.fr";
 
 export type TrackingKind = "open" | "click";
 
@@ -293,7 +294,9 @@ export async function recordInteraction(input: {
 }
 
 export function trackingBaseUrl(): string {
-  const value = env("URL") ?? env("DEPLOY_PRIME_URL");
-  if (!value || !safeHttpUrl(value)) throw new Error("Netlify application URL is unavailable for tracking");
-  return value.replace(/\/$/, "");
+  const url = new URL(env("TRACKING_BASE_URL")?.trim() || DEFAULT_TRACKING_BASE_URL);
+  if (url.protocol !== "https:" || url.username || url.password || url.pathname !== "/" || url.search || url.hash) {
+    throw new Error("TRACKING_BASE_URL must be an HTTPS origin without a path, credentials, query or fragment");
+  }
+  return url.origin;
 }
