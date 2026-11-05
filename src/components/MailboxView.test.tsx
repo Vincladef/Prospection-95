@@ -15,6 +15,27 @@ it("shows the reply inline with its Gmail sender and no modal",async()=>{
  expect(screen.queryByRole("dialog")).not.toBeInTheDocument();expect(screen.getByText("Depuis")).toHaveTextContent("sender@example.test");
  expect(screen.getByText("Votre proposition m’intéresse.",{selector:".message-body"})).toBeInTheDocument();
 });
+it.each([['negative','Refus'],['opposition','Ne plus contacter']] as const)("shows %s as classified without an expected reply",async(classification,label)=>{
+ const thread={...t,responseClassification:classification,responseAnalyzedAt:"2026-11-05T06:00:00Z",responseRationale:"Le correspondant refuse la proposition.",needsReply:false};
+ vi.mocked(api.mailbox).mockResolvedValue({...page,threads:[thread],counts:{...page.counts,action:0}});
+ vi.mocked(api.mailboxDetail).mockResolvedValue(detail(thread));renderView();
+ expect(await screen.findByRole("button",{name:"✓ Classé"})).toBeDisabled();
+ expect(screen.getAllByText(label)).toHaveLength(2);
+ expect(screen.getByText(/Le correspondant refuse la proposition/,{selector:"p"})).toBeInTheDocument();
+ expect(screen.queryByText("À répondre")).not.toBeInTheDocument();
+ expect(screen.queryByText(/Réponse du correspondant attendue/)).not.toBeInTheDocument();
+ expect(screen.getByRole("link",{name:"Ouvrir dans Gmail ↗"})).toBeInTheDocument();
+});
+it("makes a positive classification visible with its analysis and keeps the reply action",async()=>{
+ const thread={...t,responseClassification:"positive" as const,responseAnalyzedAt:"2026-11-05T06:00:00Z",responseRationale:"Intérêt explicite pour la proposition."};
+ vi.mocked(api.mailbox).mockResolvedValue({...page,threads:[thread]});vi.mocked(api.mailboxDetail).mockResolvedValue(detail(thread));renderView();
+ expect(await screen.findByRole("button",{name:"✓ Traité"})).toBeEnabled();
+ expect(screen.getAllByText("Réponse positive")).toHaveLength(2);expect(screen.getByText(/Analyse GPT ·/)).toBeInTheDocument();
+});
+it("does not invent a classification while the GPT analysis is pending",async()=>{
+ renderView();await screen.findByRole("textbox",{name:"Votre réponse"});
+ expect(screen.getAllByText("À qualifier")).toHaveLength(2);expect(screen.getByText("Classement GPT en attente")).toBeInTheDocument();
+});
 it("labels sent and received messages separately throughout the conversation history",async()=>{
  const d=detail();const received=d.messages[0];
  d.messages=[{...received,id:"sent-1",direction:"outbound",kind:"manual",from:t.accountEmail,to:[t.email],body:"Notre proposition",status:"sent_manually"},received];

@@ -81,6 +81,8 @@ export async function loadDashboard(): Promise<Record<string, unknown>> {
              selected.campaign_id::text, selected.campaign_name,
              conv.id::text as conversation_id, conv.current_step::text,
              conv.state::text as conversation_state,
+             (select max(coalesce(sent.smtp_accepted_at,sent.sent_at)) from app.email_messages sent
+               where sent.conversation_id=conv.id and sent.direction='outbound' and sent.technical_confirmation) as last_outbound_at,
              reply_tracking.progress as reply_progress, reply_thread.messages as conversation_messages,
              exists(select 1 from app.email_messages reply
                where reply.conversation_id = conv.id and reply.direction = 'inbound'
@@ -150,10 +152,10 @@ export async function loadDashboard(): Promise<Record<string, unknown>> {
       left join lateral (
         select jsonb_agg(jsonb_build_object('id',t.id,'direction',t.direction,'kind',t.kind,
           'subject',t.subject,'body',t.body_text,'at',t.at) order by t.at,t.id) as messages
-        from (select m.id,m.direction,m.kind,m.subject,m.body_text,coalesce(m.received_at,m.sent_at,m.created_at) as at
+        from (select m.id,m.direction,m.kind,m.subject,m.body_text,coalesce(m.received_at,m.smtp_accepted_at,m.sent_at,m.created_at) as at
           from app.email_messages m where m.conversation_id=conv.id and (m.kind='reply' and m.direction='inbound'
             or m.direction='outbound' and m.technical_confirmation)
-          order by coalesce(m.received_at,m.sent_at,m.created_at) desc,m.id desc limit 50) t
+          order by coalesce(m.received_at,m.smtp_accepted_at,m.sent_at,m.created_at) desc,m.id desc limit 50) t
       ) reply_thread on true
       left join lateral (
         select state.*
@@ -526,6 +528,7 @@ export async function loadDashboard(): Promise<Record<string, unknown>> {
       conversationMessages: row.conversation_messages ?? [],
       step: nullableText(row.current_step),
       lastSentAt: isoValue(summary.lastSentAt),
+      lastOutboundAt: isoValue(row.last_outbound_at),
       senderEmail: nullableText(row.sender_email),
       openObserved: Boolean(row.open_observed),
       clickObserved: Boolean(row.click_observed),

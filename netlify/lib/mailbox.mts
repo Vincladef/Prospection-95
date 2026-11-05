@@ -4,7 +4,7 @@ import { HttpError, json, parseJson } from "./http.mts";
 import { auditEvent } from "./audit.mts";
 import type { AdminIdentity } from "./auth.mts";
 import {gmailConversationUrl} from "./mailbox-url.mts";
-import {prospectionMailboxScope,prospectionLinkedMessageIds,mailboxLatestCategory,mailboxNeedsReply} from "./mailbox-scope.mts";
+import {prospectionMailboxScope,prospectionLinkedMessageIds,mailboxLatestCategory,mailboxNeedsReply,mailboxWaiting} from "./mailbox-scope.mts";
 
 const summary = `t.id::text, t.account_id::text as "accountId", a.email as "accountEmail",
  t.conversation_id::text as "conversationId",t.prospect_id::text as "prospectId",
@@ -13,6 +13,8 @@ const summary = `t.id::text, t.account_id::text as "accountId", a.email as "acco
  org.name as organization,latest.subject,(${mailboxLatestCategory}) as category,t.archived,t.unread,t.priority,(${mailboxNeedsReply}) as "needsReply",
  t.version::int,latest.id::text as "lastMessageId",coalesce(latest.received_at,latest.smtp_accepted_at,latest.sent_at,latest.created_at) as "lastMessageAt",
  left(latest.body_text,180) as snippet,latest.direction as "lastDirection",
+ response_analysis.classification::text as "responseClassification",response_analysis.created_at as "responseAnalyzedAt",
+ response_analysis.confidence as "responseConfidence",response_analysis.rationale as "responseRationale",
  t.last_synced_at as "lastSyncedAt",t.last_error_code as "syncError",
  (select count(*)::int from app.mailbox_sync_jobs q where q.thread_id=t.id and q.status in ('pending','running')) as "pendingSync"`;
 const joins = `from app.mailbox_threads t join app.gmail_accounts a on a.id=t.account_id
@@ -21,7 +23,15 @@ const joins = `from app.mailbox_threads t join app.gmail_accounts a on a.id=t.ac
  left join app.prospects p on p.id=t.prospect_id left join app.organizations org on org.id=p.organization_id
  left join lateral(select actual.* from app.email_messages actual where actual.mailbox_thread_id=t.id
   and actual.id in (${prospectionLinkedMessageIds})
-  order by coalesce(actual.received_at,actual.smtp_accepted_at,actual.sent_at,actual.created_at) desc,actual.id desc limit 1) latest on true`;
+  order by coalesce(actual.received_at,actual.smtp_accepted_at,actual.sent_at,actual.created_at) desc,actual.id desc limit 1) latest on true
+ left join lateral(select analysis.classification,analysis.created_at,analysis.confidence,analysis.rationale
+  from app.email_messages response left join app.inbound_analyses analysis on analysis.message_id=response.id
+  where response.mailbox_thread_id=t.id and response.direction='inbound' and response.status='received'
+   and response.kind in ('reply','unrelated') and coalesce(response.raw_headers->>'warmup','false')<>'true'
+   and response.id in (${prospectionLinkedMessageIds})
+   and not exists(select 1 from app.email_messages sent_copy where sent_copy.mailbox_thread_id=t.id
+    and sent_copy.direction='outbound' and sent_copy.technical_confirmation and sent_copy.internet_message_id=response.internet_message_id)
+  order by coalesce(response.received_at,response.created_at) desc,response.id desc limit 1) response_analysis on true`;
 
 export async function listMailbox(request: Request): Promise<Response> {
  const params = z.object({account: z.string().uuid().optional(),campaign:z.union([z.string().uuid(),z.literal("none")]).optional(),
@@ -53,7 +63,7 @@ export async function listMailbox(request: Request): Promise<Response> {
  const bindings=[v.account??null,v.campaign??null,v.q];
  const folder=`case $4 when 'other' then (${mailboxLatestCategory})<>'normal' when 'archive' then t.archived and (${mailboxLatestCategory})='normal'
   when 'action' then not t.archived and (${mailboxLatestCategory})='normal' and (${mailboxNeedsReply})
-  when 'waiting' then not t.archived and (${mailboxLatestCategory})='normal' and not (${mailboxNeedsReply}) and latest.direction='outbound'
+  when 'waiting' then not t.archived and (${mailboxLatestCategory})='normal' and (${mailboxWaiting})
   else not t.archived and (${mailboxLatestCategory})='normal' end
   and ($5='all' or $5='unread' and t.unread or $5='priority' and t.priority)`;
  const results=await Promise.all([
@@ -61,7 +71,7 @@ export async function listMailbox(request: Request): Promise<Response> {
   sqlOne(`select count(*)::int as total ${joins} where ${scope} and ${folder}`,[...bindings,v.folder,v.filter]),
   sqlOne(`select count(*) filter(where (${mailboxLatestCategory})='normal' and not t.archived)::int as inbox,
    count(*) filter(where (${mailboxLatestCategory})='normal' and not t.archived and (${mailboxNeedsReply}))::int as action,
-   count(*) filter(where (${mailboxLatestCategory})='normal' and not t.archived and not (${mailboxNeedsReply}) and latest.direction='outbound')::int as waiting,
+   count(*) filter(where (${mailboxLatestCategory})='normal' and not t.archived and (${mailboxWaiting}))::int as waiting,
    count(*) filter(where (${mailboxLatestCategory})='normal' and t.archived)::int as archive,
    count(*) filter(where (${mailboxLatestCategory})<>'normal')::int as other,
    count(*) filter(where (${mailboxLatestCategory})='normal' and not t.archived and t.unread)::int as unread

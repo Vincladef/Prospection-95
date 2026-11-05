@@ -52,6 +52,16 @@
 .unified-mailbox .subject{display:block;font-size:11.5px;white-space:nowrap;text-overflow:ellipsis;overflow:hidden;margin:4px 0 3px}
 .unified-mailbox .snippet{color:#777;font-size:10.5px;line-height:1.5;overflow:hidden;display:-webkit-box;-webkit-line-clamp:2;-webkit-box-orient:vertical;line-clamp:2}
 .unified-mailbox .thread-tags{margin-top:8px;display:flex;gap:4px;align-items:center;flex-wrap:wrap;max-width:100%}
+.unified-mailbox .tag.response-badge{border:1px solid #bfc7d1;background:#eef2f7;color:#354456}
+.unified-mailbox .response-badge.response-positive,.unified-mailbox .response-badge.response-meeting{background:#e8f3e9;border-color:#a5c5a9;color:#285a32}
+.unified-mailbox .response-badge.response-negative,.unified-mailbox .response-badge.response-opposition{background:#f8eceb;border-color:#d7b3af;color:#893b34}
+.unified-mailbox .response-badge.response-pending,.unified-mailbox .response-badge.response-ambiguous{background:#fff8df;border-color:#d7c689;color:#735d17}
+.unified-mailbox .response-analysis{display:flex;align-items:center;flex-wrap:wrap;gap:7px;margin-top:11px;font-size:11px}
+.unified-mailbox .response-analysis small{color:#6d6d6d}
+.unified-mailbox .response-analysis details{flex-basis:100%;color:#555;overflow-wrap:anywhere}
+.unified-mailbox .response-analysis summary{cursor:pointer;font-size:10px}
+.unified-mailbox .response-analysis p{margin:6px 0;line-height:1.5}
+.unified-mailbox .classified-hint{margin-top:9px;font-size:11px;color:#666}
 .unified-mailbox .tag{display:inline-block;font-size:9px;line-height:1.4;padding:2px 5px;border:1px solid #cfd1d3;background:#f6f6f6;color:#5a5a5a;max-width:100%;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
 .unified-mailbox .tag.action{background:#fff1d8;border-color:#e9d0a2;color:#855a12}
 .unified-mailbox .tag.info{background:#e7edfa;border-color:#bccbe8;color:#31548d}

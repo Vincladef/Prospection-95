@@ -25,5 +25,8 @@ export const prospectionLinkedMessageIds=`with recursive verified(id,internet_id
 
 export const mailboxLatestCategory=`case when latest.raw_headers->>'warmup'='true' then 'warmup'
  when latest.kind in ('automatic_reply','out_of_office','bounce') then 'automatic' else 'normal' end`;
-export const mailboxNeedsReply=`case when latest.id=t.last_message_id then t.needs_reply
+export const mailboxResponseClosed=`coalesce(response_analysis.classification::text,'') in ('negative','opposition','unrelated','automatic_reply','out_of_office','bounce')`;
+export const mailboxNeedsReply=`case when (${mailboxResponseClosed}) then false
+ when latest.id=t.last_message_id then t.needs_reply
  else latest.direction='inbound' and latest.kind in ('reply','unrelated') end`;
+export const mailboxWaiting=`not (${mailboxNeedsReply}) and latest.direction='outbound' and not (${mailboxResponseClosed})`;

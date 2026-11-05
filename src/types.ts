@@ -100,6 +100,7 @@ export interface Prospect {
   messageStatus: MessageStatus | null;
   statusStep?: string | null;
   lastSentStep?: string | null;
+  lastOutboundAt?: string | null;
   replyProgress?: { state: string; completed: number; total: number; subject: string; body: string; dueAt: string | null; errorCode?: string | null } | null;
   conversationMessages?: Array<{ id: string; direction: string; kind: string; subject: string; body: string; at: string | null }>;
   step: string | null;
@@ -316,11 +317,13 @@ export interface InteractionProfile {
  meanSeconds:number|null;capped:number;attempts:number;failed:number;budget:number;
 }
 export type MailboxFolder = "inbox"|"action"|"waiting"|"archive"|"other";
+export type ResponseClassification = "positive"|"negative"|"information"|"meeting"|"ambiguous"|"opposition"|"automatic_reply"|"out_of_office"|"bounce"|"unrelated";
 export interface MailboxThread {
  id:string;accountId:string;accountEmail:string;conversationId:string|null;prospectId:string|null;
  campaignId:string|null;campaignName:string|null;name:string;email:string;organization:string|null;subject:string;
  category:"normal"|"automatic"|"warmup";archived:boolean;unread:boolean;priority:boolean;needsReply:boolean;version:number;
  lastMessageId:string;lastMessageAt:string;snippet:string;lastDirection:string;lastSyncedAt:string|null;syncError:string|null;pendingSync:number;
+ responseClassification?:ResponseClassification|null;responseAnalyzedAt?:string|null;responseConfidence?:number|null;responseRationale?:string|null;
 }
 export interface MailboxPage {
  threads:MailboxThread[];total:number;page:number;counts:Record<MailboxFolder|"unread",number>;

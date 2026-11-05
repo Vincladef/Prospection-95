@@ -78,6 +78,23 @@ describe("MessagesView statuses", () => {
 
   afterEach(cleanup);
 
+  it("shows a discreet latest send date including a manual reply without using a newer inbound date",()=>{
+    renderMessages({...baseProspect,lastSentAt:"2026-11-03T08:00:00Z",conversationMessages:[
+      {id:"manual",direction:"outbound",kind:"manual",subject:"Re",body:"Réponse",at:"2026-11-04T15:42:00Z"},
+      {id:"received",direction:"inbound",kind:"reply",subject:"Re",body:"Merci",at:"2026-11-05T06:00:00Z"}
+    ]});
+    const chronology=screen.getByText(/Dernier envoi ·/);
+    expect(chronology.querySelector("time")).toHaveAttribute("datetime","2026-11-04T15:42:00Z");
+    expect(chronology).toHaveTextContent("16:42");expect(chronology).toHaveClass("message-chronology");
+  });
+  it("does not claim a send for a prepared sequence with no confirmed timestamp",()=>{
+    renderMessages(baseProspect);expect(screen.queryByText(/Dernier envoi ·/)).not.toBeInTheDocument();
+  });
+  it("uses the last confirmed send even when it falls outside the paginated conversation history",()=>{
+    renderMessages({...baseProspect,lastSentAt:"2026-11-01T09:00:00Z",lastOutboundAt:"2026-11-03T13:25:00Z",conversationMessages:[]});
+    expect(screen.getByText(/Dernier envoi ·/).querySelector("time")).toHaveAttribute("datetime","2026-11-03T13:25:00Z");
+  });
+
   it.each([
     ["scheduled", "Réponse programmée · 3/3", "Validés", "status-scheduled"],
     ["draft_created", "Brouillon Gmail prêt · 3/3", "Expédiés / réponses", "status-received"],

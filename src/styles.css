@@ -754,6 +754,14 @@ input[type="radio"] {
 .contact-cell-content {
   min-width: 0;
 }
+.message-chronology {
+  display: block;
+  margin: 5px 0 2px;
+  color: #696969;
+  font-size: 10px;
+  line-height: 1.4;
+  font-variant-numeric: tabular-nums;
+}
 
 .campaign-link,
 .sequence-link {

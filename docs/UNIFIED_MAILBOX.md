@@ -26,6 +26,23 @@ d’envoi Prospection 95 sont exclus des listes, compteurs, recherches et accès
 directs à un fil. Les nouveaux échanges externes ne sont plus recopiés. Les
 données déjà présentes sont conservées ; aucune suppression Gmail n’est effectuée.
 
+Le classement de la dernière réponse vérifiée provient d’`app.inbound_analyses`,
+alimenté par `agent_api.classify_response` lors des passages de la planification
+GPT. Il apparaît dans la liste et le lecteur : réponse positive, refus,
+information, rendez-vous, à clarifier ou ne plus contacter. Le motif et la date
+de l’analyse restent consultables. Sans analyse, le libellé est « À qualifier ».
+Les refus, oppositions et réponses non commerciales sont exclus des compteurs
+« À traiter » et « En attente de réponse », même si un ancien `needs_reply`
+est encore vrai ; ils restent consultables dans Réception et Archives.
+Une nouvelle réponse possède son propre classement, indépendamment d’un refus
+ancien. Aucune exclusion, campagne, relance ni donnée Gmail n’est modifiée par
+cette projection. Un refus simple reste accessible pour une réponse manuelle ;
+une opposition conserve le verrou d’exclusion existant.
+
+Dans Messages, « Dernier envoi » affiche discrètement la date et l’heure de
+l’envoi confirmé le plus récent, y compris une réponse manuelle. La date n’est
+pas déduite d’un brouillon, d’un clic ou de la dernière synchronisation.
+
 L’interface reprend la maquette HTML V4 : dossiers, liste et lecteur, filtres
 campagne/Gmail combinables, recherche, priorités, historique repliable et réponse
 directement sous l’échange. Sur tablette et mobile, ouvrir un fil remplace la
