@@ -508,6 +508,22 @@ describe("A1 is the reference of its test", () => {
     expect(apiMocks.updateExperimentVariant.mock.calls[2][1]).toMatchObject({ version: 3, overrides: { initial: { bodyInstructions: "Référence modifiée" } } });
   });
 
+  it("retains B1 typing if the planner assigns it during editing and the backend then refuses the save", async () => {
+    const props = { campaigns: [configured], folders: [], accounts: [], experiments: [test], attachments: [], prospects: [], totals: { pendingApproval: 0 }, onOpenSettings: vi.fn(), onMutated: vi.fn() };
+    const view = render(<CampaignsView {...props} />); choose("B");
+    fireEvent.click(group("initial").getByRole("button", { name: "✎ Personnaliser" }));
+    fireEvent.change(initial(), { target: { value: "Saisie B1 à conserver" } });
+    view.rerender(<CampaignsView {...props} experiments={[{ ...test, variants: test.variants.map(v => ({ ...v, assignedCount: v.label === "B" ? 1 : 0 })) }]} />);
+    expect(initial()).toHaveValue("Saisie B1 à conserver"); expect(initial()).toBeDisabled();
+    expect(screen.getAllByRole("button", { name: "Enregistrer" })[0]).toBeEnabled();
+    apiMocks.updateExperimentVariant.mockRejectedValueOnce(new Error("Cette version a déjà été utilisée")); save();
+    await screen.findByText("Cette version a déjà été utilisée");
+    expect(initial()).toHaveValue("Saisie B1 à conserver");
+    expect(apiMocks.updateCampaign).not.toHaveBeenCalled();
+    fireEvent.click(screen.getByRole("button", { name: "Annuler" }));
+    expect(initial()).toHaveValue("Consignes A1");
+  });
+
   it("keeps confirmed A1 and B1 saves when refreshing fails and ignores an old dashboard response", async () => {
     const props = { campaigns: [configured], folders: [], accounts: [], experiments: [test], attachments: [], prospects: [], totals: { pendingApproval: 0 }, onOpenSettings: vi.fn(), onMutated: vi.fn().mockRejectedValueOnce(new Error("Réseau indisponible")).mockResolvedValue(undefined) };
     const view = render(<CampaignsView {...props} />);

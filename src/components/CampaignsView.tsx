@@ -138,10 +138,7 @@ function CampaignEditor({
   const attachmentField = (base: string) => isCampaignOnly ? base : `variant:${selectedVariant?.id}:${base}`;
   const defaults = campaignVariantDefaults(draft);
   const referenceGroups = resolveVariantGroups(defaults, referenceVariant ? variantDrafts[referenceVariant.id] ?? {} : {});
-  // Exposed versions retain their stored content while a different draft is edited.
-  const selectedGroups = variantLocked && !isReferenceVariant
-    ? resolveVariantGroups(campaignVariantDefaults(baseline), variantBaseline[selectedVariant!.id] ?? {})
-    : resolveVariantGroups(isReferenceVariant ? defaults : referenceGroups, selectedOverrides);
+  const selectedGroups = resolveVariantGroups(isReferenceVariant ? defaults : referenceGroups, selectedOverrides);
   const campaignDirty = JSON.stringify(campaignPayload(draft)) !== JSON.stringify(campaignPayload(baseline));
   function variantPayload(experiment: Experiment, variantId: string): VariantOverrides {
     const reference = experimentReference(experiment);
@@ -152,7 +149,6 @@ function CampaignEditor({
   const dirtyVariants = relatedExperiments.flatMap(experiment => experiment.variants.filter(variant => {
     const reference = experimentReference(experiment);
     if (reference?.id === variant.id) return !sameVariantConfiguration(variantDrafts[variant.id] ?? {}, variantBaseline[variant.id] ?? {});
-    if (experiment.status !== "draft" || variant.assignedCount > 0) return false;
     return !sameVariantConfiguration(variantPayload(experiment, variant.id), materializeVariant(campaignVariantDefaults(baseline), variantBaseline[variant.id] ?? {}));
   }).map(variant => ({ ...variant, experiment }))).sort((a, b) => Number(a.id !== experimentReference(a.experiment)?.id) - Number(b.id !== experimentReference(b.experiment)?.id));
   const dirty = campaignDirty || dirtyVariants.length > 0;
