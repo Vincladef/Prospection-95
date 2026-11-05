@@ -89,6 +89,29 @@ describe("MessagesView statuses", () => {
   });
   it("does not claim a send for a prepared sequence with no confirmed timestamp",()=>{
     renderMessages(baseProspect);expect(screen.queryByText(/Dernier envoi ·/)).not.toBeInTheDocument();
+    expect(screen.getByText(/Ajouté ·/).querySelector("time")).toHaveAttribute("datetime",baseProspect.createdAt);
+  });
+  it.each([["writing","Rédaction IA"],["message","Message mis à jour"]] as const)("shows the %s activity for an unsent sequence",(kind,label)=>{
+    renderMessages({...baseProspect,lastActivityAt:"2026-11-05T07:12:00Z",lastActivityKind:kind});
+    const activity=screen.getByText(new RegExp(`${label} ·`));
+    expect(activity.querySelector("time")).toHaveAttribute("datetime","2026-11-05T07:12:00Z");
+    expect(activity).toHaveTextContent("08:12");expect(screen.queryByText(/Dernier envoi ·/)).not.toBeInTheDocument();
+  });
+  it("keeps the confirmed send date distinct from a later sequence edit",()=>{
+    renderMessages({...baseProspect,lastOutboundAt:"2026-11-04T09:00:00Z",lastActivityAt:"2026-11-05T07:12:00Z",lastActivityKind:"message"});
+    expect(screen.getByText(/Dernier envoi ·/).querySelector("time")).toHaveAttribute("datetime","2026-11-04T09:00:00Z");
+    expect(screen.getByText(/Message mis à jour ·/).querySelector("time")).toHaveAttribute("datetime","2026-11-05T07:12:00Z");
+  });
+  it("does not clutter a sent row with an older activity date",()=>{
+    renderMessages({...baseProspect,lastOutboundAt:"2026-11-05T09:00:00Z",lastActivityAt:"2026-11-04T07:12:00Z",lastActivityKind:"writing"});
+    expect(screen.getByText(/Dernier envoi ·/)).toBeInTheDocument();expect(screen.queryByText(/Rédaction IA ·/)).not.toBeInTheDocument();
+  });
+  it("avoids repeating a status update in the same displayed minute as the send",()=>{
+    renderMessages({...baseProspect,lastOutboundAt:"2026-11-05T09:00:00Z",lastActivityAt:"2026-11-05T09:00:01Z",lastActivityKind:"prospect"});
+    expect(screen.getByText(/Dernier envoi ·/)).toBeInTheDocument();expect(screen.queryByText(/Fiche modifiée ·/)).not.toBeInTheDocument();
+  });
+  it("handles a missing or invalid timestamp without inventing a date",()=>{
+    renderMessages({...baseProspect,createdAt:null,lastActivityAt:"invalid"});expect(screen.getByText("Date indisponible")).toBeInTheDocument();
   });
   it("uses the last confirmed send even when it falls outside the paginated conversation history",()=>{
     renderMessages({...baseProspect,lastSentAt:"2026-11-01T09:00:00Z",lastOutboundAt:"2026-11-03T13:25:00Z",conversationMessages:[]});

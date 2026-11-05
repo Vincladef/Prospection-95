@@ -78,6 +78,7 @@ export async function loadDashboard(): Promise<Record<string, unknown>> {
       select p.id::text, p.full_name, p.email, p.contact_raw, p.website_url, p.created_at,
              p.contact_state::text, p.version, o.name as organization_name,
              iteration_output.output_sequence, iteration_output.completed_at as iteration_completed_at,
+             activity.at as last_activity_at,activity.kind as last_activity_kind,
              selected.campaign_id::text, selected.campaign_name,
              conv.id::text as conversation_id, conv.current_step::text,
              conv.state::text as conversation_state,
@@ -176,6 +177,15 @@ export async function loadDashboard(): Promise<Record<string, unknown>> {
         order by run.iteration_number desc, run.completed_at desc, run.id desc
         limit 1
       ) iteration_output on true
+      left join lateral (
+        select event.at,event.kind from (
+          select p.created_at as at,'added' as kind,0 as priority
+          union all select p.updated_at,'prospect',1 where p.updated_at>p.created_at
+          union all select iteration_output.completed_at,'writing',2
+          union all select m.updated_at,'message',3 from app.email_messages m
+            where m.conversation_id=conv.id and m.direction='outbound' and not m.technical_confirmation
+        ) event where event.at is not null order by event.at desc,event.priority desc limit 1
+      ) activity on true
       left join lateral (
         select assignment.variant_id
         from app.experiment_assignments assignment
@@ -529,6 +539,8 @@ export async function loadDashboard(): Promise<Record<string, unknown>> {
       step: nullableText(row.current_step),
       lastSentAt: isoValue(summary.lastSentAt),
       lastOutboundAt: isoValue(row.last_outbound_at),
+      lastActivityAt: isoValue(row.last_activity_at),
+      lastActivityKind: nullableText(row.last_activity_kind),
       senderEmail: nullableText(row.sender_email),
       openObserved: Boolean(row.open_observed),
       clickObserved: Boolean(row.click_observed),

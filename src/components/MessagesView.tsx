@@ -11,7 +11,7 @@ import { cellStatuses, canEditStatus, useStatusSheet } from "../hooks/useStatusS
 import type { Campaign, MessageStatus, Prospect } from "../types";
 import { SequenceDrawer } from "./SequenceDrawer";
 import { replyStatusLabel, statusLabel } from "./StatusBadge";
-import { lastOutboundAt } from "../lib/message-chronology";
+import { lastOutboundAt, lastMessageActivity } from "../lib/message-chronology";
 
 interface MessagesViewProps {
   campaigns: Campaign[];
@@ -105,6 +105,8 @@ const MessageRow = memo(function MessageRow({
     : prospect.messageStatus;
   const displayedLabel = replyStatusLabel(prospect.replyProgress) || (displayedStatus === "pending_approval" ? preparationLabel(prospect) : statusLabel(displayedStatus));
   const lastOutbound = lastOutboundAt(prospect);
+  const activity = lastMessageActivity(prospect);
+  const showActivity = activity && (!lastOutbound || Math.floor(Date.parse(activity.at)/60000)>Math.floor(Date.parse(lastOutbound)/60000));
   return (
     <tr className={prospect.excluded ? "excluded-row" : ""}>
       <td className="sticky-col sticky-index pin-no">
@@ -124,6 +126,9 @@ const MessageRow = memo(function MessageRow({
           {lastOutbound?<small className="message-chronology" title={`Dernier envoi confirmé : ${new Date(lastOutbound).toLocaleString("fr-FR",{timeZone:"Europe/Paris"})}`}>
             Dernier envoi · <time dateTime={lastOutbound}>{new Date(lastOutbound).toLocaleString("fr-FR",{timeZone:"Europe/Paris",day:"numeric",month:"short",hour:"2-digit",minute:"2-digit"})}</time>
           </small>:null}
+          {showActivity?<small className="message-chronology" title={`${activity.label} : ${new Date(activity.at).toLocaleString("fr-FR",{timeZone:"Europe/Paris"})}`}>
+            {activity.label} · <time dateTime={activity.at}>{new Date(activity.at).toLocaleString("fr-FR",{timeZone:"Europe/Paris",day:"numeric",month:"short",hour:"2-digit",minute:"2-digit"})}</time>
+          </small>:!lastOutbound&&!activity?<small className="message-chronology">Date indisponible</small>:null}
           {prospect.openObserved || prospect.clickObserved ? <span className="interaction-observations">
             {prospect.openObserved ? <i title="Au moins une observation technique d’ouverture reçue">◉ Ouverture observée</i> : null}
             {prospect.clickObserved ? <i title="Au moins un lien suivi a été appelé">↗ Clic observé</i> : null}

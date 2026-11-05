@@ -8,3 +8,11 @@ export function lastOutboundAt(prospect:Prospect):string|null {
   .filter((at):at is string=>!!at&&Number.isFinite(Date.parse(at)));
  return dates.sort((a,b)=>Date.parse(b)-Date.parse(a))[0]??null;
 }
+
+const activityLabels={added:"Ajouté",prospect:"Fiche modifiée",writing:"Rédaction IA",message:"Message mis à jour"};
+export function lastMessageActivity(prospect:Prospect):{at:string;label:string}|null {
+ if(prospect.lastActivityAt&&Number.isFinite(Date.parse(prospect.lastActivityAt))) {
+  return {at:prospect.lastActivityAt,label:activityLabels[prospect.lastActivityKind??"added"]??"Dernière activité"};
+ }
+ return prospect.createdAt&&Number.isFinite(Date.parse(prospect.createdAt))?{at:prospect.createdAt,label:"Ajouté"}:null;
+}

@@ -101,6 +101,8 @@ export interface Prospect {
   statusStep?: string | null;
   lastSentStep?: string | null;
   lastOutboundAt?: string | null;
+  lastActivityAt?: string | null;
+  lastActivityKind?: "added"|"prospect"|"writing"|"message"|null;
   replyProgress?: { state: string; completed: number; total: number; subject: string; body: string; dueAt: string | null; errorCode?: string | null } | null;
   conversationMessages?: Array<{ id: string; direction: string; kind: string; subject: string; body: string; at: string | null }>;
   step: string | null;

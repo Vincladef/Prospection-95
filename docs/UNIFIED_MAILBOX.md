@@ -51,6 +51,11 @@ et ne modifient ni les états de traitement ni les règles d’envoi.
 Dans Messages, « Dernier envoi » affiche discrètement la date et l’heure de
 l’envoi confirmé le plus récent, y compris une réponse manuelle. La date n’est
 pas déduite d’un brouillon, d’un clic ou de la dernière synchronisation.
+Les lignes encore en préparation affichent aussi un repère réel : dernière
+passe IA achevée, modification d’un message non envoyé ou modification de fiche ;
+à défaut, la date d’ajout du prospect. Le libellé indique l’action concernée et
+les horaires sont affichés en Europe/Paris. Une action postérieure à un envoi
+reste visible séparément ; les doublons dans la même minute sont évités.
 
 L’interface reprend la maquette HTML V4 : dossiers, liste et lecteur, filtres
 campagne/Gmail combinables, recherche, priorités, historique repliable et réponse
