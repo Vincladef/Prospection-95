@@ -28,11 +28,6 @@ const emptySequence: SequenceContent = {
 
 const maximumDraftPasses = 100;
 
-function resizeDraftPasses(passes: string[], requestedCount: number): string[] {
-  const count = Math.max(1, Math.min(maximumDraftPasses, Math.trunc(requestedCount) || 1));
-  return Array.from({ length: count }, (_, index) => passes[index] ?? "");
-}
-
 function cloneOverrides(value: Record<string, unknown>): VariantOverrides {
   return JSON.parse(JSON.stringify(value || {})) as VariantOverrides;
 }
@@ -115,6 +110,9 @@ function CampaignEditor({
   const variantVersions = useRef(Object.fromEntries(experiments.flatMap(e => e.variants).map(v => [v.id, v.version ?? 1])));
   const [message, setMessage] = useState<string | null>(null);
   const [showStats, setShowStats] = useState(false);
+  const writingList = useRef<HTMLDivElement>(null);
+  const replyList = useRef<HTMLDivElement>(null);
+  const addedStep = useRef<"writing" | "reply" | null>(null);
 
   const senderAccounts = useMemo(
     () => accounts.filter((account) => account.role === "sender" && account.status !== "deleted"),
@@ -326,6 +324,17 @@ function CampaignEditor({
   const subjectGroup = selectedGroups.subject as { subject: string; subjectInstructions: string };
   const initialGroup = selectedGroups.initial as { body: string; bodyInstructions: string };
   const replySteps = selectedGroups.reply.replyIterations as string[];
+  useEffect(() => {
+    if (!addedStep.current) return;
+    const list = addedStep.current === "writing" ? writingList.current : replyList.current;
+    const fields = list?.querySelectorAll("textarea");
+    fields?.[fields.length - 1]?.focus();
+    addedStep.current = null;
+  }, [iterationsGroup.draftPasses.length, replySteps.length]);
+  function setWritingSteps(steps: string[]) {
+    if (isCampaignOnly) setDraft(current => ({ ...current, writingIterations: steps }));
+    else updateVariantGroup("iterations", { ...iterationsGroup, draftPasses: steps });
+  }
   function setReplySteps(steps: string[]) {
     if (isCampaignOnly) setDraft(current => ({ ...current, replyIterations: steps }));
     else updateVariantGroup("reply", { replyIterations: steps });
@@ -519,15 +528,15 @@ function CampaignEditor({
 
         <section className="target-section">
           <div className="target-section-title"><h3>Itérations de rédaction IA</h3><small>{isCampaignOnly ? "Rédaction" : isReferenceVariant ? `Référence ${referenceLabel}` : `Version ${selectedVariant?.label}`}</small></div>
-          {variantBlock("iterations", "Itérations", <div className="v23-pass-config"><div className="v23-pass-head"><label>Nombre d’itérations <input type="number" value={iterationsGroup.draftPasses.length} min={1} max={maximumDraftPasses} onChange={(event) => {
-            const nextPasses = resizeDraftPasses(iterationsGroup.draftPasses, event.currentTarget.valueAsNumber);
-            if (isCampaignOnly) setDraft((current) => ({ ...current, writingIterations: nextPasses }));
-            else updateVariantGroup("iterations", { ...iterationsGroup, draftPasses: nextPasses });
-          }} /></label><span className="target-pill">{iterationsGroup.draftPasses.length} itération{iterationsGroup.draftPasses.length > 1 ? "s" : ""} successive{iterationsGroup.draftPasses.length > 1 ? "s" : ""}</span></div><div className="v23-pass-list">{iterationsGroup.draftPasses.map((pass, index) => <label className="v23-pass-step" key={index}><strong>Itération {index + 1}</strong><small>{index === 0 ? "Prépare une première version de la séquence : objet, premier email et relances." : "Améliore la version précédente en appliquant les consignes ci-dessous."}</small><textarea value={pass} onChange={(event) => {
-            const nextPasses = iterationsGroup.draftPasses.map((currentPass, passIndex) => passIndex === index ? event.target.value : currentPass);
-            if (isCampaignOnly) setDraft((current) => ({ ...current, writingIterations: nextPasses }));
-            else updateVariantGroup("iterations", { ...iterationsGroup, draftPasses: nextPasses });
-          }} /></label>)}<InstructionAttachments attachments={attachments} scope="campaign" campaignId={campaign.id} fieldKey={attachmentField("iterations")} /></div><p className="v23-pass-help">Chaque prospect et sa version A/B suivent séparément ces itérations. Une activation planifiée traite une seule passe puis reprend la version archivée dans Neon au passage suivant.</p></div>)}
+          {variantBlock("iterations", "Itérations", <div className="v23-pass-config">
+            <div className="v23-pass-list" ref={writingList}>{iterationsGroup.draftPasses.map((pass, index) => <div className="v23-pass-step" key={index}>
+              <button className="instruction-step-remove" type="button" aria-label={`Supprimer l’itération ${index + 1}`} title={`Supprimer l’itération ${index + 1}`} disabled={iterationsGroup.draftPasses.length <= 1} onClick={() => setWritingSteps(iterationsGroup.draftPasses.filter((_, i) => i !== index))}>×</button>
+              <label><strong>Itération {index + 1}</strong><small>{index === 0 ? "Prépare une première version de la séquence : objet, premier email et relances." : "Améliore la version précédente en appliquant les consignes ci-dessous."}</small><textarea value={pass} onChange={event => setWritingSteps(iterationsGroup.draftPasses.map((text, i) => i === index ? event.target.value : text))} /></label>
+            </div>)}</div>
+            <div className="reply-step-actions"><button className="plain-btn" type="button" disabled={iterationsGroup.draftPasses.length >= maximumDraftPasses} onClick={() => { addedStep.current = "writing"; setWritingSteps([...iterationsGroup.draftPasses, ""]); }}>+ Ajouter une itération</button><small>{iterationsGroup.draftPasses.length} itération{iterationsGroup.draftPasses.length > 1 ? "s" : ""} successive{iterationsGroup.draftPasses.length > 1 ? "s" : ""}</small></div>
+            <InstructionAttachments attachments={attachments} scope="campaign" campaignId={campaign.id} fieldKey={attachmentField("iterations")} />
+            <p className="v23-pass-help">Chaque prospect et sa version A/B suivent séparément ces itérations. Une activation planifiée traite une seule passe puis reprend la version archivée dans Neon au passage suivant.</p>
+          </div>)}
         </section>
 
         <section className="target-section">
@@ -584,9 +593,11 @@ function CampaignEditor({
             <option value="first">Le premier échange uniquement</option><option value="all">Tous les échanges</option>
           </select><small>Les échanges suivants seront préparés en brouillons Gmail si tu limites l’automatique au premier.</small></label> : null}
           {variantBlock("reply", "Instructions de réponse", <div className="v23-pass-config">
-            <div className="v23-pass-list">{replySteps.map((instruction,index) => <label className="v23-pass-step" key={index}><strong>Instructions de réponse {index+1}</strong><small>{index === 0 ? "Rédige une réponse adaptée à l’échange." : "Améliore la réponse obtenue à l’étape précédente."}</small><textarea value={instruction} onChange={event => { const value=event.target.value; setReplySteps(replySteps.map((text,i) => i===index ? value : text)); }} /></label>)}</div>
-            <div className="reply-step-actions"><button className="plain-btn" type="button" disabled={replySteps.length >= maximumDraftPasses} onClick={() => setReplySteps([...replySteps, ""])}>+ Ajouter une étape</button>
-            {replySteps.length > 1 ? <button className="plain-btn" type="button" onClick={() => setReplySteps(replySteps.slice(0,-1))}>Retirer la dernière étape</button> : null}<small>{replySteps.length} étape{replySteps.length > 1 ? "s" : ""}</small></div>
+            <div className="v23-pass-list" ref={replyList}>{replySteps.map((instruction,index) => <div className="v23-pass-step" key={index}>
+              <button className="instruction-step-remove" type="button" aria-label={`Supprimer l’étape de réponse ${index + 1}`} title={`Supprimer l’étape de réponse ${index + 1}`} disabled={replySteps.length <= 1} onClick={() => setReplySteps(replySteps.filter((_, i) => i !== index))}>×</button>
+              <label><strong>Instructions de réponse {index+1}</strong><small>{index === 0 ? "Rédige une réponse adaptée à l’échange." : "Améliore la réponse obtenue à l’étape précédente."}</small><textarea value={instruction} onChange={event => { const value=event.target.value; setReplySteps(replySteps.map((text,i) => i===index ? value : text)); }} /></label>
+            </div>)}</div>
+            <div className="reply-step-actions"><button className="plain-btn" type="button" disabled={replySteps.length >= maximumDraftPasses} onClick={() => { addedStep.current = "reply"; setReplySteps([...replySteps, ""]); }}>+ Ajouter une étape</button><small>{replySteps.length} étape{replySteps.length > 1 ? "s" : ""}</small></div>
             <InstructionAttachments attachments={attachments} scope="campaign" campaignId={campaign.id} fieldKey={attachmentField("reply")} />
             <p className="v23-pass-help">Une étape par passage horaire. Les cycles commencés gardent leurs consignes ; les fichiers joints servent de contexte aux étapes de réponse.</p>
           </div>)}

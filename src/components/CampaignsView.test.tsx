@@ -281,7 +281,7 @@ describe("CampaignsView V53", () => {
 
   it("adds empty iteration fields without altering existing instructions", () => {
     renderCampaigns();
-    fireEvent.change(screen.getByRole("spinbutton", { name: "Nombre d’itérations" }), { target: { value: "3" } });
+    for (let i = 0; i < 2; i++) fireEvent.click(screen.getByRole("button", { name: "+ Ajouter une itération" }));
     expect(screen.getByLabelText(/Itération 1/)).toHaveValue("Prépare une première version.");
     expect(screen.getByLabelText(/Itération 2/)).toHaveValue("");
     expect(screen.getByLabelText(/Itération 3/)).toHaveValue("");
@@ -289,11 +289,9 @@ describe("CampaignsView V53", () => {
 
   it("changes and persists the number of successive AI writing iterations", async () => {
     const { onMutated } = renderCampaigns();
-    const iterationCount = screen.getByRole("spinbutton", { name: "Nombre d’itérations" });
 
-    fireEvent.change(iterationCount, { target: { value: "3" } });
+    for (let i = 0; i < 2; i++) fireEvent.click(screen.getByRole("button", { name: "+ Ajouter une itération" }));
 
-    expect(iterationCount).toHaveValue(3);
     expect(screen.getByText("3 itérations successives")).toBeInTheDocument();
     expect(screen.getByText("Itération 3")).toBeInTheDocument();
     const iterationTextareas = screen.getAllByRole("textbox").filter((field) => field.closest(".v23-pass-step"));
@@ -308,11 +306,9 @@ describe("CampaignsView V53", () => {
 
   it("accepts more than ten successive AI writing iterations", () => {
     renderCampaigns();
-    const iterationCount = screen.getByRole("spinbutton", { name: "Nombre d’itérations" });
 
-    fireEvent.change(iterationCount, { target: { value: "12" } });
+    for (let i = 0; i < 11; i++) fireEvent.click(screen.getByRole("button", { name: "+ Ajouter une itération" }));
 
-    expect(iterationCount).toHaveValue(12);
     expect(screen.getByText("12 itérations successives")).toBeInTheDocument();
     expect(screen.getByText("Itération 12")).toBeInTheDocument();
   });
@@ -344,6 +340,29 @@ describe("CampaignsView V53", () => {
 
     expect(screen.getByText(/Publics différents : les résultats restent utiles/)).toBeInTheDocument();
     expect(screen.getByRole("button", { name: /^B1/ })).toBeEnabled();
+  });
+
+  it.each(["writing", "reply"])("removes a chosen %s step, renumbers and persists the remaining text", async kind => {
+    const field = kind === "writing" ? "writingIterations" : "replyIterations";
+    const source = { ...campaign, [field]: ["Première", "Milieu", "Dernière"] };
+    const view = renderCampaigns([], [source]);
+    const remove = (number: number) => screen.getByRole("button", { name: kind === "writing" ? `Supprimer l’itération ${number}` : `Supprimer l’étape de réponse ${number}` });
+    const area = () => document.querySelector(`[data-v35-group="${kind === "writing" ? "iterations" : "reply"}"]`)!;
+    fireEvent.click(remove(2));
+    expect(Array.from(area().querySelectorAll("textarea"), el => el.value)).toEqual(["Première", "Dernière"]);
+    expect(remove(2)).toBeEnabled();
+    fireEvent.click(remove(1));
+    expect(Array.from(area().querySelectorAll("textarea"), el => el.value)).toEqual(["Dernière"]);
+    expect(remove(1)).toBeDisabled();
+    fireEvent.click(screen.getByRole("button", { name: kind === "writing" ? "+ Ajouter une itération" : "+ Ajouter une étape" }));
+    expect(area().querySelectorAll("textarea")[1]).toHaveFocus();
+    fireEvent.click(remove(2));
+    fireEvent.click(screen.getAllByRole("button", { name: "Enregistrer" })[0]);
+    await waitFor(() => expect(view.onMutated).toHaveBeenCalledOnce());
+    const saved = apiMocks.updateCampaign.mock.calls[0][1];
+    expect(saved[field]).toEqual(["Dernière"]);
+    view.unmount(); renderCampaigns([], [{ ...source, ...saved, version: 2 }]);
+    expect(Array.from(area().querySelectorAll("textarea"), el => el.value)).toEqual(["Dernière"]);
   });
 
   it("moves a campaign to a folder by drag and drop", async () => {
@@ -506,6 +525,25 @@ describe("A1 is the reference of its test", () => {
     await waitFor(() => expect(screen.getAllByRole("button", { name: "Enregistrer" })[0]).toBeDisabled());
     expect(apiMocks.updateExperimentVariant.mock.calls.map(call => call[0])).toEqual([test.variants[0].id, test.variants[1].id, test.variants[1].id]);
     expect(apiMocks.updateExperimentVariant.mock.calls[2][1]).toMatchObject({ version: 3, overrides: { initial: { bodyInstructions: "Référence modifiée" } } });
+  });
+
+  it.each(["iterations", "reply"])("keeps inherited %s controls disabled and saves a chosen deletion only in customized B1", async key => {
+    const field = key === "iterations" ? "draftPasses" : "replyIterations";
+    const ref = { ...referenceOverrides, [key]: { [field]: ["Un", "Deux", "Trois"] } };
+    const b = materializeVariant(resolveVariantGroups(campaignVariantDefaults(configured), ref), {});
+    const fixture = { ...test, variants: test.variants.map(v => ({ ...v, overrides: v.label === "A" ? ref : b })) };
+    const view = renderCampaigns([fixture], [configured]); choose("B");
+    const name = key === "iterations" ? "Supprimer l’itération 2" : "Supprimer l’étape de réponse 2";
+    expect(screen.getByRole("button", { name })).toBeDisabled();
+    fireEvent.click(group(key).getByRole("button", { name: "✎ Personnaliser" }));
+    fireEvent.click(screen.getByRole("button", { name }));
+    expect(Array.from(document.querySelectorAll(`[data-v35-group="${key}"] textarea`), el => (el as HTMLTextAreaElement).value)).toEqual(["Un", "Trois"]);
+    save(); await waitFor(() => expect(view.onMutated).toHaveBeenCalledOnce());
+    expect(apiMocks.updateExperimentVariant).toHaveBeenCalledOnce();
+    expect(apiMocks.updateExperimentVariant.mock.calls[0][0]).toBe(test.variants[1].id);
+    expect(apiMocks.updateExperimentVariant.mock.calls[0][1].overrides[key][field]).toEqual(["Un", "Trois"]);
+    choose("A");
+    expect(Array.from(document.querySelectorAll(`[data-v35-group="${key}"] textarea`), el => (el as HTMLTextAreaElement).value)).toEqual(["Un", "Deux", "Trois"]);
   });
 
   it("retains B1 typing if the planner assigns it during editing and the backend then refuses the save", async () => {

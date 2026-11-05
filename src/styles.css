@@ -4272,12 +4272,32 @@ input[type="radio"] {
 }
 
 .v23-pass-step {
+  position: relative;
   display: block;
   padding: 11px;
   background: #fff;
   border: 1px solid #c3c3c3;
   border-left: 4px solid #000080;
 }
+
+.v23-pass-step label > strong { padding-right: 30px; }
+.instruction-step-remove {
+  position: absolute;
+  top: 5px;
+  right: 5px;
+  width: 28px;
+  height: 28px;
+  padding: 0;
+  color: #555;
+  background: #ededed;
+  border: 1px solid;
+  border-color: #fff #888 #888 #fff;
+  font: 20px/1 Tahoma, sans-serif;
+  cursor: pointer;
+}
+.instruction-step-remove:hover:not(:disabled) { color: #800000; background: #ffe9e9; }
+.instruction-step-remove:focus-visible { outline: 2px solid #000080; outline-offset: 2px; }
+.instruction-step-remove:disabled { opacity: .4; cursor: default; }
 
 .v23-pass-step strong,
 .v23-pass-step small {
