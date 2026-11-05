@@ -1,4 +1,4 @@
-# Remerciement après refus — migration 048 en attente
+# Remerciement après refus — migration 048 appliquée
 
 La migration 048 autorise `negative` dans le cycle de réponse existant.
 Elle ne change ni les exclusions ni les campagnes, ni leurs modes de réponse.
@@ -15,7 +15,10 @@ refus déjà répondu manuellement bloqué, ancienne réponse devenue obsolète 
 elle vérifie l’absence globale de travaux existants, pas un différentiel.
 La migration ne contient aucune création de travail d’envoi.
 
-L’application sur la branche de production reste soumise à l’accord demandé
-par AGENTS.md. Aucune ancienne classification ni exclusion n’est corrigée
+Application en production le 5 novembre 2026 après accord explicite du propriétaire.
+Relecture avec le rôle runtime : migration enregistrée, refus simples autorisés,
+oppositions non éligibles ; exclusions, contrôles de fraîcheur et d’envoi manuel
+préservés. Les réglages d’envoi et de pause sont inchangés.
+Aucune ancienne classification ni exclusion n’est corrigée
 automatiquement. Un ancien refus classé `opposition` conserve donc sa protection
 tant qu’il n’a pas fait l’objet d’une revue distincte.
