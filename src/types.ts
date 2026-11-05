@@ -154,6 +154,8 @@ export interface GmailAccount {
   effectiveDailyLimit?: number;
   deliverabilityScore?: number | null;
   deliverabilityAssessedAt?: string | null;
+  lastScoredDeliverability?: {score:number;at:string}|null;
+  bobworkHistory?: Array<{at:string;spamRate7d:number|null;sent7d:number|null;errors7d:number|null}>;
   deliverabilityDecisions?: Array<{id:string;action:string;limit:number;score:number|null;rationale:string;evidence:Array<{kind:string;id:string}>;at:string}>;
   bobworkConnected: boolean | null;
   bobworkSetupConfirmed: boolean;

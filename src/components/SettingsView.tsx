@@ -3,6 +3,7 @@ import { api } from "../lib/api";
 import type { AppSettings, DeliverabilityProvider, GmailAccount, ImportPreview, InstructionAttachment, Prospect } from "../types";
 import { InstructionAttachments } from "./InstructionAttachments";
 import { BlacklistTable } from "./BlacklistTable";
+import { BobworkHistoryChart } from "./BobworkHistoryChart";
 
 type SettingsTab = "instructions" | "accounts" | "deliverability" | "prospects";
 
@@ -393,7 +394,9 @@ function GmailPanel({ accounts, vaultConfigured, onMutated, onOpenDeliverability
       {!editorId ? <div className="account-list v16-account-list">
         {accounts.map((account) => {
           const state = accountState(account);
-          const score = account.deliverabilityScore ?? null;
+          const score = account.deliverabilityScore ?? account.lastScoredDeliverability?.score ?? null;
+          const historical = account.deliverabilityScore == null && score !== null;
+          const scoreAt = historical ? account.lastScoredDeliverability?.at : account.deliverabilityAssessedAt;
           return (
             <article className={`v19-account-entry ${verifiedFlashId === account.id ? "verification-success" : ""}`} key={account.id}>
               <div className="v16-account-row">
@@ -405,9 +408,11 @@ function GmailPanel({ accounts, vaultConfigured, onMutated, onOpenDeliverability
                 </div>
                 <div className="v19-overview">
                   <div className="v19-score-label">Indice de délivrabilité</div>
-                  <strong className={`v19-score ${score === null ? "unknown" : "has-score"}`}>{score === null ? "Non évalué" : `${score}/100`}</strong>
-                  <small>{score === null ? (account.bobworkObservedAt || account.verifierResults.length ? "Données disponibles · analyse IA à venir" : "Aucune mesure disponible") : "Estimation IA · données réelles"}</small>
-                  {account.deliverabilityAssessedAt ? <small>Analyse du {new Date(account.deliverabilityAssessedAt).toLocaleString("fr-FR",{timeZone:"Europe/Paris"})}</small> : null}
+                  <strong className={`v19-score ${score === null ? "unknown" : "has-score"}`}>{score === null ? (account.deliverabilityDecisions?.length?"Non chiffré":"Non évalué") : `${score}/100`}</strong>
+                  <small>{historical?"Dernier indice chiffré · historique":score === null ? (account.deliverabilityDecisions?.length?"Dernière analyse sans indice chiffré":account.bobworkObservedAt || account.verifierResults.length ? "Mesures disponibles · indice non estimé" : "Aucune mesure disponible") : "Estimation IA · données réelles"}</small>
+                  {scoreAt ? <small>{score===null?"Analyse":"Indice"} du {new Date(scoreAt).toLocaleString("fr-FR",{timeZone:"Europe/Paris"})}</small> : null}
+                  {historical?<small>Dernières décisions sans nouvelle note.</small>:null}
+                  {account.bobworkSpamRate7d!=null?<small>Spam BobWork (7 j) : {account.bobworkSpamRate7d.toLocaleString("fr-FR")}%</small>:null}
                 </div>
                 <div className="v16-account-actions">
                   {!account.hasCredential ? <button className="win-button primary" type="button" onClick={() => openEditor(account)}>Terminer la configuration</button> : null}
@@ -417,6 +422,7 @@ function GmailPanel({ accounts, vaultConfigured, onMutated, onOpenDeliverability
               <details className="v19-account-details">
                 <summary>Détails de délivrabilité <span>({account.bobworkObservedAt ? "mesures BobWork disponibles" : "aucune mesure enregistrée"})</span></summary>
                 <div className="v19-details-body v20-details-body">
+                  <BobworkHistoryChart points={account.bobworkHistory??[]} accountEmail={account.email}/>
                   <div><b>Coffre privé</b><span>{account.hasCredential ? "Clé enregistrée" : "À configurer"}</span></div>
                   <div><b>SMTP</b><span className={account.smtpVerifiedAt ? "verified-value" : ""}>{account.smtpVerifiedAt ? `✓ Vérifié ${new Date(account.smtpVerifiedAt).toLocaleDateString("fr-FR")}` : "Non vérifié"}</span></div>
                   <div><b>IMAP</b><span className={account.imapVerifiedAt ? "verified-value" : ""}>{account.imapVerifiedAt ? `✓ Vérifié ${new Date(account.imapVerifiedAt).toLocaleDateString("fr-FR")}` : "Non vérifié"}</span></div>

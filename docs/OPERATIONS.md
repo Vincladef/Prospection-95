@@ -381,6 +381,20 @@ BobWork restent issus de la synchronisation réelle, indépendamment de cette ca
 L'indice est une estimation ChatGPT documentée, basée sur les observations Neon
 (BobWork, tests externes et SMTP), pas une moyenne ni un score BobWork supposé.
 Sans évaluation, le CRM affiche Non évalué ; les mesures brutes restent visibles.
+Si une décision récente ne chiffre pas l’indice, la dernière note numérique
+disponible reste affichée avec sa date et la mention explicite « historique ».
+Elle n’est ni recalculée ni présentée comme l’évaluation actuelle. Sans ancienne
+note, une décision sans score apparaît « Non chiffré » ; le taux BobWork courant
+reste affiché séparément. Les plafonds utilisent toujours la décision actuelle.
+
+Les détails du compte proposent un graphique interactif des snapshots BobWork :
+taux de spam déclaré, envois et erreurs sur sept jours glissants. Les périodes
+7 jours, 30 jours et historique sont disponibles (180 jours, 1 000 observations
+maximum par compte). Les observations de même date sont dédupliquées ; seules
+les métriques numériques autorisées sont transmises au navigateur, sans payload
+BobWork brut. Les absences restent inconnues, interrompent la courbe et ne sont
+jamais remplacées par zéro. Une mesure isolée n’est pas présentée comme une
+tendance. La navigation par curseur ou survol donne la date et la valeur exacte.
 Les dix dernières décisions et leurs raisons sont affichées sur chaque compte ;
 l'historique complet est immuable dans `app.deliverability_decisions`.
 

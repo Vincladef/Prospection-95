@@ -67,6 +67,18 @@ const account: GmailAccount = {
 };
 
 describe("SettingsView Gmail V53", () => {
+  it("retains a genuine zero score rather than replacing it with an older estimate",()=>{
+    render(<SettingsView settings={settings} accounts={[{...account,deliverabilityScore:0,lastScoredDeliverability:{score:75,at:"2026-11-03T06:00:00Z"}}]} providers={[]} attachments={[]} prospects={[]} onMutated={vi.fn()}/>);
+    expect(screen.getByText("0/100")).toBeInTheDocument();expect(screen.queryByText("75/100")).not.toBeInTheDocument();
+  });
+  it("keeps the latest scored assessment visible as historical when the current decision has no score",()=>{
+    render(<SettingsView settings={settings} accounts={[{...account,deliverabilityScore:null,
+      lastScoredDeliverability:{score:75,at:"2026-11-03T06:00:00Z"},deliverabilityAssessedAt:"2026-11-05T06:00:00Z",
+      bobworkHealthScore:99,bobworkSpamRate7d:6.9}]} providers={[]} attachments={[]} prospects={[]} onMutated={vi.fn()}/>);
+    expect(screen.getByText("75/100")).toBeInTheDocument();expect(screen.getByText("Dernier indice chiffré · historique")).toBeInTheDocument();
+    expect(screen.getByText(/Indice du 03\/11\/2026/)).toBeInTheDocument();expect(screen.getByText("Spam BobWork (7 j) : 6,9%")).toBeInTheDocument();
+    expect(screen.queryByText("99/100")).not.toBeInTheDocument();expect(screen.queryByText(/analyse IA à venir/)).not.toBeInTheDocument();
+  });
   it("shows the justified AI index and applied budget instead of a presumed BobWork score", () => {
     render(<SettingsView settings={settings} accounts={[{...account,bobworkHealthScore:99,
       deliverabilityScore:75,effectiveDailyLimit:4,deliverabilityAssessedAt:"2026-10-31T12:00:00Z",

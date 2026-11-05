@@ -1754,8 +1754,8 @@ input[type="radio"] {
 
   .v19-overview {
     width: auto;
-    min-width: 145px;
-    flex: 1;
+    min-width: 0;
+    flex: 1 0 100%;
   }
 
   .v16-account-actions {

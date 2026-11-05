@@ -1,6 +1,7 @@
 import { sequenceStatus, type SequenceStatusRow } from "./sequence-status.mts";
 import { sqlQuery } from "./db.mts";
 import { credentialVaultConfigured } from "./credentials.mts";
+import { bobworkHistory } from "./bobwork-history.mts";
 
 type DbRow = Record<string, unknown>;
 
@@ -248,6 +249,8 @@ export async function loadDashboard(): Promise<Record<string, unknown>> {
     sqlQuery(`
       select ga.*, policy.effective_daily_limit, policy.decision_id, policy.score as ai_score, policy.rationale as ai_rationale, policy.action as ai_action, policy.decided_at, policy.ai_daily_limit,
              decision_history.items as deliverability_decisions,
+             last_scored.score as last_deliverability_score,last_scored.created_at as last_scored_at,
+             bw_history.items as bobwork_history,
              bw.connected as bobwork_connected,
              bw.warmup_state as bobwork_warmup_state,
              bw.metrics as bobwork_metrics,
@@ -267,6 +270,12 @@ export async function loadDashboard(): Promise<Record<string, unknown>> {
       ) bw on true
       left join app.bobwork_connections bc on bc.singleton
       left join agent_api.account_volume_policy policy on policy.account_id=ga.id
+      left join lateral(select d.score,d.created_at from app.deliverability_decisions d
+        where d.account_id=ga.id and d.score is not null order by d.created_at desc,d.id desc limit 1) last_scored on true
+      left join lateral(select jsonb_agg(jsonb_build_object('at',b.observed_at,'metrics',b.metrics) order by b.observed_at) as items
+        from (select distinct on (observed_at) observed_at,metrics from app.bobwork_snapshots
+          where account_id=ga.id and observed_at>=clock_timestamp()-interval '180 days'
+          order by observed_at desc,id desc limit 1000) b) bw_history on true
       left join lateral (select jsonb_agg(jsonb_build_object('id',d.id,'action',d.action,'limit',d.daily_limit,'score',d.score,'rationale',d.rationale,'evidence',d.evidence,'at',d.created_at) order by d.created_at desc) as items
         from (select * from app.deliverability_decisions where account_id=ga.id order by created_at desc,id desc limit 10) d) decision_history on true
       left join lateral (
@@ -577,6 +586,8 @@ export async function loadDashboard(): Promise<Record<string, unknown>> {
       effectiveDailyLimit: row.effective_daily_limit == null ? Math.min(numberValue(row.daily_limit),row.warmup_daily_limit == null ? numberValue(row.daily_limit) : numberValue(row.warmup_daily_limit)) : numberValue(row.effective_daily_limit),
       deliverabilityScore: nullableNumber(row.ai_score),
       deliverabilityAssessedAt: isoValue(row.decided_at),
+      lastScoredDeliverability: row.last_deliverability_score==null?null:{score:nullableNumber(row.last_deliverability_score),at:isoValue(row.last_scored_at)},
+      bobworkHistory: bobworkHistory(row.bobwork_history),
       deliverabilityDecisions: Array.isArray(row.deliverability_decisions) ? row.deliverability_decisions : [],
       warmupDailyLimit: row.warmup_daily_limit == null ? null : numberValue(row.warmup_daily_limit),
       sendDays: Array.isArray(row.send_days) ? row.send_days.map(numberValue) : [],

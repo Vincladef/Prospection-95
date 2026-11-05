@@ -11,6 +11,19 @@ let rows: Record<string, unknown>[];
 let messages: Record<string, unknown>[];
 async function displayed() { return (await loadDashboard()).prospects as Prospect[]; }
 
+it("exposes a historical scored assessment separately from the current decision and sanitizes BobWork history",async()=>{
+ mocks.sqlQuery.mockImplementation(async(sql:string)=>sql.includes("select ga.*")?[{
+  id:"account",email:"sender@example.test",daily_limit:20,effective_daily_limit:5,ai_score:null,
+  last_deliverability_score:"75",last_scored_at:"2026-11-03T06:00:00Z",
+  bobwork_history:[{at:"2026-11-05T06:00:00Z",metrics:{email:"hidden@example.test",signature:"private content",spam_rate_7d_pct:0,last_7_days:{sent:10,errors:0}}}]
+ }]:[]);
+ const accounts=(await loadDashboard()).gmailAccounts as Array<Record<string,unknown>>;
+ expect(accounts[0].deliverabilityScore).toBeNull();expect(accounts[0].lastScoredDeliverability).toEqual({score:75,at:"2026-11-03T06:00:00.000Z"});
+ expect(accounts[0].effectiveDailyLimit).toBe(5);
+ expect(accounts[0].bobworkHistory).toEqual([{at:"2026-11-05T06:00:00.000Z",spamRate7d:0,sent7d:10,errors7d:0}]);
+ expect(JSON.stringify(accounts)).not.toMatch(/hidden@example|private content/);
+});
+
 beforeEach(() => {
   rows = [{ id: "p1", campaign_id: "c1", output_sequence: sequence("passe 1"), iteration_completed_at: "2026-10-29T09:00:00Z", writing_iterations_completed: 1, writing_iterations_total: 5 }];
   messages = [];
