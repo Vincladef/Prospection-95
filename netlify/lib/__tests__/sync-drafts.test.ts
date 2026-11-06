@@ -38,3 +38,14 @@ it("does not recreate a draft deleted in Gmail",async()=>{
   expect(mocks.create).toHaveBeenCalledWith(expect.objectContaining({checkOnly:true,sourceThreadId:"thread"}));
   expect(mocks.sqlQuery.mock.calls[0][1][4]).toBe(true);
 });
+
+it('keeps a confirmed Gmail draft successful while surfacing an audit failure',async()=>{
+ const error=vi.spyOn(console,'error').mockImplementation(()=>undefined);
+ mocks.sqlOne.mockResolvedValueOnce(draft).mockResolvedValueOnce({id:'draft'});
+ mocks.create.mockResolvedValue({uid:42,mailbox:'Drafts'});
+ mocks.sqlQuery.mockImplementation(async(sql:string)=>{if(sql.includes('audit.log_event'))throw new Error('audit unavailable');return []});
+ expect(await(await run()).json()).toMatchObject({ok:true,draftId:'draft'});
+ expect(error).toHaveBeenCalledWith('gmail_draft_audit_failed',expect.objectContaining({draftId:'draft'}));
+ expect(mocks.create).toHaveBeenCalledOnce();
+ error.mockRestore();
+});

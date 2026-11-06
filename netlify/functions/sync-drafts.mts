@@ -88,8 +88,10 @@ export default async function syncDrafts(_request: Request, _context: Context): 
     if (result.missing) await sqlQuery(`update app.reply_workflows set state='cancelled',updated_at=clock_timestamp()
       where draft_request_id=$1::uuid and state='draft_requested'`,[draft.id]);
     await sqlQuery(`select audit.log_event('backend',$1,$2::uuid,'gmail_draft_reconciled','reply_draft_request',$3,null,null,
-      jsonb_build_object('threadingVerified',false,'mailbox',$4,'alreadySent',$5::boolean))`,
-    [worker,randomUUID(),draft.id,result.mailbox,!!result.alreadySent]).catch(() => undefined);
+      jsonb_build_object('threadingVerified',false,'mailbox',$4::text,'alreadySent',$5::boolean))`,
+    [worker,randomUUID(),draft.id,result.mailbox,!!result.alreadySent]).catch(() => {
+      console.error("gmail_draft_audit_failed", { worker, draftId: draft?.id });
+    });
     return workerResult(worker, { ok: true, draftId: draft.id, threadingVerified: false, alreadySent: !!result.alreadySent });
   } catch (error) {
     if (draft) {

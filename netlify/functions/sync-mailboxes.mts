@@ -4,6 +4,7 @@ import { sqlOne, sqlQuery } from "../lib/db.mts";
 import { fetchMailboxDelta } from "../lib/imap.mts";
 import { recordMailboxMessages } from "../lib/mailbox-sync.mts";
 import { workerFailure, workerResult } from "../lib/worker-response.mts";
+import { recoverReplyContent } from "../lib/reply-content-recovery.mts";
 
 interface ClaimedMailbox {
   account_id: string;
@@ -57,6 +58,11 @@ export default async function syncMailboxes(_request: Request, _context: Context
   const worker = `netlify-imap-${randomUUID()}`;
   let claimed: ClaimedMailbox | null = null;
   try {
+    // Historical empty plain parts must recover even after their IMAP cursor has advanced.
+    const recoveredReplies = await recoverReplyContent().catch(() => {
+      console.error("reply_content_recovery_failed", { worker });
+      return null;
+    });
     // Bounded retention maintenance uses the existing worker, no extra schedule.
     await sqlQuery(`delete from app.interaction_buckets where ctid in (
       select ctid from app.interaction_buckets where bucket_hour<clock_timestamp()-interval '90 days' limit 1000)`);
@@ -64,7 +70,7 @@ export default async function syncMailboxes(_request: Request, _context: Context
       select id from app.reading_sessions where started_at<clock_timestamp()-interval '90 days' limit 1000)`);
     await sqlQuery(`delete from app.open_contexts where ctid in (select ctid from app.open_contexts where bucket_hour<clock_timestamp()-interval '90 days' limit 1000)`);
     claimed = await claimMailbox();
-    if (!claimed) return workerResult(worker, { ok: true, claimed: 0 });
+    if (!claimed) return workerResult(worker, { ok: true, claimed: 0, recoveredReplies });
     const delta = await fetchMailboxDelta({
       email: claimed.email,
       credentialId: claimed.credential_id,
@@ -93,7 +99,7 @@ export default async function syncMailboxes(_request: Request, _context: Context
        where id = $1::uuid`,
       [claimed.account_id],
     );
-    return workerResult(worker, { ok: true, accountId: claimed.account_id, fetched: delta.messages.length, recorded, resetRequired: delta.resetRequired });
+    return workerResult(worker, { ok: true, accountId: claimed.account_id, fetched: delta.messages.length, recorded, resetRequired: delta.resetRequired, recoveredReplies });
   } catch (error) {
     if (claimed) {
       const code = String((error as { code?: unknown }).code ?? (error as Error).name ?? "imap_sync_failed").slice(0, 120);

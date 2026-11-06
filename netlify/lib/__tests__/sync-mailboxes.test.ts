@@ -39,3 +39,8 @@ it("advances past mail unrelated to any conversation without storing its content
  expect(mocks.sqlOne.mock.calls.some(([sql])=>sql.includes("app.record_inbound_message"))).toBe(false);
  expect(mocks.sqlQuery.mock.calls.some(([sql])=>sql.includes("insert into app.imap_cursors"))).toBe(true);
 });
+it('recovers historical reply content even when no mailbox is claimable',async()=>{
+ mocks.sqlOne.mockResolvedValue(null);
+ mocks.sqlQuery.mockImplementation(async(sql:string)=>sql.includes('select m.id::text,m.body_html')?[{id:'old',body_html:'<p>Merci pour votre proposition</p>'}]:sql.includes('returning id::text')?[{id:'old'}]:[]);
+ expect(await(await sync(new Request('https://example.test'),{} as Context)).json()).toMatchObject({ok:true,claimed:0,recoveredReplies:1});
+});

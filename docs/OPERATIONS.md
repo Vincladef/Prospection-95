@@ -704,3 +704,22 @@ worker fige les indicateurs secondaires depuis ces sources pour les nouveaux
 envois. Les compteurs horaires et le pixel existants sont réutilisés. Durées,
 contextes clients/proxys/automatisation, quotas, 90 jours de rétention et fiabilité
 restent inchangés. Recette : db/tests/046_automatic_interactions.sql.
+
+## Réponses HTML et récupération du contenu
+
+La synchronisation convertit le HTML en texte lorsque la partie texte est absente
+ou blanche. Le worker IMAP existant répare aussi au maximum cinq anciennes
+réponses non analysées et sans cycle commencé par passage, indépendamment des
+curseurs Gmail. Il conserve le HTML, les identifiants et les dates de réception.
+Une mise à jour concurrente, une analyse ou un cycle commencé empêche l'écrasement.
+Une empreinte du HTML empêche les tentatives répétées sur un contenu réellement
+vide ; aucun contenu ni classement n'est inventé. Les compteurs `recoveredReplies`
+et le journal `reply_content_recovery_failed` rendent la récupération observable.
+
+La planification relit l'état actuel des files à chaque passage, signale les
+sources bloquées avec leur ancienneté et vérifie les opérations avant clôture.
+Le worker brouillons journalise ses confirmations avec un paramètre de boîte
+explicitement typé ; un échec de journalisation est visible via
+`gmail_draft_audit_failed` et ne provoque pas une deuxième création Gmail.
+Aucune migration, réactivation de campagne ou modification du mode de réponse
+n'est nécessaire pour cette correction.

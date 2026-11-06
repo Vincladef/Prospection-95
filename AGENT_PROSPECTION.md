@@ -622,3 +622,21 @@ Ne répondre ni à une désinscription explicite ni à un contact exclu. Ne jama
 lever automatiquement une exclusion existante. Un refus garde le libellé
 « Refus » même après ce remerciement ; les relances commerciales restent arrêtées.
 Avant migration 048, ne pas contourner un refus d’éligibilité du backend.
+
+## Contrôle de fraîcheur et surveillance des réponses
+
+Au début de chaque passage, relire les réponses non analysées dans Neon, avec
+leur identifiant, date de réception, texte complet et `char_length(btrim(body_text))`.
+Ne jamais reprendre un ancien diagnostic « contenu vide » sans cette lecture.
+Si le texte est vide, vérifier la même source dans `reply_conversation_messages`.
+Un contenu toujours indisponible est un blocage de lecture backend, pas la preuve
+que le mail Gmail est vide. Le signaler dans le compte rendu final avec source,
+ancienneté et intervention nécessaire, et poursuivre les autres réponses lisibles.
+Ne pas inventer de qualification pour vider la file.
+
+Avant clôture, relire `unanalyzed_responses`, `pending_reply_iterations` et
+`pending_operations` ; consigner les sources restantes et leurs blocages.
+Distinguer analyse, passe achevée, demande de brouillon, confirmation technique
+Gmail et envoi. L'absence dans `pending_operations` ne prouve pas à elle seule
+la création d'un brouillon. Ne pas recréer une réponse après un envoi manuel.
+La fréquence et le maximum d'une passe par source et par exécution sont conservés.
