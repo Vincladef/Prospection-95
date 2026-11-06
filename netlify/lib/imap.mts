@@ -1,6 +1,7 @@
 import { lookup } from "node:dns/promises";
 import { ImapFlow } from "imapflow";
 import { simpleParser } from "mailparser";
+import { readableMailText } from "./mail-content.mts";
 import { readCredential } from "./credentials.mts";
 
 export interface MailboxCursor {
@@ -152,6 +153,7 @@ export async function fetchMailboxDelta(input: {
           continue;
         }
         const parsed = await simpleParser(item.source, { skipImageLinks: true });
+        const text = await readableMailText(parsed);
         const headers = parsed.headers;
         const references = Array.isArray(parsed.references)
           ? parsed.references
@@ -173,7 +175,7 @@ export async function fetchMailboxDelta(input: {
             ? parsed.to.value.map((entry) => entry.address).filter((value): value is string => !!value)
             : [],
           subject: parsed.subject ?? "",
-          text: parsed.text ?? "",
+          text,
           html: typeof parsed.html === "string" ? parsed.html : null,
           date: parsed.date?.toISOString() ?? (item.internalDate ? new Date(item.internalDate).toISOString() : null),
           gmailThreadId: item.threadId ?? null,
@@ -193,7 +195,7 @@ export async function fetchMailboxDelta(input: {
           isPermanentBounce: isPermanentBounceDiagnostic(
             isBounce,
             parsed.subject ?? "",
-            parsed.text ?? "",
+            text,
           ),
         });
         lastUid = Math.max(lastUid, item.uid);
