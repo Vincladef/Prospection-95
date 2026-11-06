@@ -6,7 +6,7 @@ vi.mock("imapflow",()=>({ImapFlow:class{connect=m.connect;close=m.close;list=m.l
 vi.mock("mailparser",()=>({simpleParser:m.parse}));
 vi.mock("nodemailer",()=>({default:{createTransport:()=>({sendMail:m.compile})}}));
 import {draftHash,gmailThreadState,syncMailboxDraft} from "../mailbox-gmail.mts";
-const input={fromEmail:"sender@example.test",credentialId:"secret-id",recipient:"prospect@example.test",subject:"Re: Sujet",text:"Bonjour",messageId:"",inReplyTo:"<parent@test>",references:[],version:2,threadId:"thread",previousId:null,previousHash:null};
+const input={mode:"save" as const,fromEmail:"sender@example.test",credentialId:"secret-id",recipient:"prospect@example.test",subject:"Re: Sujet",text:"Bonjour",messageId:"",inReplyTo:"<parent@test>",references:[],version:2,threadId:"thread",previousId:null,previousHash:null};
 beforeEach(()=>{vi.resetAllMocks();m.list.mockResolvedValue([{path:"[Gmail]/Tous",specialUse:"\\All"},{path:"[Gmail]/Brouillons",specialUse:"\\Drafts"}]);m.lock.mockResolvedValue({release:m.release});m.search.mockResolvedValue([]);m.compile.mockResolvedValue({message:Buffer.from("MIME fixture")});m.append.mockResolvedValue({uid:8});m.del.mockResolvedValue(true);});
 it("archives through Gmail labels and rechecks the whole thread",async()=>{
  m.search.mockResolvedValue([5,6]);m.remove.mockResolvedValue(true);
@@ -40,4 +40,38 @@ it("deletes only the known, unchanged draft after the replacement is confirmed",
  m.search.mockResolvedValueOnce([]).mockResolvedValueOnce([3]);m.fetchOne.mockResolvedValue({source:Buffer.from("draft")});m.parse.mockResolvedValue({text:"Ancien texte"});
  await syncMailboxDraft({...input,previousId:"<old@test>",previousHash:draftHash("Ancien texte")});
  expect(m.del).toHaveBeenCalledWith([3],{uid:true});expect(m.append.mock.invocationCallOrder[0]).toBeLessThan(m.del.mock.invocationCallOrder[0]);
+});
+it("preserves an AI draft through repeated background refreshes with an empty app editor",async()=>{
+ m.search.mockResolvedValueOnce([]).mockResolvedValueOnce([3]);
+ m.fetchOne.mockResolvedValue({source:Buffer.from("AI draft")});
+ m.parse.mockResolvedValue({messageId:"<ai-draft@test>",text:"Réponse rédigée par IA"});
+ const discovered=await syncMailboxDraft({...input,mode:"observe",text:""});
+ expect(discovered.remoteBody).toBe("Réponse rédigée par IA");
+ // Reproduce the following refresh using the imported identity/hash while
+ // retaining the empty local editor. Previously this deleted UID 3.
+ for(let pass=0;pass<3;pass++){
+  m.search.mockResolvedValueOnce([]).mockResolvedValueOnce([3]);
+  const observed=await syncMailboxDraft({...input,mode:"observe",text:"",previousId:discovered.messageId,previousHash:discovered.hash});
+  expect(observed).toEqual(discovered);
+ }
+ expect(m.lock).toHaveBeenCalledWith("[Gmail]/Brouillons",{readOnly:true});
+ expect(m.search.mock.calls.every(([query])=>query.draft===undefined)).toBe(true);
+ expect(m.append).not.toHaveBeenCalled();expect(m.del).not.toHaveBeenCalled();
+});
+it("does not create a Gmail draft from a local body during a background refresh",async()=>{
+ await syncMailboxDraft({...input,mode:"observe"});
+ expect(m.compile).not.toHaveBeenCalled();expect(m.append).not.toHaveBeenCalled();expect(m.del).not.toHaveBeenCalled();
+});
+it("does not replace an unchanged known draft with a different local body on observation",async()=>{
+ m.search.mockResolvedValueOnce([]).mockResolvedValueOnce([3]);
+ m.fetchOne.mockResolvedValue({source:Buffer.from("draft")});m.parse.mockResolvedValue({text:"Texte Gmail"});
+ expect(await syncMailboxDraft({...input,mode:"observe",previousId:"<old@test>",previousHash:draftHash("Texte Gmail")}))
+  .toMatchObject({remoteBody:"Texte Gmail"});
+ expect(m.append).not.toHaveBeenCalled();expect(m.del).not.toHaveBeenCalled();
+});
+it("still permits clearing an unchanged draft through an editor save",async()=>{
+ m.search.mockResolvedValueOnce([]).mockResolvedValueOnce([3]);
+ m.fetchOne.mockResolvedValue({source:Buffer.from("draft")});m.parse.mockResolvedValue({text:"Texte Gmail"});
+ await syncMailboxDraft({...input,text:"",previousId:"<old@test>",previousHash:draftHash("Texte Gmail")});
+ expect(m.del).toHaveBeenCalledWith([3],{uid:true});expect(m.append).not.toHaveBeenCalled();
 });

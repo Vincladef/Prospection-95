@@ -50,28 +50,33 @@ export async function gmailThreadState(input:{email:string;credentialId:string;t
  });
 }
 
-export async function syncMailboxDraft(input:OutboundEmail & {version:number;threadId:string;previousId:string|null;previousHash:string|null}):Promise<{messageId:string|null;hash:string|null;remoteBody?:string}> {
+export async function syncMailboxDraft(input:OutboundEmail & {mode:"observe"|"save";version:number;threadId:string;previousId:string|null;previousHash:string|null}):Promise<{messageId:string|null;hash:string|null;remoteBody?:string}> {
  return withMailboxClient(input.fromEmail,input.credentialId,async client=>{
   const boxes=await client.list();const box=boxes.find(b=>b.specialUse==="\\Drafts");
   if(!box)throw new Error("gmail_drafts_mailbox_not_found");
-  const lock=await client.getMailboxLock(box.path);
+  const lock=await client.getMailboxLock(box.path,{readOnly:input.mode==="observe"});
   try {
    const messageId=`<mailbox-draft-${input.threadId}-v${input.version}@mail.prospection95.local>`;
-   const already=await client.search({header:{"Message-ID":messageId},draft:true,deleted:false},{uid:true});
+   const already=await client.search({header:{"Message-ID":messageId},deleted:false},{uid:true});
    if(!Array.isArray(already))throw new Error("gmail_draft_search_unconfirmed");
    if(already.length){
     const own=await client.fetchOne(String(already[0]),{source:true},{uid:true});
     if(!own||!own.source)throw new Error("gmail_draft_source_missing");
     const parsed=await simpleParser(own.source,{skipImageLinks:true});
     if(draftHash(parsed.text??"")!==draftHash(input.text))return {messageId,hash:draftHash(parsed.text??""),remoteBody:parsed.text??""};
+    if(input.mode==="observe")return {messageId,hash:draftHash(parsed.text??"")};
    }
    let oldIds:number[]=[];
    if(input.previousId){
-    const found=await client.search({header:{"Message-ID":input.previousId},draft:true,deleted:false},{uid:true});
+    const found=await client.search({header:{"Message-ID":input.previousId},deleted:false},{uid:true});
     if(!Array.isArray(found))throw new Error("gmail_draft_search_unconfirmed");oldIds=found;
     if(found.length){const current=await client.fetchOne(String(found[0]),{source:true},{uid:true});
      if(!current||!current.source)throw new Error("gmail_draft_source_missing");
      const body=(await simpleParser(current.source,{skipImageLinks:true})).text??"";
+     // An imported Gmail/AI draft is not permission to replace it with the
+     // local editor, which may still be empty on every background refresh.
+     if(input.mode==="observe")return {messageId:input.previousId,hash:draftHash(body),
+      ...(draftHash(body)!==draftHash(input.text)?{remoteBody:body}:{})};
      if(input.previousHash&&draftHash(body)!==input.previousHash)return {messageId:input.previousId,hash:draftHash(body),remoteBody:body};
     }else if(input.previousHash&&!already.length){
      // Deletion (including a Gmail send) is an external edit too. Do not
@@ -81,12 +86,15 @@ export async function syncMailboxDraft(input:OutboundEmail & {version:number;thr
    } else if(input.inReplyTo&&!already.length){
     // A Gmail draft already being edited belongs to the user. Import it before
     // allowing an app edit to replace it; never delete an unidentified draft.
-    const found=await client.search({header:{"In-Reply-To":input.inReplyTo},draft:true,deleted:false},{uid:true});
+    const found=await client.search({header:{"In-Reply-To":input.inReplyTo},to:input.recipient,deleted:false},{uid:true});
     if(!Array.isArray(found))throw new Error("gmail_draft_search_unconfirmed");
     if(found.length){const current=await client.fetchOne(String(found[0]),{source:true},{uid:true});
      if(current&&current.source){const parsed=await simpleParser(current.source,{skipImageLinks:true});
       if(parsed.messageId)return {messageId:parsed.messageId,hash:draftHash(parsed.text??""),remoteBody:parsed.text??""};}}
    }
+   // Observation never APPENDs, replaces or deletes a Gmail draft. Only a
+   // versioned editor save job is allowed to reach the mutation below.
+   if(input.mode==="observe")return {messageId:null,hash:null};
    if(input.text.trim()){
     if(!already.length){
      const transport=nodemailer.createTransport({streamTransport:true,buffer:true,newline:"unix"});

@@ -7,12 +7,12 @@ import {prospectionMailboxScope,prospectionLinkedMessageIds} from "./mailbox-sco
 interface ThreadContext {
  id:string;account_id:string;email:string;credential_id:string;correspondent:string;subject:string;
  thread_id:string|null;identifiers:string[];draft_body:string;draft_version:number;draft_synced_version:number;
- gmail_draft_message_id:string|null;gmail_draft_hash:string|null;
+ gmail_draft_message_id:string|null;gmail_draft_hash:string|null;draft_remote_body:string|null;
  parent_id:string|null;parent_references:string[];history_uid:number;history_uidvalidity:string|null;
 }
 async function context(id:string):Promise<ThreadContext|null>{
  return sqlOne<ThreadContext>(`select t.id::text,t.account_id::text,a.email,a.credential_id::text,t.correspondent,
-  t.draft_body,t.draft_version::int,t.draft_synced_version::int,t.gmail_draft_message_id,t.gmail_draft_hash,
+  t.draft_body,t.draft_version::int,t.draft_synced_version::int,t.gmail_draft_message_id,t.gmail_draft_hash,t.draft_remote_body,
   t.history_uid,t.history_uidvalidity,
   (select e.gmail_thread_id from app.email_messages e where e.mailbox_thread_id=t.id
     and e.mailbox_account_id=t.account_id and e.gmail_thread_id is not null
@@ -34,19 +34,25 @@ export async function refreshUnifiedConversation(id:string):Promise<void>{
  await recordMailboxMessages({id:t.account_id,email:t.email,credentialId:t.credential_id},delta.messages);
  if(delta.hasMore!==false)throw new Error("gmail_thread_check_incomplete");
 }
-export async function syncThreadDraft(t:ThreadContext):Promise<void>{
+export async function syncThreadDraft(t:ThreadContext,mode:"observe"|"save"):Promise<void>{
+ // An unresolved external edit must be explicitly accepted in the editor.
+ if(mode==="save"&&t.draft_remote_body!==null)return;
  // Don't recreate a draft whose send has already been explicitly queued.
  const sending=await sqlOne(`select j.id from app.outbox_jobs j join app.email_messages m on m.id=j.message_id
   where m.mailbox_thread_id=$1::uuid and j.job_kind='mailbox_reply' and j.status not in ('completed','failed','cancelled') limit 1`,[t.id]);
  if(sending)return;
  const result=await syncMailboxDraft({fromEmail:t.email,credentialId:t.credential_id,recipient:t.correspondent,subject:/^re:/i.test(t.subject)?t.subject:`Re: ${t.subject}`,
   text:t.draft_body,messageId:"",inReplyTo:t.parent_id,references:t.parent_id?[...(t.parent_references??[]),t.parent_id]:t.parent_references??[],
-  version:t.draft_version,threadId:t.id,previousId:t.gmail_draft_message_id,previousHash:t.gmail_draft_hash});
+  mode,version:t.draft_version,threadId:t.id,previousId:t.gmail_draft_message_id,previousHash:t.gmail_draft_hash});
  await sqlQuery(`update app.mailbox_threads set gmail_draft_message_id=$3,gmail_draft_hash=$4,
    draft_remote_body=case when draft_version=$2 then $5 else draft_remote_body end,
    draft_synced_version=case when $5::text is null then $2 else draft_synced_version end,
    last_error_code=case when $5::text is null then null else 'gmail_draft_changed' end
   where id=$1::uuid`,[t.id,t.draft_version,result.messageId,result.hash,result.remoteBody??null]);
+ if(result.messageId||t.gmail_draft_message_id)await sqlQuery(`select audit.log_event('backend','mailbox-draft-sync',null::uuid,
+  'mailbox_draft_synced','mailbox_thread',$1::text,null,null,
+  jsonb_build_object('mode',$2::text,'version',$3::int,'remotePresent',$4::boolean,'conflict',$5::boolean))`,
+  [t.id,mode,t.draft_version,!!result.messageId,result.remoteBody!==undefined]);
 }
 
 export async function processMailboxJob():Promise<boolean>{
@@ -66,7 +72,7 @@ export async function processMailboxJob():Promise<boolean>{
  try {
   const t=await context(job.thread_id);if(!t)throw new Error("gmail_account_unavailable");
   if(job.kind==="draft"){
-   if(Number(job.payload.version)===t.draft_version)await syncThreadDraft(t);
+   if(Number(job.payload.version)===t.draft_version)await syncThreadDraft(t,"save");
   }else if(job.kind==="read"||job.kind==="archive"){
    await gmailThreadState({email:t.email,credentialId:t.credential_id,threadId:t.thread_id,identifiers:t.identifiers,action:job.kind,value:job.payload.value});
   }
@@ -118,7 +124,7 @@ export async function refreshMailboxThread():Promise<boolean>{
    where id=$1::uuid and not exists(select 1 from app.mailbox_sync_jobs j where j.thread_id=$1::uuid and j.status in ('pending','running'))`,
     [t.id,state.unread,state.archived,delta.lastUid,delta.uidValidity,!delta.hasMore]);
   // Discover/import edits made in Gmail, preserving the app editor on conflict.
-  if(t.draft_synced_version===t.draft_version||t.draft_synced_version===0)await syncThreadDraft(t);
+  if(t.draft_synced_version===t.draft_version||t.draft_synced_version===0)await syncThreadDraft(t,"observe");
  }catch(error){
   const code=(error as Error).message.match(/^[a-z_]{3,80}$/)?.[0]??"gmail_refresh_failed";
   await sqlQuery(`update app.mailbox_threads set last_error_code=$2,last_synced_at=clock_timestamp() where id=$1::uuid`,[selected.id,code]);

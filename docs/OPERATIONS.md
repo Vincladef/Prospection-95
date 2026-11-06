@@ -740,3 +740,24 @@ confirmation et reprend le cycle de brouillon sans relancer les séquences de
 prospection. Une recherche Gmail incomplète n'est jamais assimilée à une absence.
 La création n'est confirmée qu'après relecture du dossier Brouillons et de ses
 marqueurs. Le contenu d'un brouillon existant n'est pas remplacé.
+
+## Conservation des brouillons lors des actualisations
+
+L'actualisation périodique de la boîte mail utilise `syncMailboxDraft` en mode
+`observe`, avec un verrou IMAP en lecture seule : elle ne crée, ne remplace et
+ne supprime aucun brouillon. Un brouillon découvert dans Gmail reste un contenu
+externe à accepter dans l'éditeur, même si le texte local est vide. Une nouvelle
+actualisation ne transforme pas sa découverte en autorisation de suppression.
+
+Seul un travail `draft` correspondant à la version actuelle d'une sauvegarde
+de l'éditeur utilise le mode `save`. Un conflit Gmail non résolu bloque cette
+écriture. Une suppression explicite reste possible pour un brouillon identifié
+dont l'empreinte n'a pas changé. Les recherches dans le dossier système Brouillons
+ne dépendent pas du flag IMAP Draft, parfois absent sur les copies Gmail.
+
+Le journal `mailbox_draft_synced` indique le mode, la présence distante et le
+conflit, sans recopier le corps du message. `gmail_draft_reconciled` conserve
+l'UID relu, l'absence éventuelle et la vérification réelle du fil. La recette
+doit couvrir plusieurs actualisations après la découverte d'un brouillon IA
+avec un éditeur local vide, ainsi que la suppression explicite d'un brouillon
+inchangé et la protection d'une modification faite dans Gmail.

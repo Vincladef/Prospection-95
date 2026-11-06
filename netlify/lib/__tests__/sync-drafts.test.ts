@@ -50,3 +50,10 @@ it('keeps a confirmed Gmail draft successful while surfacing an audit failure',a
  expect(mocks.create).toHaveBeenCalledOnce();
  error.mockRestore();
 });
+it('records actual readback evidence, distinguishing a present draft from a missing one',async()=>{
+ mocks.sqlOne.mockResolvedValueOnce(draft).mockResolvedValueOnce({id:'draft'});
+ mocks.create.mockResolvedValue({uid:42,mailbox:'Drafts',threadingVerified:true});
+ expect(await(await run()).json()).toMatchObject({threadingVerified:true,missing:false,alreadySent:false});
+ const audit=mocks.sqlQuery.mock.calls.find(([sql])=>sql.includes('audit.log_event'));
+ expect(audit?.[1].slice(3)).toEqual(['Drafts',false,true,false,42]);
+});
