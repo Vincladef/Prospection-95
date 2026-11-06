@@ -47,8 +47,10 @@ function inboundKind(message: SyncedMessage, conversationId: string | null): str
 export async function recordMailboxMessages(account: MailboxAccount, messages: SyncedMessage[], sentMailbox = false): Promise<number> {
   let recorded = 0;
   for (const message of messages) {
-      // Reconcile our own copies as Sent messages, never as inbound replies.
-      const outgoing = sentMailbox || message.sent || message.from.some(from => from.toLowerCase() === account.email.toLowerCase());
+      // From=self and an All Mail copy are not proof of delivery: drafts have both.
+      if (message.isDraft) continue;
+      const outgoing = sentMailbox || message.sent === true;
+      if (!outgoing && (message.draftRequestId || message.from.some(from => from.toLowerCase() === account.email.toLowerCase()))) continue;
       const conversationId = await matchingConversation(account.id, account.email, message, outgoing);
       if (!conversationId) {
         if (await recordStandaloneMessage(account.id,account.email,message,outgoing)) recorded+=1;
@@ -66,7 +68,7 @@ export async function recordMailboxMessages(account: MailboxAccount, messages: S
           message.subject, message.text, message.html, message.internetMessageId,
           message.inReplyTo, message.references, message.mailbox, message.uidValidity,
           message.uid, message.date ?? new Date().toISOString(),
-          JSON.stringify({ synchronizedFrom: "sent", prospectionMessageId: message.prospectionMessageId ?? null, draftRequestId: message.draftRequestId ?? null,warmup:!!message.warmup })]);
+          JSON.stringify({ synchronizedFrom: "sent", sentProof: sentMailbox ? "sent_mailbox" : "gmail_sent_label", prospectionMessageId: message.prospectionMessageId ?? null, draftRequestId: message.draftRequestId ?? null,warmup:!!message.warmup })]);
         if(stored)await observeMailboxMessage(account.id,message,stored.id);
         recorded += 1;
         continue;

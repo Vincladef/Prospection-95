@@ -723,3 +723,20 @@ explicitement typé ; un échec de journalisation est visible via
 `gmail_draft_audit_failed` et ne provoque pas une deuxième création Gmail.
 Aucune migration, réactivation de campagne ou modification du mode de réponse
 n'est nécessaire pour cette correction.
+
+## Distinguer les brouillons des envois Gmail
+
+Une copie dans « Tous les messages », une adresse From appartenant à un compte
+connecté et l'en-tête Date ne constituent jamais une preuve d'envoi. La collecte
+écarte les marqueurs de brouillon des flags IMAP et des labels Gmail. Seuls un
+passage explicite dans le dossier Envoyés ou le label système Sent permettent
+la réconciliation d'un envoi ; cette provenance est conservée dans `sentProof`.
+
+Le worker brouillons vérifie les dossiers Gmail pour les anciens brouillons
+internes faussement importés comme envois depuis All Mail. Une preuve Sent réelle
+interdit la reprise. En présence d'un brouillon ou de sa copie interne non envoyée
+vérifiée, il conserve l'ancienne ligne comme trace annulée, retire sa fausse
+confirmation et reprend le cycle de brouillon sans relancer les séquences de
+prospection. Une recherche Gmail incomplète n'est jamais assimilée à une absence.
+La création n'est confirmée qu'après relecture du dossier Brouillons et de ses
+marqueurs. Le contenu d'un brouillon existant n'est pas remplacé.

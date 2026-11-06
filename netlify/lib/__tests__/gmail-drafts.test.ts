@@ -1,9 +1,10 @@
 import { beforeEach,expect,it,vi } from "vitest";
-const mocks=vi.hoisted(()=>({search:vi.fn(),append:vi.fn(),list:vi.fn(),close:vi.fn(),locks:vi.fn()}));
+const mocks=vi.hoisted(()=>({search:vi.fn(),append:vi.fn(),list:vi.fn(),close:vi.fn(),locks:vi.fn(),fetchOne:vi.fn(),flags:vi.fn()}));
 vi.mock("node:dns/promises",()=>({lookup:async()=>({address:"127.0.0.1"})}));
 vi.mock("../credentials.mts",()=>({readCredential:async()=>({kind:"gmail_sender",secret:"fixture"})}));
 vi.mock("nodemailer",()=>({default:{createTransport:()=>({sendMail:async()=>({message:Buffer.from("fixture")})})}}));
 vi.mock("imapflow",()=>({ImapFlow:class {
+  fetchOne=mocks.fetchOne; messageFlagsAdd=mocks.flags;
   search=mocks.search; append=mocks.append; list=mocks.list; close=mocks.close;
   async connect(){} async getMailboxLock(path:string){mocks.locks(path);return {release(){}};}
 }}));
@@ -11,6 +12,7 @@ import { createGmailDraft } from "../gmail.mts";
 const input={fromEmail:"sender@example.test",credentialId:"credential",recipient:"contact@example.test",subject:"Re: proposition",text:"Réponse",messageId:"<draft-fixture@example.test>"};
 beforeEach(()=>{
   vi.resetAllMocks();mocks.list.mockResolvedValue([{path:"[Gmail]/Brouillons",specialUse:"\\Drafts"},{path:"[Gmail]/Messages envoyés",specialUse:"\\Sent"}]);
+  mocks.fetchOne.mockResolvedValue({flags:new Set(["\\Draft"]),labels:new Set(["\\Drafts"])}); mocks.flags.mockResolvedValue(true);
   mocks.search.mockResolvedValue([]);mocks.append.mockResolvedValue({uid:42});
 });
 it("discovers a localized Drafts folder and appends once",async()=>{
@@ -44,4 +46,21 @@ it("respects a manually edited draft whose original ID changed but reply thread 
 it("checks an existing draft without recreating it if it disappeared",async()=>{
   expect(await createGmailDraft({...input,checkOnly:true})).toMatchObject({missing:true});
   expect(mocks.append).not.toHaveBeenCalled();
+});
+it('finds an existing draft by Drafts folder membership without requiring the unreliable Draft flag',async()=>{
+ mocks.search.mockResolvedValueOnce([]).mockResolvedValueOnce([42]);
+ expect(await createGmailDraft({...input,checkOnly:true})).toMatchObject({uid:42});
+ expect(mocks.search.mock.calls[1][0].draft).toBeUndefined();
+ expect(mocks.append).not.toHaveBeenCalled();
+});
+it('does not claim creation on APPEND acknowledgement alone if readback is missing',async()=>{
+ mocks.fetchOne.mockResolvedValue(false);
+ await expect(createGmailDraft(input)).rejects.toThrow('gmail_draft_readback_unconfirmed');
+});
+it('repairs a missing draft flag and verifies it before declaring success',async()=>{
+ mocks.search.mockResolvedValueOnce([]).mockResolvedValueOnce([42]);
+ mocks.fetchOne.mockResolvedValueOnce({flags:new Set(),labels:new Set()}).mockResolvedValueOnce({flags:new Set(['\\Draft']),labels:new Set(['\\Drafts'])});
+ expect(await createGmailDraft(input)).toMatchObject({uid:42});
+ expect(mocks.flags).toHaveBeenCalledWith('42',['\\Draft'],{uid:true});
+ expect(mocks.append).not.toHaveBeenCalled();
 });

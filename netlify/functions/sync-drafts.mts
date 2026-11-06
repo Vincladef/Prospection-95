@@ -4,6 +4,7 @@ import { sqlOne, sqlQuery } from "../lib/db.mts";
 import { createGmailDraft } from "../lib/gmail.mts";
 import { refreshConversation } from "../lib/mailbox-sync.mts";
 import { workerFailure, workerResult } from "../lib/worker-response.mts";
+import { recoverFalseSentDraft } from "../lib/draft-recovery.mts";
 
 interface DraftRequest {
   id: string;
@@ -26,6 +27,9 @@ export default async function syncDrafts(_request: Request, _context: Context): 
   const worker = `netlify-drafts-${randomUUID()}`;
   let draft: DraftRequest | null = null;
   try {
+    await recoverFalseSentDraft().catch(() => {
+      console.error("gmail_draft_evidence_recovery_failed", { worker });
+    });
     draft = await sqlOne<DraftRequest>(`
       with candidate as (
         select r.id, primary_account.id as gmail_account_id

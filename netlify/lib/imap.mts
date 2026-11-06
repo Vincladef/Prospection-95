@@ -31,6 +31,7 @@ export interface SyncedMessage {
   draftRequestId?: string | null;
   prospectionMessageId?: string | null;
   sent?: boolean;
+  isDraft?: boolean;
   gmailMessageId?: string | null;
   unread?: boolean;
   archived?: boolean;
@@ -44,6 +45,10 @@ export interface MailboxDelta {
   messages: SyncedMessage[];
   resetRequired: boolean;
   hasMore: boolean;
+}
+
+export function hasDraftEvidence(flags?: Set<string>, labels?: Set<string>): boolean {
+  return [...(flags ?? []), ...(labels ?? [])].some(value => /^\\drafts?$/i.test(value));
 }
 
 export function isPermanentBounceDiagnostic(isBounce: boolean, subject: string, text: string): boolean {
@@ -148,7 +153,7 @@ export async function fetchMailboxDelta(input: {
         // A missing source must not silently advance a cursor past an unread mail.
         if (!item.source) throw new Error("imap_message_source_missing");
         fetchedUids.add(item.uid);
-        if (item.flags?.has("\\Draft") || item.flags?.has("\\Deleted")) {
+        if (hasDraftEvidence(item.flags, item.labels) || item.flags?.has("\\Deleted")) {
           lastUid = Math.max(lastUid,item.uid);
           continue;
         }

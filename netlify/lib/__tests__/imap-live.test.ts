@@ -62,3 +62,8 @@ it("targets correspondents and thread references and never ingests a draft as Se
   expect(result.messages[0]).toMatchObject({uid:1,sent:true,gmailThreadId:"thread-1"});
   expect(result.lastUid).toBe(120);
 });
+it.each(['\\Draft','\\Drafts'])('excludes a Gmail %s label even when the IMAP Draft flag is absent',async(label)=>{
+ mocks.search.mockResolvedValue([1]);mocks.fetch.mockImplementationOnce(async function*(){yield {uid:1,source:Buffer.from('From: sender@example.test\r\nTo: contact@example.test\r\n\r\nDraft'),flags:new Set(),labels:new Set([label])}});
+ const result=await fetchMailboxDelta({email:'sender@example.test',credentialId:'test',cursor:{mailbox:'__UNIFIED_ALL__',lastUid:0}});
+ expect(result.messages).toHaveLength(0);
+});

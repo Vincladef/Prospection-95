@@ -4,6 +4,7 @@ const mocks=vi.hoisted(()=>({sqlOne:vi.fn(),sqlQuery:vi.fn(),refresh:vi.fn(),cre
 vi.mock("../db.mts",()=>({sqlOne:mocks.sqlOne,sqlQuery:mocks.sqlQuery}));
 vi.mock("../mailbox-sync.mts",()=>({refreshConversation:mocks.refresh}));
 vi.mock("../gmail.mts",()=>({createGmailDraft:mocks.create}));
+vi.mock("../draft-recovery.mts",()=>({recoverFalseSentDraft:async()=>undefined}));
 import sync from "../../functions/sync-drafts.mts";
 const run=()=>sync(new Request("https://example.test"),{} as Context);
 const draft={id:"draft",conversation_id:"conversation",lease_token:"lease",sender_email:"sender@example.test",credential_email:"sender@example.test",

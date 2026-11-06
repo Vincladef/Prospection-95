@@ -269,23 +269,37 @@ export async function createGmailDraft(input: OutboundEmail & { mailbox?: string
       { header: { "X-Prospection95-Draft": input.messageId } }] };
     const sentLock = await client.getMailboxLock(sent.path, { readOnly: true });
     try {
-      const found = await client.search(identity, { uid: true });
+      const found = await client.search({ ...identity, draft: false, deleted: false }, { uid: true });
       if (!Array.isArray(found)) throw new Error("gmail_draft_search_unconfirmed");
       if (found.length) return { mailbox, threadingVerified: false, alreadySent: true };
     } finally { sentLock.release(); }
     const lock = await client.getMailboxLock(mailbox);
     try {
+      const confirmDraft = async (uid: number) => {
+        let stored = await client.fetchOne(String(uid), { uid: true, flags: true, labels: true, threadId: true }, { uid: true });
+        if (!stored || !stored.flags || !stored.labels) throw new Error("gmail_draft_readback_unconfirmed");
+        if (stored.labels.has("\\Sent")) throw new Error("gmail_draft_sent_during_creation");
+        const draftMarked = () => !!stored && [...(stored.flags ?? []), ...(stored.labels ?? [])].some(label => /^\\drafts?$/i.test(label));
+        if (!draftMarked()) {
+          if (!await client.messageFlagsAdd(String(uid), ["\\Draft"], { uid: true })) throw new Error("gmail_draft_flag_unconfirmed");
+          stored = await client.fetchOne(String(uid), { uid: true, flags: true, labels: true, threadId: true }, { uid: true });
+        }
+        if (!draftMarked()) throw new Error("gmail_draft_readback_unconfirmed");
+        return { uid, mailbox, threadingVerified: !!input.sourceThreadId && stored && stored.threadId === input.sourceThreadId || false,
+          gmailThreadId: stored ? stored.threadId ?? null : null };
+      };
       const draftIdentity: SearchObject = { or: [...(identity.or ?? []),
         ...(input.sourceThreadId && input.inReplyTo ? [{threadId:input.sourceThreadId,header:{"In-Reply-To":input.inReplyTo}}] : [])] };
-      const found = await client.search({ ...draftIdentity, draft: true, deleted: false }, { uid: true });
+      // Membership of Gmail's Drafts mailbox is proof even if \Draft is absent.
+      const found = await client.search({ ...draftIdentity, deleted: false }, { uid: true });
       if (!Array.isArray(found)) throw new Error("gmail_draft_search_unconfirmed");
-      if (found.length) return { uid: Math.min(...found), mailbox, threadingVerified: false };
+      if (found.length) return await confirmDraft(Math.min(...found));
       if (input.checkOnly) return { mailbox,threadingVerified:false,missing:true };
       // A retry always searches the stable identifier before APPEND. The worker
       // keeps a durable lease until well after this connection's deadline.
       const result = await client.append(mailbox, raw, ["\\Draft"]);
       if (!result || !result.uid) throw new Error("gmail_draft_append_unconfirmed");
-      return { uid: Number(result.uid), mailbox, threadingVerified: false };
+      return await confirmDraft(Number(result.uid));
     } finally { lock.release(); }
   } finally {
     clearTimeout(deadline);

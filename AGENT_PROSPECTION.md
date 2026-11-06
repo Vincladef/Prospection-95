@@ -640,3 +640,9 @@ Distinguer analyse, passe achevée, demande de brouillon, confirmation technique
 Gmail et envoi. L'absence dans `pending_operations` ne prouve pas à elle seule
 la création d'un brouillon. Ne pas recréer une réponse après un envoi manuel.
 La fréquence et le maximum d'une passe par source et par exécution sont conservés.
+
+Un statut `sent_manually` ou `technical_confirmation` issu d'une ancienne
+synchronisation ne suffit pas à attribuer une action à l'utilisateur. En cas de
+contradiction signalée, demander une vérification backend des dossiers Gmail ;
+ne jamais présenter From=self, All Mail ou la Date d'un brouillon comme preuve
+humaine d'envoi. Un identifiant de brouillon n'est pas une confirmation d'envoi.
