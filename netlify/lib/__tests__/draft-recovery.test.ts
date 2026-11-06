@@ -9,3 +9,13 @@ it('only retracts false Sent evidence after live Gmail confirms an unsent own co
 it.each([{sent:true,draftUid:null,unsentOwnCopy:false},{sent:false,draftUid:null,unsentOwnCopy:false}])('never reopens a sent or unconfirmed draft (%j)',async result=>{
  m.inspect.mockResolvedValue(result);await recoverFalseSentDraft();expect(m.query.mock.calls.some(([sql])=>sql.includes('with target as'))).toBe(false);
 });
+it('honors an explicit owner request to recreate a missing draft only after Gmail confirms no send',async()=>{
+ m.one.mockResolvedValue({...candidate,owner_recovery_requested:true});
+ m.inspect.mockResolvedValue({sent:false,draftUid:null,unsentOwnCopy:false});
+ await recoverFalseSentDraft();expect(m.query.mock.calls.some(([sql])=>sql.includes('with target as'))).toBe(true);
+});
+it('keeps an actual Gmail send protected even when the owner requested recovery',async()=>{
+ m.one.mockResolvedValue({...candidate,owner_recovery_requested:true});
+ m.inspect.mockResolvedValue({sent:true,draftUid:null,unsentOwnCopy:false});
+ await recoverFalseSentDraft();expect(m.query.mock.calls.some(([sql])=>sql.includes('with target as'))).toBe(false);
+});

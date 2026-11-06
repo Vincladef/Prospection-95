@@ -14,3 +14,7 @@ it('preserves actual Sent evidence and stops before trying to recover a draft',a
 it('does not infer success from missing Gmail metadata',async()=>{
  m.fetch.mockResolvedValue(false);await expect(inspectDraftEvidence(input)).rejects.toThrow('draft_evidence_fetch_incomplete');
 });
+it('also searches the reply parent in Drafts when Gmail rewrote the generated Message-ID',async()=>{
+ await inspectDraftEvidence(input);
+ expect(m.search.mock.calls[1][0].or).toContainEqual({header:{'In-Reply-To':'<source@test>'},to:'contact@example.test'});
+});

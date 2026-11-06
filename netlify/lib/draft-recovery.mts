@@ -3,9 +3,10 @@ import { inspectDraftEvidence } from "./draft-evidence.mts";
 
 /** Retract only a backend-generated draft wrongly ingested from All Mail as Sent. */
 export async function recoverFalseSentDraft(): Promise<void> {
-  const candidate = await sqlOne<{ id: string; false_message_id: string; email: string; credential_id: string; recipient: string; source_id: string; proposed_body: string }>(`
+  const candidate = await sqlOne<{ id: string; false_message_id: string; email: string; credential_id: string; recipient: string; source_id: string; proposed_body: string; owner_recovery_requested?: boolean }>(`
     select d.id::text,m.id::text as false_message_id,a.email,a.credential_id::text,src.from_address as recipient,
-      src.internet_message_id as source_id,d.proposed_body
+      src.internet_message_id as source_id,d.proposed_body,
+      coalesce((m.raw_headers->>'ownerRequestedDraftRecovery')::boolean,false) as owner_recovery_requested
     from app.reply_draft_requests d join app.reply_workflows w on w.draft_request_id=d.id
     join app.email_messages m on m.id=w.output_message_id join app.email_messages src on src.id=d.source_message_id
     join app.gmail_accounts a on a.id=coalesce(d.gmail_account_id,d.sender_account_id)
@@ -25,7 +26,9 @@ export async function recoverFalseSentDraft(): Promise<void> {
     await sqlQuery(`update app.email_messages set raw_headers=raw_headers||'{"sentInspectionFinal":true}'::jsonb where id=$1::uuid`, [candidate.false_message_id]);
     return;
   }
-  if (!evidence.draftUid && !evidence.unsentOwnCopy) return;
+  // A missing/deleted draft is only recreated on an explicit owner request.
+  // A verified Sent message above always prevents recovery, including this case.
+  if (!evidence.draftUid && !evidence.unsentOwnCopy && !candidate.owner_recovery_requested) return;
   const repaired = await sqlQuery(`with target as (
     select d.id,w.id as workflow_id,m.id as message_id,d.conversation_id from app.reply_draft_requests d
     join app.reply_workflows w on w.draft_request_id=d.id join app.email_messages m on m.id=w.output_message_id

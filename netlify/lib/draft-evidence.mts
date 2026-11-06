@@ -24,8 +24,8 @@ export async function inspectDraftEvidence(input: {
     for (const box of [sent, drafts, all]) {
       const lock = await client.getMailboxLock(box.path, { readOnly: true });
       try {
-        const query: SearchObject = box === sent ? { or: [...identity.or!, { header: { "In-Reply-To": input.sourceId }, to: input.recipient }], deleted: false }
-          : { ...identity, deleted: false };
+        // Gmail can rewrite a draft's Message-ID while preserving its reply parent.
+        const query: SearchObject = { or: [...identity.or!, { header: { "In-Reply-To": input.sourceId }, to: input.recipient }], deleted: false };
         const ids = await client.search(query, { uid: true });
         if (!Array.isArray(ids)) throw new Error("draft_evidence_search_unconfirmed");
         if (ids.length > 20) throw new Error("draft_evidence_search_too_large");
