@@ -354,7 +354,9 @@ export async function loadDashboard(): Promise<Record<string, unknown>> {
              coalesce(inbound.unclassified_replies, 0)::int as unclassified_replies,
              outbound.tracked_open_sends,outbound.tracked_click_sends,
              outbound.first_sent_at,
-             outbound.last_sent_at
+             outbound.last_sent_at,
+             coalesce(sourcing.new_contacts_today, 0)::int as new_contacts_today,
+             coalesce(drafting.writing_in_progress, 0)::int as writing_in_progress
       from app.campaigns c
       left join lateral (
         select
@@ -389,6 +391,22 @@ export async function loadDashboard(): Promise<Record<string, unknown>> {
         left join app.inbound_analyses analysis on analysis.message_id = reply.id
         where conversation.campaign_id = c.id
       ) inbound on true
+      left join lateral (
+        select count(distinct cp.prospect_id) filter (
+          where cp.state not in ('excluded', 'rejected')
+            and (cp.created_at at time zone 'Europe/Paris')::date = (now() at time zone 'Europe/Paris')::date
+        ) as new_contacts_today
+        from app.campaign_prospects cp
+        where cp.campaign_id = c.id
+      ) sourcing on true
+      left join lateral (
+        select count(distinct s.prospect_id) filter (
+          where s.status in ('pending', 'running')
+            and s.completed_iterations < s.total_iterations
+        ) as writing_in_progress
+        from app.prospect_iteration_states s
+        where s.campaign_id = c.id
+      ) drafting on true
     `),
     sqlQuery(`
       select id::text, scope_type, campaign_id::text, field_key, filename,
@@ -495,6 +513,8 @@ export async function loadDashboard(): Promise<Record<string, unknown>> {
       updatedAt: isoValue(row.updated_at),
       stats: {
         engagement:engagementFor(textValue(row.id)),
+        newContactsToday: numberValue(stats.new_contacts_today),
+        writingInProgress: numberValue(stats.writing_in_progress),
         sent,
         contacted: numberValue(stats.contacted),
         opened: numberValue(stats.opened),

@@ -6074,3 +6074,13 @@ body {
 .interaction-context-table { overflow-x:auto; margin-top:12px; }
 .interaction-context-table table { width:100%; border-collapse:collapse; }
 .interaction-context-table th,.interaction-context-table td { padding:8px; text-align:left; border-bottom:1px solid #edf0f2; white-space:nowrap; }
+
+
+/* Daily lead sourcing is different from email delivery. */
+.campaign-sourcing-strip { display:grid; grid-template-columns:repeat(3,minmax(0,1fr));gap:8px;margin:10px 0 14px;padding:10px;border:1px solid var(--chrome-dark);background:var(--chrome-mid); }
+.campaign-sourcing-metric { display:flex;flex-direction:column;gap:4px;min-width:0;padding:9px 11px;background:var(--chrome-light);border:1px solid var(--chrome-dark); }
+.campaign-sourcing-metric span {font-size:12px}
+.campaign-sourcing-metric strong {font-size:21px;font-weight:700;line-height:1.15}
+.campaign-sourcing-metric strong small {font-size:13px;font-weight:400;color:#555}
+.campaign-sourcing-footnote {grid-column:1/-1;color:#444;font-size:11px}
+@media(max-width:720px){.campaign-sourcing-strip{grid-template-columns:1fr}}

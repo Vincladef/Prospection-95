@@ -11,6 +11,16 @@ let rows: Record<string, unknown>[];
 let messages: Record<string, unknown>[];
 async function displayed() { return (await loadDashboard()).prospects as Prospect[]; }
 
+it("includes sourcing progress in campaign statistics", async () => {
+ mocks.sqlQuery.mockImplementation(async (sql:string) => {
+   if (sql.includes("select c.*")) return [{id:"c1", name:"Test", daily_new_contact_goal:5}];
+   if (sql.includes("coalesce(sourcing.new_contacts_today")) return [{campaign_id:"c1", new_contacts_today:"2", writing_in_progress:"1"}];
+   return [];
+ });
+ const data = await loadDashboard() as {campaigns:Array<{stats:{newContactsToday:number;writingInProgress:number;sent:number}}>} ;
+ expect(data.campaigns[0].stats).toMatchObject({newContactsToday:2,writingInProgress:1,sent:0});
+});
+
 it("exposes a historical scored assessment separately from the current decision and sanitizes BobWork history",async()=>{
  mocks.sqlQuery.mockImplementation(async(sql:string)=>sql.includes("select ga.*")?[{
   id:"account",email:"sender@example.test",daily_limit:20,effective_daily_limit:5,ai_score:null,

@@ -101,6 +101,16 @@ describe("CampaignsView V53", () => {
 
   afterEach(cleanup);
 
+  it("displays daily sourcing separately from emails sent", () => {
+    const sample: Campaign = { ...campaign, status: "active", dailyNewContactGoal: 5,
+      stats: { ...campaign.stats, newContactsToday: 2, writingInProgress: 1, sent: 0 } };
+    renderCampaigns([], [sample]);
+    const region = screen.getByRole("region", { name: "Avancement quotidien des nouveaux contacts" });
+    expect(within(region).getByText("3")).toBeInTheDocument();
+    expect(within(region).getByText("1")).toBeInTheDocument();
+    expect(screen.getByText(/Aujourd'hui : 2\/5 contacts ajoutés/)).toBeInTheDocument();
+  });
+
   it("saves first-exchange automation without broadening it to later replies", async () => {
     renderCampaigns();
     fireEvent.click(screen.getByRole("radio",{name:/Réponse automatique/}));

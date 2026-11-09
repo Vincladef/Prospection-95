@@ -55,6 +55,10 @@ export interface Campaign {
 
 export interface CampaignStats {
   engagement?:EngagementMetrics|null;
+  /** New contacts attached during today's Europe/Paris calendar day. */
+  newContactsToday?: number;
+  /** Prospects in an unfinished AI writing cycle. */
+  writingInProgress?: number;
   sent: number;
   contacted: number;
   opened: number;

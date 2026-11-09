@@ -359,6 +359,12 @@ function CampaignEditor({
         </div>
       </header>
 
+      <section className="campaign-sourcing-strip" aria-label="Avancement quotidien des nouveaux contacts">
+        <div className="campaign-sourcing-metric"><span>Ajoutés aujourd'hui</span><strong>{campaign.stats.newContactsToday ?? 0} <small>/ {campaign.dailyNewContactGoal}</small></strong></div>
+        <div className="campaign-sourcing-metric"><span>Reste à rechercher</span><strong>{campaign.status === "active" ? Math.max(0, campaign.dailyNewContactGoal - (campaign.stats.newContactsToday ?? 0)) : "En pause"}</strong></div>
+        <div className="campaign-sourcing-metric"><span>Rédactions IA en cours</span><strong>{campaign.stats.writingInProgress ?? 0}</strong></div>
+        <small className="campaign-sourcing-footnote">Données Neon du jour (heure de Paris). Les nouveaux contacts ne sont pas des emails envoyés.</small>
+      </section>
       {showStats ? <div className="campaign-stats-backdrop" role="presentation" onMouseDown={(event) => { if (event.currentTarget === event.target) setShowStats(false); }}><section className="campaign-stats-dialog" role="dialog" aria-modal="true" aria-labelledby="campaign-stats-title"><header><div><h3 id="campaign-stats-title">Statistiques · {campaign.name}</h3><small>Données réelles enregistrées dans Neon</small></div><button type="button" aria-label="Fermer" onClick={() => setShowStats(false)}>×</button></header><div className="campaign-stats-grid"><div><strong>{campaign.stats.sent}</strong><span>emails envoyés</span></div><div><strong>{campaign.stats.contacted}</strong><span>prospects contactés</span></div><div><strong>{campaign.stats.opened}</strong><span>emails ouverts</span><small>{campaign.stats.openRate == null ? "Non mesuré" : `${campaign.stats.openRate}% d’ouverture`}</small></div><div><strong>{campaign.stats.clicked}</strong><span>emails cliqués</span><small>{campaign.stats.clickRate == null ? "Non mesuré" : `${campaign.stats.clickRate}% de clic`}</small></div><div><strong>{campaign.stats.replied}</strong><span>prospects avec réponse humaine</span></div><div><strong>{campaign.stats.unclassifiedReplies}</strong><span>réponses à classer</span></div></div>
         <details className="advanced-engagement"><summary>Signaux d’engagement avancés · indicatifs</summary><EngagementStats metrics={campaign.stats.engagement}/></details>
         <section className="campaign-ab-stats" aria-labelledby="campaign-ab-stats-title">
@@ -408,7 +414,7 @@ function CampaignEditor({
             <label className="target-field">
               <span>Nouveaux contacts / jour</span>
               <input type="number" min={0} max={10_000} value={draft.dailyNewContactGoal} onChange={(event) => setDraft((current) => ({ ...current, dailyNewContactGoal: Number(event.target.value) }))} />
-              <small className="target-hint">Objectif de premiers emails, hors relances, sous réserve des limites de chaque compte Gmail.</small>
+              <small className="target-hint">Objectif quotidien de nouveaux prospects vérifiés ; l'envoi des emails obéit séparément aux règles de validation et de délivrabilité.</small>
             </label>
 
             <div className="target-field v22-sender-field">
@@ -775,6 +781,7 @@ export function CampaignsView({ campaigns, folders, accounts, experiments, attac
                       >
                         <span className="target-item-title"><strong>{campaign.name}</strong><i className={`target-status-dot ${["active", "existing_only"].includes(campaign.status) ? "on" : ""}`} /></span>
                         <span className="target-meta">{campaign.dailyNewContactGoal} nouveaux/jour · {campaign.validationPolicy === "manual" ? "validation manuelle" : "validation automatique"}</span>
+                        {campaign.status === "active" && campaign.dailyNewContactGoal > 0 ? <span className="target-meta">Aujourd'hui : {campaign.stats.newContactsToday ?? 0}/{campaign.dailyNewContactGoal} contacts ajoutés</span> : null}
                       </button>
                     ))}
                     {!children.length ? <span className="target-folder-empty">Aucune campagne</span> : null}
