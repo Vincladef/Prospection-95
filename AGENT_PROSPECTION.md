@@ -1,6 +1,6 @@
 # Prospection 95 — planification ChatGPT de prospection
 
-Ce document est le contrat opérationnel de la planification ChatGPT. Neon est la source de vérité. En production, la planification se connecte avec le login existant `prospection95_runtime`, membre de `prospection95_agent` en plus de son rôle backend. Elle n'utilise que le schéma `agent_api` pour ses opérations commerciales.
+Ce document est le contrat opérationnel de la planification ChatGPT. Neon est la source de vérité. En production, la planification se connecte avec le login existant `prospection95_runtime`, membre de `prospection95_agent` en plus de son rôle backend. Elle utilise les fonctions métier de `agent_api` pour toutes ses mutations commerciales ; seule la lecture en SELECT de `app.campaign_prospects` pour mesurer les nouveaux contacts quotidiens constitue l'exception autorisée et testée, décrite ci-dessous.
 
 ## Mission et limites
 
@@ -26,7 +26,28 @@ campagnes, même si leur objectif journalier est non nul. La recherche et
 
 ## Réapprovisionnement obligatoire des campagnes actives (correctif 2026-11-09)
 
-La cible `daily_new_contact_goal` est un **objectif de contacts professionnels sourcés réellement enregistrés par jour civil Europe/Paris**, non une création automatique de contacts, une promesse d'envoi ni un quota SMTP. Le statut `active` autorise la recherche ; `existing_only`, `inactive` et `archived` l'interdisent, même si un objectif numérique non nul figure encore en base.
+La cible `daily_new_contact_goal` est un **objectif de contacts professionnels sourcés réellement enregistrés par jour civil Europe/Paris**, non une création automatique de contacts, une promesse d'envoi ni un quota SMTP.
+
+**Lecture autorisée et vérifiée :** le rôle `prospection95_runtime` dispose du droit `SELECT` sur `app.campaign_prospects`, mais PAS sur `app.agent_prospect_registrations`. À titre d'exception explicite à la règle « vues `agent_api` uniquement », l'agent PEUT uniquement **lire** `app.campaign_prospects` pour calculer l'avancement journalier. Aucune écriture, réservation manuelle, mutation d'état ou autre lecture de tables métier `app` n'est autorisée par cette exception. Toutes les mutations continuent d'utiliser les fonctions `agent_api`.
+
+Requête testée avec `role_name=prospection95_runtime`, à exécuter fraîchement au début de chaque passage :
+
+```sql
+SELECT c.campaign_id::text, c.name, c.daily_new_contact_goal,
+       count(DISTINCT cp.prospect_id) FILTER (
+         WHERE cp.state NOT IN ('excluded','rejected')
+           AND (cp.created_at AT TIME ZONE 'Europe/Paris')::date
+             = (now() AT TIME ZONE 'Europe/Paris')::date
+       )::int AS added_today
+FROM agent_api.campaign_parameters c
+LEFT JOIN app.campaign_prospects cp ON cp.campaign_id = c.campaign_id
+WHERE c.status = 'active'
+GROUP BY c.campaign_id, c.name, c.daily_new_contact_goal
+ORDER BY c.name;
+```
+
+Cette mesure inclut les nouveaux rattachements réels (y compris ceux créés par l'interface), mais jamais les rejets/exclusions. Elle ne compte pas les emails envoyés et ne se déduit pas de la seule vue `eligible_prospects`, où disparaissent les candidats réservés. Calculer `manquant = greatest(0,daily_new_contact_goal - added_today)` pour chaque campagne. Si la lecture est effectivement refusée, signaler l'erreur exacte sans deviner de chiffre ; ne pas inventer de requête privilégiée ni modifier les permissions.
+ Le statut `active` autorise la recherche ; `existing_only`, `inactive` et `archived` l'interdisent, même si un objectif numérique non nul figure encore en base.
 
 À **chaque exécution horaire**, après la priorité impérative aux réponses humaines, l'agent doit traiter **toutes** les campagnes `active` avec un objectif > 0, y compris celles dont `agent_api.eligible_prospects` renvoie zéro. L'absence de stock est une **raison de chercher**, jamais une raison de conclure qu'il n'y a rien à faire. L'avancement d'une expérience `recruiting` ou `draft` ne remplace jamais cette recherche.
 
