@@ -24,13 +24,28 @@ de séquences. Ne rechercher et n'enregistrer aucun nouveau prospect pour ces
 campagnes, même si leur objectif journalier est non nul. La recherche et
 `register_prospect` sont réservés au statut `active`.
 
+## Réapprovisionnement obligatoire des campagnes actives (correctif 2026-11-09)
+
+La cible `daily_new_contact_goal` est un **objectif de contacts professionnels sourcés réellement enregistrés par jour civil Europe/Paris**, non une création automatique de contacts, une promesse d'envoi ni un quota SMTP. Le statut `active` autorise la recherche ; `existing_only`, `inactive` et `archived` l'interdisent, même si un objectif numérique non nul figure encore en base.
+
+À **chaque exécution horaire**, après la priorité impérative aux réponses humaines, l'agent doit traiter **toutes** les campagnes `active` avec un objectif > 0, y compris celles dont `agent_api.eligible_prospects` renvoie zéro. L'absence de stock est une **raison de chercher**, jamais une raison de conclure qu'il n'y a rien à faire. L'avancement d'une expérience `recruiting` ou `draft` ne remplace jamais cette recherche.
+
+Pour chaque campagne :
+1. Lire la configuration actuelle `agent_api.campaign_parameters` et le quota `daily_new_contact_goal`. Mesurer le **nombre de prospects distincts enregistrés aujourd'hui (Europe/Paris)** dans cette campagne depuis les opérations confirmées/vues métier autorisées. Si la vue métier n'expose pas ce compteur, ne pas l'inventer : signaler l'impossibilité de le mesurer et poursuivre une recherche prudente, sans multiplier les inscriptions déjà faites.
+2. Calculer `manquant = max(0, objectif - enregistrés_aujourd_hui)`. Si `manquant > 0`, **effectuer au moins une recherche externe effective** de contacts correspondant aux critères enregistrés, avec sources réelles (site officiel, page équipe, annuaire professionnel pertinent) et preuve de la fonction ainsi que de l'adresse professionnelle. Utiliser les outils de recherche accessibles, sans créer de faux résultats. Prioriser les campagnes actives qui n'ont encore aucun contact.
+3. Pour chaque correspondance vérifiée, appeler exclusivement `agent_api.register_prospect` avec les preuves et des clés d'idempotence stables, puis relire la confirmation. Dédupliquer entre campagnes, respecter les exclusions et ne jamais solliciter deux personnes d'une même organisation simultanément si les consignes l'interdisent. Réserver ensuite les candidats admissibles et poursuivre leurs variantes/itérations selon le cycle courant. Le compte d'inscriptions n'est **jamais** un compte d'envois.
+4. Faire une tentative réelle **pour chaque campagne déficitaire lors du même passage** ; ne pas consacrer la totalité du run aux seules expérimentations A/B/C. Si le volume est impossible à atteindre, consigner les recherches/sources exploitées, le nombre trouvé et enregistré, les rejets et la raison exacte du déficit (résultats non vérifiables, doublons, outil indisponible, droits insuffisants, etc.). Un simple `eligible_prospects = 0` ne constitue pas une raison valable.
+5. Dans `agent_api.complete_run` et le rapport utilisateur, distinguer : objectif, nouveaux contacts enregistrés aujourd'hui (valeur confirmée ou inconnue), manque, recherche effectivement réalisée, prospects réservés, passes d'itération, séquences proposées, brouillons confirmés et envois SMTP confirmés. Si une campagne déficitaire n'a pas fait l'objet d'une recherche, terminer le run en `partial` avec motif explicite, jamais en `completed` sous prétexte que le stock éligible est vide.
+
+Préserver la priorité aux réponses, les limites de recherche raisonnables, les validations humaines, la confidentialité, les contrôles de délivrabilité et la restriction **une seule passe IA par prospect et par run**. Aucune obligation d'inventer cinq prospects ni d'envoyer cinq messages.
+
 ## Cycle obligatoire d'une exécution
 
 1. Créer/reprendre l'exécution avec `agent_api.begin_run`.
 2. Relire toutes les vues utiles ; ne pas réutiliser aveuglément l'état d'un passage précédent.
 3. Traiter d'abord les réponses non analysées, puis faire avancer chaque expérience ouverte avec `agent_api.advance_experiment` et analyser celles devenues `mature`.
 4. Activer le prochain test `draft` lorsqu'aucun autre test de la campagne n'est ouvert.
-5. Réserver un prospect, lui attribuer si nécessaire une variante A/B/C stable, puis traiter au plus une passe de rédaction pour ce prospect et cette attribution pendant le run courant.
+5. Réapprovisionner **chaque campagne active déficitaire** par une recherche externe réelle, enregistrer les contacts vérifiés selon la section « Réapprovisionnement obligatoire », puis réserver les prospects admissibles ; attribuer si nécessaire une variante A/B/C stable, et traiter au plus une passe de rédaction pour ce prospect et cette attribution pendant le run courant.
 6. Ne proposer J0–R5 qu'après la dernière passe archivée de ce prospect et de cette variante.
 7. Conserver les opérations asynchrones dans leur état réel.
 8. Terminer avec `agent_api.complete_run`, même en état `partial` ou `failed`.
