@@ -53,7 +53,7 @@ function filterStatus(prospect: Prospect, filter: string) {
   );
   if (filter === "ready") return prospect.replyProgress?.state === "scheduled" || prospect.messageStatus === "approved" || prospect.messageStatus === "scheduled";
   if (filter === "sent") return !!prospect.lastSentStep || ["smtp_accepted", "received", "sent_manually"].includes(prospect.messageStatus || "");
-  return prospect.excluded || ["failed", "uncertain", "writing_failed"].includes(prospect.replyProgress?.state || "") || ["failed", "uncertain"].includes(prospect.messageStatus || "");
+  return prospect.excluded || prospect.writingProgressKnown === false || !!prospect.writingIterationError || ["failed", "uncertain", "writing_failed"].includes(prospect.replyProgress?.state || "") || ["failed", "uncertain"].includes(prospect.messageStatus || "");
 }
 
 const preservedStatuses = new Set<MessageStatus>([
@@ -66,7 +66,10 @@ function isPreparationComplete(prospect: Prospect) {
 }
 
 function preparationLabel(prospect: Prospect) {
+  if (prospect.writingProgressKnown === false || prospect.writingIterationStatus === "unknown") return "Avancement indisponible";
   const completed = Math.min(prospect.writingIterationsCompleted, prospect.writingIterationsTotal);
+  if (prospect.writingIterationError) return `À reprendre · ${completed}/${prospect.writingIterationsTotal}`;
+  if (isPreparationComplete(prospect) && !prospect.hasOutboundMessages) return `À finaliser · ${completed}/${prospect.writingIterationsTotal}`;
   return `En attente… ${completed}/${prospect.writingIterationsTotal}`;
 }
 
@@ -144,7 +147,7 @@ const MessageRow = memo(function MessageRow({
           sheet.start(index,event);
         }}>
         {prospect.lastSentStep ? <span className="sheet-delivery-label" title={prospect.lastSentAt ? `Envoi confirmé le ${new Date(prospect.lastSentAt).toLocaleString("fr-FR", { timeZone: "Europe/Paris" })}` : "Envoi confirmé"}>{prospect.lastSentStep} envoyé</span> : null}
-        <span className="sheet-status-label">{prospect.excluded ? "Exclu" : preparing ? preparationLabel(prospect) : <>{prospect.lastSentStep && prospect.statusStep && prospect.statusStep !== prospect.lastSentStep ? `${prospect.statusStep} · ` : ""}{displayedLabel}</>}</span>
+        <span className="sheet-status-label" title={prospect.writingIterationError || (prospect.writingProgressKnown === false ? "Aucun historique IA correspondant à cette campagne et à cette attribution. Le compteur reste inconnu." : undefined)}>{prospect.excluded ? "Exclu" : preparing ? preparationLabel(prospect) : <>{prospect.lastSentStep && prospect.statusStep && prospect.statusStep !== prospect.lastSentStep ? `${prospect.statusStep} · ` : ""}{displayedLabel}</>}</span>
         <select
           className={`status-select status-${prospect.messageStatus || "empty"}`}
           value={selectValue}

@@ -332,7 +332,7 @@ describe("MessagesView statuses", () => {
 
     const status = screen.getByRole("combobox", { name: "Statut de Prospect Test" });
     expect(status).toHaveValue("__preparing__");
-    expect(screen.getByRole("option", { name: "En attente… 3/3" })).toBeInTheDocument();
+    expect(screen.getByRole("option", { name: "À finaliser · 3/3" })).toBeInTheDocument();
     expect(apiMocks.updateProspect).not.toHaveBeenCalled();
   });
 
@@ -394,4 +394,28 @@ it("keeps validated rows in their current position until the user reapplies the 
  fireEvent.click(screen.getByRole("button",{name:"Actualiser la liste"}));
  await waitFor(()=>expect(screen.queryByRole("combobox",{name:"Statut de Prospect Test"})).not.toBeInTheDocument());
  cleanup();
+});
+
+describe("writing progress recovery",()=>{
+ beforeEach(()=>{cleanup();vi.clearAllMocks();});
+ afterEach(cleanup);
+it("does not invent a zero when the matching writing history is unavailable",()=>{
+ renderMessages({...baseProspect,writingProgressKnown:false,writingIterationStatus:"unknown",writingIterationsCompleted:0,writingIterationsTotal:5});
+ expect(screen.getAllByText("Avancement indisponible").length).toBeGreaterThan(0);
+ expect(screen.queryByText("En attente… 0/5")).not.toBeInTheDocument();
+ expect(screen.getByRole("combobox",{name:"Statut de Prospect Test"})).toHaveAttribute("aria-disabled","true");
+ fireEvent.click(screen.getByRole("button",{name:"À vérifier"}));
+ expect(screen.getByText("Prospect Test")).toBeInTheDocument();
+});
+it("shows a failed writing pass as needing recovery with its actual counter",()=>{
+ renderMessages({...baseProspect,writingIterationsCompleted:0,writingIterationError:"invalid_prospect_iteration_sequence"});
+ expect(screen.getAllByText("À reprendre · 0/3").length).toBeGreaterThan(0);
+ expect(screen.getByTitle("invalid_prospect_iteration_sequence")).toBeInTheDocument();
+});
+it("distinguishes completed writing from a sequence still awaiting finalization",()=>{
+ renderMessages({...baseProspect,writingIterationStatus:"completed",writingIterationsCompleted:3,hasOutboundMessages:false});
+ expect(screen.getAllByText("À finaliser · 3/3").length).toBeGreaterThan(0);
+ expect(screen.getByRole("combobox",{name:"Statut de Prospect Test"})).toHaveAttribute("aria-disabled","true");
+});
+
 });

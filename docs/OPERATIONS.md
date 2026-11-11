@@ -761,3 +761,37 @@ l'UID relu, l'absence éventuelle et la vérification réelle du fil. La recette
 doit couvrir plusieurs actualisations après la découverte d'un brouillon IA
 avec un éditeur local vide, ainsi que la suppression explicite d'un brouillon
 inchangé et la protection d'une modification faite dans Gmail.
+
+## Reprise des rédactions IA (049)
+
+La migration 049 est additive. Elle ne modifie ni les passes archivées, ni les
+attributions, campagnes, validations, autorisations d'envoi ou emplois d'outbox.
+La file `agent_api.pending_prospect_writing` réunit candidats, réservés sans cycle,
+cycles à reprendre et cycles terminés à finaliser. Le contrat et les instructions
+horaires imposent un passage sur le stock avant le sourcing et un parcours
+équitable entre campagnes, avec une seule passe par prospect et run.
+
+Le nombre de messages est figé par la première séquence du cycle. Les anciens
+cycles ayant déjà produit une sortie complète conservent cette sortie comme
+référence. Les modèles intégralement vierges conservent six étapes par défaut.
+Les emplacements finaux vides d'une séquence courte restent vides ; un trou dans
+les étapes actives et l'ajout d'une relance désactivée sont refusés. La RPC de
+validation expose les champs invalides avant archivage. La finalisation ne crée
+que les messages actifs, reste idempotente et conserve la validation manuelle.
+La révision CRM est adaptée au nombre réel de messages et préserve l'historique.
+Après la confirmation de la dernière étape active, aucune échéance de relance
+fictive n'est conservée ; les délais intermédiaires existants restent appliqués.
+
+Recette isolée : `db/tests/049_prospect_writing_recovery.sql` vérifie reprise après
+échec, trois passes sur des runs distincts, rejeu, absence de finalisation
+prématurée, séquence courte sans rappel supplémentaire, révision manuelle,
+progression 1/6 vers 2/6, conservation des archives et absence de job d'envoi.
+Les nouveaux affichages distinguent compteur réel, erreur à reprendre, cycle à
+finaliser et historique manquant pour le contexte A/B exact. Ils n'utilisent
+jamais le compteur d'une autre attribution pour combler un historique absent.
+
+La recette du SELECT réel de l’interface est décrite dans
+`db/tests/049_dashboard_progress.sql.template` : remplacer le jeton par le SELECT
+prospects actuel de `dashboard.mts` avant exécution sur la branche isolée. Elle
+vérifie attribution A sans état, état B plus récent, contenu A distinct et
+conversation conservant explicitement le contexte de référence NULL.

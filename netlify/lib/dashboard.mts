@@ -95,7 +95,10 @@ export async function loadDashboard(): Promise<Record<string, unknown>> {
              interactions.first_open_at, interactions.last_open_at,
              interactions.first_click_at, interactions.last_click_at,
              interactions.open_observation_count, interactions.click_observation_count,
-             coalesce(iteration_state.status, 'pending') as writing_iteration_status,
+             iteration_state.id as writing_iteration_state_id,
+             iteration_state.last_error_code as writing_iteration_error,
+             (iteration_state.id is not null or (conv.id is null and not iteration_history.exists)) as writing_progress_known,
+             coalesce(iteration_state.status, case when conv.id is not null or iteration_history.exists then 'unknown' else 'pending' end) as writing_iteration_status,
              coalesce(iteration_state.completed_iterations, 0) as writing_iterations_completed,
              coalesce(iteration_state.total_iterations, configured_iterations.total_iterations, 1) as writing_iterations_total,
              exists (
@@ -160,12 +163,22 @@ export async function loadDashboard(): Promise<Record<string, unknown>> {
           order by coalesce(m.received_at,m.smtp_accepted_at,m.sent_at,m.created_at) desc,m.id desc limit 50) t
       ) reply_thread on true
       left join lateral (
+        select assignment.id, assignment.variant_id
+        from app.experiment_assignments assignment
+        where assignment.campaign_id = selected.campaign_id and assignment.prospect_id = p.id
+        order by assignment.assigned_at desc, assignment.id desc limit 1
+      ) prospective_assignment on conv.id is null
+      left join lateral (
+        select exists(select 1 from app.prospect_iteration_states history
+          where history.campaign_id=selected.campaign_id and history.prospect_id=p.id) as exists
+      ) iteration_history on true
+      left join lateral (
         select state.*
         from app.prospect_iteration_states state
         where state.campaign_id = selected.campaign_id
           and state.prospect_id = p.id
-          and (conv.id is null
-            or state.experiment_assignment_id is not distinct from conv.experiment_assignment_id)
+          and ((conv.id is not null and state.experiment_assignment_id is not distinct from conv.experiment_assignment_id)
+            or (conv.id is null and state.experiment_assignment_id is not distinct from prospective_assignment.id))
         order by state.updated_at desc, state.created_at desc
         limit 1
       ) iteration_state on true
@@ -187,14 +200,6 @@ export async function loadDashboard(): Promise<Record<string, unknown>> {
             where m.conversation_id=conv.id and m.direction='outbound' and not m.technical_confirmation
         ) event where event.at is not null order by event.at desc,event.priority desc limit 1
       ) activity on true
-      left join lateral (
-        select assignment.variant_id
-        from app.experiment_assignments assignment
-        where assignment.campaign_id = selected.campaign_id
-          and assignment.prospect_id = p.id
-        order by assignment.assigned_at desc
-        limit 1
-      ) prospective_assignment on iteration_state.id is null
       left join app.experiment_variants progress_variant
         on progress_variant.id = coalesce(iteration_state.variant_id, prospective_assignment.variant_id)
       left join lateral (
@@ -586,6 +591,8 @@ export async function loadDashboard(): Promise<Record<string, unknown>> {
       exclusionReason: nullableText(row.exclusion_reason),
       variantLabel: nullableText(row.variant_label),
       writingIterationStatus: textValue(row.writing_iteration_status, "pending"),
+      writingProgressKnown: row.writing_progress_known !== false,
+      writingIterationError: nullableText(row.writing_iteration_error),
       writingIterationsCompleted: Math.max(0, numberValue(row.writing_iterations_completed)),
       writingIterationsTotal: Math.max(1, Math.min(100, numberValue(row.writing_iterations_total))),
       hasOutboundMessages: Boolean(row.has_outbound_messages),

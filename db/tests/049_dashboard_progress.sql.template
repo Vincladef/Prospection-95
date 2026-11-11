@@ -1,0 +1,60 @@
+-- Isolated branch. Replace the query placeholder with the prospect SELECT from
+-- netlify/lib/dashboard.mts before execution; tests the real query, not a copy.
+DO $test$
+#variable_conflict use_variable
+DECLARE
+ campaign_id uuid; prospect_id uuid; sender_id uuid; experiment_id uuid; experiment_b uuid; variant_a uuid; variant_b uuid;
+ assignment_a uuid; assignment_b uuid; state_ref uuid; state_a uuid; run_id uuid; iteration record;
+ result jsonb; key text:='progress-context-fixture:'||gen_random_uuid();
+ seq jsonb:='{"subject":"Sujet fixture","subjectInstructions":"","steps":["Initial","Un","Deux","Trois","Quatre","Cinq"],"stepInstructions":["","","","","",""]}';
+BEGIN
+ BEGIN
+  SELECT id INTO sender_id FROM app.gmail_accounts WHERE status='active' AND credential_id IS NOT NULL LIMIT 1;
+  INSERT INTO app.campaigns(name,status,sender_strategy,fixed_sender_account_id,validation_policy,writing_iteration_instructions)
+   VALUES(key,'active','fixed',sender_id,'manual',ARRAY['1','2','3','4','5','6']) RETURNING id INTO campaign_id;
+  INSERT INTO app.message_templates(campaign_id,step,version,subject,body)
+   SELECT campaign_id,(ARRAY['J0','R1','R2','R3','R4','R5'])[i+1]::app.sequence_step,1,seq->>'subject',seq->'steps'->>i FROM generate_series(0,5) i;
+  run_id:=agent_api.begin_run('prospection',key,key);
+  SELECT r.prospect_id INTO prospect_id FROM agent_api.register_prospect(campaign_id,'Progress fixture',key||'@example.test',NULL,NULL,NULL,'fixture',NULL,'{}',1,'Fixture',run_id,key||':register') r;
+  PERFORM agent_api.reserve_prospect(campaign_id,prospect_id,run_id,key||':reserve');
+  SELECT * INTO iteration FROM agent_api.claim_prospect_iteration(campaign_id,prospect_id,NULL,run_id,key||':claim');
+  state_ref:=iteration.iteration_state_id;
+  PERFORM agent_api.complete_prospect_iteration(iteration.iteration_run_id,run_id,seq,key||':complete');
+  EXECUTE $query$ SELECT to_jsonb(p) FROM (__DASHBOARD_QUERY__) p WHERE p.id=$1 $query$ INTO result USING prospect_id::text;
+  IF (result->>'writing_iterations_completed')::int<>1 OR NOT (result->>'writing_progress_known')::boolean THEN RAISE EXCEPTION 'persisted_reference_progress_lost'; END IF;
+  INSERT INTO app.experiments(campaign_id,name,idempotency_key) VALUES(campaign_id,'Fixture A/B',key) RETURNING id INTO experiment_id;
+  INSERT INTO app.experiments(campaign_id,name,idempotency_key) VALUES(campaign_id,'Fixture ancien test',key||':old') RETURNING id INTO experiment_b;
+  INSERT INTO app.experiment_variants(experiment_id,code) VALUES(experiment_id,'A') RETURNING id INTO variant_a;
+  INSERT INTO app.experiment_variants(experiment_id,code) VALUES(experiment_b,'B') RETURNING id INTO variant_b;
+  INSERT INTO app.experiment_assignments(experiment_id,variant_id,prospect_id,campaign_id,assignment_key,assigned_at)
+   VALUES(experiment_b,variant_b,prospect_id,campaign_id,key||':b',clock_timestamp()-interval '1 second') RETURNING id INTO assignment_b;
+  INSERT INTO app.experiment_assignments(experiment_id,variant_id,prospect_id,campaign_id,assignment_key)
+   VALUES(experiment_id,variant_a,prospect_id,campaign_id,key||':a') RETURNING id INTO assignment_a;
+  -- A has no state yet. Reference history must not masquerade as A's counter.
+  EXECUTE $query$ SELECT to_jsonb(p) FROM (__DASHBOARD_QUERY__) p WHERE p.id=$1 $query$ INTO result USING prospect_id::text;
+  IF (result->>'writing_progress_known')::boolean OR result->>'writing_iteration_status'<>'unknown'
+     OR result->>'variant_label'<>'A' OR result->>'output_sequence' IS NOT NULL THEN RAISE EXCEPTION 'missing_context_fabricated_progress'; END IF;
+  INSERT INTO app.prospect_iteration_states(campaign_id,prospect_id,experiment_assignment_id,experiment_id,variant_id,
+   configuration_hash,writing_input_hash,iteration_instructions,total_iterations,completed_iterations,status,updated_at)
+   VALUES(campaign_id,prospect_id,assignment_b,experiment_b,variant_b,md5(key),md5(key),ARRAY['1','2','3','4','5'],5,5,'completed',clock_timestamp()+interval '1 hour');
+  INSERT INTO app.prospect_iteration_states(campaign_id,prospect_id,experiment_assignment_id,experiment_id,variant_id,
+   configuration_hash,writing_input_hash,iteration_instructions,total_iterations,completed_iterations,status)
+   VALUES(campaign_id,prospect_id,assignment_a,experiment_id,variant_a,md5(key),md5(key),ARRAY['1','2','3','4','5'],5,3,'pending') RETURNING id INTO state_a;
+  INSERT INTO app.prospect_iteration_runs(state_id,campaign_id,prospect_id,experiment_assignment_id,variant_id,
+   configuration_hash,iteration_number,total_iterations,instruction,agent_run_id,input_sequence,output_sequence,status,
+   claim_idempotency_key,completion_idempotency_key,completed_at)
+   VALUES(state_a,campaign_id,prospect_id,assignment_a,variant_a,md5(key),3,5,'Fixture',run_id,seq,
+    jsonb_set(seq,'{subject}','"Variante A"'), 'completed',key||':a-claim',key||':a-complete',clock_timestamp());
+  EXECUTE $query$ SELECT to_jsonb(p) FROM (__DASHBOARD_QUERY__) p WHERE p.id=$1 $query$ INTO result USING prospect_id::text;
+  IF (result->>'writing_iterations_completed')::int<>3 OR (result->>'writing_iterations_total')::int<>5
+     OR result->>'variant_label'<>'A' OR result#>>'{output_sequence,subject}'<>'Variante A' THEN RAISE EXCEPTION 'counter_or_content_from_wrong_variant'; END IF;
+  -- A conversation explicitly using the reference must keep the reference even
+  -- if a newer assignment exists; NULL is a real context, not a missing value.
+  INSERT INTO app.conversations(campaign_id,prospect_id,sender_account_id,state)
+   VALUES(campaign_id,prospect_id,sender_id,'prepared');
+  EXECUTE $query$ SELECT to_jsonb(p) FROM (__DASHBOARD_QUERY__) p WHERE p.id=$1 $query$ INTO result USING prospect_id::text;
+  IF (result->>'writing_iterations_completed')::int<>1 OR (result->>'writing_iterations_total')::int<>6 THEN RAISE EXCEPTION 'reference_conversation_contaminated'; END IF;
+  RAISE SQLSTATE 'P9501' USING MESSAGE='fixture_complete_rollback';
+ EXCEPTION WHEN SQLSTATE 'P9501' THEN NULL;
+ END;
+END $test$;

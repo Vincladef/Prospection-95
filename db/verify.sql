@@ -430,3 +430,10 @@ SELECT to_regclass('agent_api.open_context_metrics') IS NOT NULL
  AND has_table_privilege('prospection95_agent','agent_api.reading_context_metrics','SELECT')
  AND NOT has_table_privilege('prospection95_agent','app.open_contexts','SELECT')
  AND NOT has_function_privilege('prospection95_agent','app.begin_reading_session_v2(uuid,text,text,text,boolean)','EXECUTE') AS contextual_interactions_are_guarded;
+
+SELECT to_regclass('agent_api.pending_prospect_writing') IS NOT NULL
+ AND has_table_privilege('prospection95_agent','agent_api.pending_prospect_writing','SELECT')
+ AND has_function_privilege('prospection95_agent','agent_api.validate_prospect_iteration_sequence(uuid,uuid,jsonb)','EXECUTE')
+ AND NOT has_table_privilege('prospection95_agent','app.prospect_iteration_runs','UPDATE')
+ AND NOT has_function_privilege('prospection95_agent','agent_api.propose_sequence(uuid,uuid,uuid,text,jsonb,uuid,text)','EXECUTE')
+ AS writing_recovery_contract_is_guarded;

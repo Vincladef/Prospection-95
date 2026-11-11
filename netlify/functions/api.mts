@@ -376,7 +376,7 @@ async function updateProspect(request: Request, id: string, identity: AdminIdent
         throw new HttpError(409, "version_conflict", "Le prospect a été modifié ailleurs. Recharge la séquence.");
       }
       if (message.includes("crm_invalid_")) {
-        throw new HttpError(422, "invalid_sequence", "La séquence doit contenir un objet et six messages non vides.");
+        throw new HttpError(422, "invalid_sequence", "La séquence doit contenir un objet, ses messages actifs et des emplacements vides pour les relances désactivées.");
       }
       if (/crm_(sequence_|manual_validation_required|incomplete_sequence|conversation_not_found)/.test(message)) {
         throw new HttpError(409, "sequence_not_editable", "Seules les séquences terminées, non validées et non envoyées en validation manuelle sont modifiables.");

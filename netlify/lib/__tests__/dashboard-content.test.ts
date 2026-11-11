@@ -162,3 +162,14 @@ it("returns the persisted version and partial overrides of each A/B variant for 
  const data=await loadDashboard() as {experiments:Array<{variants:Array<{version:number;overrides:unknown}>}>};
  expect(data.experiments[0].variants[0]).toMatchObject({version:7,overrides:{initial:{bodyInstructions:"Instructions A"}}});
 });
+
+it("distinguishes an unavailable A/B history from a genuine zero and exposes retry errors",async()=>{
+ rows[0].writing_progress_known=false;rows[0].writing_iteration_status="unknown";
+ rows[0].writing_iterations_completed=0;rows[0].output_sequence=null;
+ const [unknown]=await displayed();expect(unknown.writingProgressKnown).toBe(false);
+ expect(unknown.writingIterationStatus).toBe("unknown");expect(unknown.subject).toBe("");
+ rows[0].writing_progress_known=true;rows[0].writing_iteration_status="pending";
+ rows[0].writing_iteration_error="invalid_prospect_iteration_sequence";
+ const [failed]=await displayed();expect(failed.writingProgressKnown).toBe(true);
+ expect(failed.writingIterationError).toBe("invalid_prospect_iteration_sequence");
+});

@@ -4,7 +4,7 @@ import type { MessageStatus, Prospect } from "../types";
 
 export const cellStatuses: Array<[MessageStatus, string]> = [["draft", "Brouillon"], ["prepared", "Préparé"], ["pending_approval", "En attente…"], ["approved", "Validé"], ["scheduled", "Programmé"], ["cancelled", "Annulé"]];
 export function canEditStatus(p: Prospect) {
-  return !p.excluded && p.writingIterationStatus === "completed" && p.writingIterationsCompleted >= p.writingIterationsTotal
+  return !p.excluded && p.writingProgressKnown !== false && p.writingIterationStatus === "completed" && p.writingIterationsCompleted >= p.writingIterationsTotal
     && p.hasOutboundMessages && cellStatuses.some(([s]) => s === p.messageStatus);
 }
 type Change = { id: string; before: MessageStatus; after: MessageStatus; version: number };

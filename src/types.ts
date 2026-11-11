@@ -124,7 +124,9 @@ export interface Prospect {
   excluded: boolean;
   exclusionReason: string | null;
   variantLabel: string | null;
-  writingIterationStatus: "pending" | "running" | "completed" | "cancelled";
+  writingIterationStatus: "pending" | "running" | "completed" | "cancelled" | "unknown";
+  writingProgressKnown?: boolean;
+  writingIterationError?: string | null;
   writingIterationsCompleted: number;
   writingIterationsTotal: number;
   hasOutboundMessages: boolean;
