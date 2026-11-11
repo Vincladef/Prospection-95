@@ -30,7 +30,7 @@ Application privée de prospection B2B : React/Vite sur Netlify, fonctions Netli
 1. Lire le code et la migration concernés avant de modifier.
 2. Ajouter une nouvelle migration ; ne pas réécrire l'historique déjà appliqué en production.
 3. Tester les migrations sur une branche Neon temporaire, exécuter `db/verify.sql`, puis inspecter le diff.
-4. Demander l'accord explicite avant toute application sur la branche principale.
+4. L'accord du propriétaire pour appliquer les correctifs nécessaires, y compris les migrations testées en production, a été donné le 11 novembre 2026. Préparer, tester et relire ces correctifs, puis les appliquer sans redemander cet accord. Une opération destructive ou hors du périmètre de maintenance autorisé demande une évaluation distincte.
 5. Exécuter au minimum `npm run check`, `git diff --check` et un build Netlify hors ligne.
 6. Distinguer dans le compte rendu : test unitaire, validation sur branche Neon, build Netlify et recette réelle externe.
 
