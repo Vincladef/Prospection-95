@@ -1,8 +1,8 @@
 import { createAuthClient } from "@neondatabase/auth";
 import { BetterAuthReactAdapter } from "@neondatabase/auth/react/adapters";
+import { resolveNeonAuthUrl } from "./auth-config";
 
-const fallbackUrl = "http://localhost:54321/auth";
-export const authUrl = import.meta.env.VITE_NEON_AUTH_URL || fallbackUrl;
+export const authUrl = resolveNeonAuthUrl(import.meta.env.VITE_NEON_AUTH_URL, import.meta.env.PROD);
 
 export const authClient = createAuthClient(authUrl, {
   adapter: BetterAuthReactAdapter(),

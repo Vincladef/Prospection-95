@@ -795,3 +795,17 @@ La recette du SELECT réel de l’interface est décrite dans
 prospects actuel de `dashboard.mts` avant exécution sur la branche isolée. Elle
 vérifie attribution A sans état, état B plus récent, contenu A distinct et
 conversation conservant explicitement le contexte de référence NULL.
+
+## Configuration d'authentification des builds de production
+
+`VITE_NEON_AUTH_URL` est une configuration publique injectée pendant la compilation
+Vite. Une publication précompilée doit utiliser la valeur du contexte production
+Netlify pendant `npm run build`, même si les Functions héritent correctement de
+leurs propres variables serveur. La présence de cette variable dans Netlify au
+moment de publier ne corrige pas un JavaScript déjà compilé.
+
+Le build refuse maintenant une URL absente, invalide, locale ou non HTTPS. Le
+repli localhost reste réservé au développement. Avant publication, vérifier que
+le JavaScript compilé contient l'URL publique attendue et que les fichiers publiés
+correspondent aux artefacts contrôlés. La branche et le chemin Neon Auth doivent
+rester ceux de la production afin de conserver l'identité et les sessions.
