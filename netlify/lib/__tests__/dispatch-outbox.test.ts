@@ -54,8 +54,7 @@ describe("random outbound pacing", () => {
     let release!: () => void;
     mocks.delay.mockImplementationOnce(() => new Promise<void>((resolve) => { release = resolve; }));
     const pending = run();
-    await Promise.resolve(); // The off-database idle hint is checked before pacing.
-    expect(mocks.delay).toHaveBeenCalledWith(jitter);
+    await vi.waitFor(() => expect(mocks.delay).toHaveBeenCalledWith(jitter));
     expect(mocks.randomInt).toHaveBeenNthCalledWith(2, 3_001);
     expect(mocks.sqlOne).not.toHaveBeenCalled();
     release();
