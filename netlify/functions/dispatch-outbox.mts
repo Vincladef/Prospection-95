@@ -95,7 +95,9 @@ export default async function dispatchOutbox(_request: Request, _context: Contex
       [worker],
     );
     if (!job) {
-      await workerGovernor.rest("dispatch");
+      const next = await sqlOne<{ at: string | null }>(`select min(due_at) as at from app.outbox_jobs
+        where status in ('requested','pending','scheduled','deferred') and due_at > clock_timestamp()`);
+      await workerGovernor.rest("dispatch", next?.at ? new Date(next.at).getTime() : undefined);
       return workerResult(worker, { ok: true, scheduled: Number(scheduled?.count ?? 0), leased: 0 });
     }
     await workerGovernor.keepActive("dispatch");

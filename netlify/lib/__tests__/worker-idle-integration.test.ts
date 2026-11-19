@@ -1,36 +1,36 @@
 import { beforeEach, describe, expect, it, vi } from "vitest";
 import type { Context } from "@netlify/functions";
 
-vi.mock("../lib/worker-idle.mts", () => ({
+vi.mock("../worker-idle.mts", () => ({
   workerGovernor: { shouldRun: vi.fn(), rest: vi.fn(), keepActive: vi.fn(), quotaFailure: vi.fn(), isInteractive: vi.fn(), noteActivity: vi.fn() },
 }));
-vi.mock("../lib/db.mts", () => ({ sqlOne: vi.fn(), sqlQuery: vi.fn(), sqlTransaction: vi.fn(), pingDatabase: vi.fn() }));
-vi.mock("../lib/auth.mts", () => ({ isProductionOutboundEnabled: vi.fn(() => true) }));
-vi.mock("../lib/gmail.mts", () => ({ createGmailDraft: vi.fn(), sendGmailMessage: vi.fn() }));
-vi.mock("../lib/imap.mts", () => ({ fetchMailboxDelta: vi.fn() }));
-vi.mock("../lib/mailbox-sync.mts", () => ({ recordMailboxMessages: vi.fn(), refreshConversation: vi.fn() }));
-vi.mock("../lib/unified-mailbox-sync.mts", () => ({
+vi.mock("../db.mts", () => ({ sqlOne: vi.fn(), sqlQuery: vi.fn(), sqlTransaction: vi.fn(), pingDatabase: vi.fn() }));
+vi.mock("../auth.mts", () => ({ isProductionOutboundEnabled: vi.fn(() => true) }));
+vi.mock("../gmail.mts", () => ({ createGmailDraft: vi.fn(), sendGmailMessage: vi.fn() }));
+vi.mock("../imap.mts", () => ({ fetchMailboxDelta: vi.fn() }));
+vi.mock("../mailbox-sync.mts", () => ({ recordMailboxMessages: vi.fn(), refreshConversation: vi.fn() }));
+vi.mock("../unified-mailbox-sync.mts", () => ({
   processMailboxJob: vi.fn(), refreshMailboxThread: vi.fn(), refreshUnifiedConversation: vi.fn(),
 }));
-vi.mock("../lib/reply-content-recovery.mts", () => ({ recoverReplyContent: vi.fn() }));
-vi.mock("../lib/draft-recovery.mts", () => ({ recoverFalseSentDraft: vi.fn() }));
-vi.mock("../lib/tracking.mts", () => ({ prepareTrackedMessage: vi.fn(), trackingBaseUrl: vi.fn() }));
+vi.mock("../reply-content-recovery.mts", () => ({ recoverReplyContent: vi.fn() }));
+vi.mock("../draft-recovery.mts", () => ({ recoverFalseSentDraft: vi.fn() }));
+vi.mock("../tracking.mts", () => ({ prepareTrackedMessage: vi.fn(), trackingBaseUrl: vi.fn() }));
 vi.mock("node:crypto", () => ({ randomUUID: vi.fn(() => "worker-test"), randomInt: vi.fn(() => 0) }));
 vi.mock("node:timers/promises", () => ({ setTimeout: vi.fn(async () => undefined) }));
 
-import { sqlOne, sqlQuery } from "../lib/db.mts";
-import { isProductionOutboundEnabled } from "../lib/auth.mts";
-import { workerGovernor } from "../lib/worker-idle.mts";
-import { fetchMailboxDelta } from "../lib/imap.mts";
-import { recordMailboxMessages } from "../lib/mailbox-sync.mts";
-import { recoverReplyContent } from "../lib/reply-content-recovery.mts";
-import { recoverFalseSentDraft } from "../lib/draft-recovery.mts";
-import { processMailboxJob, refreshMailboxThread } from "../lib/unified-mailbox-sync.mts";
-import { sendGmailMessage, createGmailDraft } from "../lib/gmail.mts";
-import dispatch from "./dispatch-outbox.mts";
-import mailboxes from "./sync-mailboxes.mts";
-import unified from "./sync-unified-mailbox.mts";
-import drafts from "./sync-drafts.mts";
+import { sqlOne, sqlQuery } from "../db.mts";
+import { isProductionOutboundEnabled } from "../auth.mts";
+import { workerGovernor } from "../worker-idle.mts";
+import { fetchMailboxDelta } from "../imap.mts";
+import { recordMailboxMessages } from "../mailbox-sync.mts";
+import { recoverReplyContent } from "../reply-content-recovery.mts";
+import { recoverFalseSentDraft } from "../draft-recovery.mts";
+import { processMailboxJob, refreshMailboxThread } from "../unified-mailbox-sync.mts";
+import { sendGmailMessage, createGmailDraft } from "../gmail.mts";
+import dispatch from "../../functions/dispatch-outbox.mts";
+import mailboxes from "../../functions/sync-mailboxes.mts";
+import unified from "../../functions/sync-unified-mailbox.mts";
+import drafts from "../../functions/sync-drafts.mts";
 
 const context = {} as Context;
 const request = () => new Request("https://test.invalid/worker", { method: "POST" });

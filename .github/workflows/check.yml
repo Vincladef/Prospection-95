@@ -20,3 +20,24 @@ jobs:
       - run: npm run check
       - run: git diff --check
       - run: npx --yes netlify-cli build --offline --context production
+      - name: Verify deploy contents
+        run: |
+          node --input-type=module <<'NODE'
+          import { readFileSync, readdirSync } from "node:fs";
+          const manifest = JSON.parse(readFileSync(".netlify/functions/manifest.json", "utf8"));
+          const functions = manifest.functions.map(entry => entry.name);
+          const expected = ["api", "dispatch-outbox", "reading-session", "sync-bobwork", "sync-drafts", "sync-mailboxes", "sync-unified-mailbox", "track-click", "track-open"];
+          if (JSON.stringify([...functions].sort()) !== JSON.stringify(expected.sort())) throw new Error("Unexpected function bundle");
+          const scripts = readdirSync("dist/assets").filter(name => name.endsWith(".js")).map(name => readFileSync("dist/assets/" + name, "utf8")).join("\n");
+          if (!scripts.includes(process.env.VITE_NEON_AUTH_URL)) throw new Error("Production authentication endpoint missing from bundle");
+          console.log("Verified functions:", functions.join(", "));
+          console.log("Verified production authentication endpoint");
+          NODE
+      - uses: actions/upload-artifact@v4
+        with:
+          name: netlify-prebuilt
+          include-hidden-files: true
+          path: |
+            dist/
+            .netlify/functions/
+            .netlify/edge-functions/

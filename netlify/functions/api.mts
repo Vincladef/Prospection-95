@@ -110,7 +110,7 @@ async function health(checkDatabase = false): Promise<Response> {
     databaseChecked: checkDatabase && configured,
     configured,
     time: new Date().toISOString(),
-  }, database ? 200 : 503);
+  }, configured && database !== false ? 200 : 503);
 }
 
 async function updateSettings(request: Request, identity: AdminIdentity, requestId: string): Promise<Response> {

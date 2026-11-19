@@ -140,7 +140,8 @@ export default async function syncMailboxes(_request: Request, _context: Context
     let fetched = 0;
     let recorded = 0;
     let exhausted = false;
-    for (let index = 0; index < 15 && Date.now() - started < 150_000; index++) {
+    const batchLimit = interactive ? 1 : 15;
+    for (let index = 0; index < batchLimit && Date.now() - started < 150_000; index++) {
       const response = await syncOneMailbox(worker, interactive, visited);
       const result = await response.json() as { ok: boolean; claimed?: number; accountId?: string; mailboxName?: string; fetched?: number; recorded?: number; hasMore?: boolean; code?: string };
       if (!result.ok) return workerResult(worker, { ...result });

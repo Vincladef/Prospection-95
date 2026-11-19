@@ -36,13 +36,16 @@ Un HTTP 202 de fonction background ne prouve pas sa réussite SQL ou Gmail.
 
 Les indices de repos utilisent un store Netlify Blobs propre au déploiement.
 Ils ne contiennent que des horodatages et n'autorisent aucune opération.
-Une vérification sans travail déclenche un repos jusqu'au prochain quart d'heure.
+Une vérification sans travail déclenche un repos jusqu'au prochain quart d'heure,
+raccourci si une échéance SMTP déjà connue arrive avant.
 Une action authentifiée réveille les workers ; une file ou un historique à
 compléter maintient la cadence minute. Un indice absent, périmé ou illisible
 rétablit le fonctionnement existant. Un quota épuisé entraîne un délai de
 nouvel essai de quinze minutes, sans modifier les autorisations commerciales.
 
-Les curseurs IMAP sont regroupés par lots bornés (15 au maximum, 150 secondes
+Pendant une utilisation interactive, les capacités restent une boîte IMAP,
+trois opérations unifiées et un fil par passage. Au repos, les curseurs IMAP
+sont regroupés par lots bornés (15 au maximum, 150 secondes
 avant de commencer une autre opération). Une boîte vide ne masque pas les autres.
 Chaque curseur rattrapé est contrôlé au plus une fois par quart d'heure au repos,
 ou après deux minutes pendant une utilisation interactive. Les historiques non

@@ -59,6 +59,14 @@ describe("worker sleep hints", () => {
     f.advance(IDLE_CHECK_MS);
     expect(await f.governor.shouldRun("dispatch")).toBe(true);
   });
+  it("wakes for an already known due date before the next idle boundary", async () => {
+    const f = fixture();
+    await f.governor.rest("dispatch", start + 120_000);
+    f.advance(60_000);
+    expect(await f.governor.shouldRun("dispatch")).toBe(false);
+    f.advance(60_000);
+    expect(await f.governor.shouldRun("dispatch")).toBe(true);
+  });
   it("does not treat an unrelated error as a quota suspension", async () => {
     const f = fixture();
     await f.governor.quotaFailure("dispatch", new Error("transient"));

@@ -42,8 +42,11 @@ export function createWorkerGovernor(store: () => HintStore, now = Date.now) {
         return valid(value, ACTIVE_MS) && value.kind === "active" && value.until > now();
       } catch { warning(); return true; }
     },
-    rest(worker: IdleWorker) {
-      return write(worker, "quiet", (Math.floor(now() / IDLE_CHECK_MS) + 1) * IDLE_CHECK_MS);
+    rest(worker: IdleWorker, nextDueAt?: number) {
+      const boundary = (Math.floor(now() / IDLE_CHECK_MS) + 1) * IDLE_CHECK_MS;
+      const until = nextDueAt !== undefined && Number.isFinite(nextDueAt) && nextDueAt > now()
+        ? Math.min(boundary, nextDueAt) : boundary;
+      return write(worker, "quiet", until);
     },
     keepActive(worker: IdleWorker) { return write(worker, "active", now() + ACTIVE_MS); },
     noteActivity() { return write("interactive", "active", now() + ACTIVE_MS); },
