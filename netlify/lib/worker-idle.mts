@@ -46,6 +46,7 @@ export function createWorkerGovernor(store: () => HintStore, now = Date.now) {
       const boundary = (Math.floor(now() / IDLE_CHECK_MS) + 1) * IDLE_CHECK_MS;
       const until = nextDueAt !== undefined && Number.isFinite(nextDueAt) && nextDueAt > now()
         ? Math.min(boundary, nextDueAt) : boundary;
+      console.info("worker_idle_until", { worker, until: new Date(until).toISOString() });
       return write(worker, "quiet", until);
     },
     keepActive(worker: IdleWorker) { return write(worker, "active", now() + ACTIVE_MS); },
