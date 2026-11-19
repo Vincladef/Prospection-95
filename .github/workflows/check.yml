@@ -3,12 +3,16 @@ on:
   push:
     branches: [main]
   pull_request:
+  workflow_dispatch:
 permissions:
   contents: read
 jobs:
   check:
     runs-on: ubuntu-latest
     timeout-minutes: 15
+    concurrency:
+      group: prospection95-check-${{ github.ref }}
+      cancel-in-progress: false
     services:
       postgres:
         image: postgres:17
@@ -27,6 +31,7 @@ jobs:
           node-version: 22
           cache: npm
       - run: npm ci
+      - run: node --check scripts/publish-netlify.mjs
       - run: npm run check
       - run: node scripts/test-idle-mailbox-query.mjs
       - run: git diff --check
@@ -52,3 +57,9 @@ jobs:
             dist/
             .netlify/functions/
             .netlify/edge-functions/
+      - name: Publish the validated prebuilt deployment
+        if: github.ref == 'refs/heads/main' && (github.event_name == 'push' || github.event_name == 'workflow_dispatch')
+        env:
+          NETLIFY_AUTH_TOKEN: ${{ secrets.NETLIFY_AUTH_TOKEN }}
+          NETLIFY_SITE_ID: 6c63e64a-e307-4422-88a9-4a6f54667cb2
+        run: node scripts/publish-netlify.mjs
