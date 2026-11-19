@@ -8,6 +8,15 @@ jobs:
   check:
     runs-on: ubuntu-latest
     timeout-minutes: 15
+    services:
+      postgres:
+        image: postgres:17
+        env:
+          POSTGRES_PASSWORD: fixture
+          POSTGRES_DB: neon_idle_fixture
+        ports:
+          - 5432:5432
+        options: --health-cmd pg_isready --health-interval 5s --health-timeout 5s --health-retries 10
     env:
       VITE_NEON_AUTH_URL: https://ep-cold-base-ba45cek7.neonauth.c-8.eu-central-1.aws.neon.tech/prospection95/auth
     steps:
@@ -18,6 +27,7 @@ jobs:
           cache: npm
       - run: npm ci
       - run: npm run check
+      - run: node scripts/test-idle-mailbox-query.mjs
       - run: git diff --check
       - run: npx --yes netlify-cli build --offline --context production
       - name: Verify deploy contents

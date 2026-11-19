@@ -88,3 +88,12 @@ Le cache ne remplace aucun de ces contrôles et ne contient aucun secret.
 4. Comparer les CU-secondes sur une journée représentative. Une simulation des
    lectures évitées n'est pas une économie réelle mesurée ; une activité utile,
    les agents et les liens de suivi peuvent légitimement réveiller Neon.
+
+## Recette SQL indépendante du quota Neon
+
+`scripts/test-idle-mailbox-query.mjs` exécute le SELECT/claim actuel du worker,
+extrait directement du fichier source, sur un PostgreSQL 17 jetable dans la CI.
+Les données sont fictives. La recette vérifie plusieurs comptes, l'absence
+de relecture inutile dans le même quart d'heure, le rafraîchissement interactif,
+la poursuite d'un historique incomplet et le délai entre deux tentatives.
+Ce test ne constitue pas une migration ni une validation sur la production Neon.
