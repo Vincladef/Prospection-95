@@ -1,6 +1,7 @@
 import { json } from "./http.mts";
 
 export function workerResult(worker: string, detail: Record<string, unknown> = {}): Response {
+  if (detail.skipped === "idle") console.info("worker_idle_skip", { worker });
   return json({ worker, at: new Date().toISOString(), ...detail });
 }
 

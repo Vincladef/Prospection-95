@@ -1,4 +1,5 @@
 import { randomUUID } from "node:crypto";
+import { workerGovernor } from "../lib/worker-idle.mts";
 import type { Config, Context } from "@netlify/functions";
 import { sqlOne, sqlQuery } from "../lib/db.mts";
 import { createGmailDraft } from "../lib/gmail.mts";
@@ -25,6 +26,7 @@ interface DraftRequest {
 
 export default async function syncDrafts(_request: Request, _context: Context): Promise<Response> {
   const worker = `netlify-drafts-${randomUUID()}`;
+  if (!await workerGovernor.shouldRun("drafts")) return workerResult(worker, { ok: true, skipped: "idle" });
   let draft: DraftRequest | null = null;
   try {
     await recoverFalseSentDraft().catch(() => {
@@ -63,7 +65,11 @@ export default async function syncDrafts(_request: Request, _context: Context): 
       join app.gmail_accounts primary_account on primary_account.id=claimed.gmail_account_id
       join app.email_messages source on source.id=claimed.source_message_id
     `);
-    if (!draft) return workerResult(worker, { ok: true, claimed: 0 });
+    if (!draft) {
+      await workerGovernor.rest("drafts");
+      return workerResult(worker, { ok: true, claimed: 0 });
+    }
+    await workerGovernor.keepActive("drafts");
     // Catch a newer inbound or a manual answer before creating an obsolete draft.
     await refreshConversation(draft.conversation_id);
     const current = await sqlOne<{ id: string; source_thread_id: string | null }>(`select d.id::text,src.gmail_thread_id as source_thread_id
@@ -100,6 +106,7 @@ export default async function syncDrafts(_request: Request, _context: Context): 
     return workerResult(worker, { ok: true, draftId: draft.id, threadingVerified: !!result.threadingVerified,
       alreadySent: !!result.alreadySent, missing: !!result.missing });
   } catch (error) {
+    await workerGovernor.quotaFailure("drafts", error);
     if (draft) {
       const code=String((error as { code?: unknown }).code ?? (error as Error).message ?? "gmail_draft_sync_failed")
         .toLowerCase().replace(/[^a-z0-9_]+/g,"_").slice(0,120);
@@ -114,4 +121,4 @@ export default async function syncDrafts(_request: Request, _context: Context): 
   }
 }
 
-export const config: Config = { schedule: "*/10 * * * *", background: true };
+export const config: Config = { schedule: "* * * * *", background: true };

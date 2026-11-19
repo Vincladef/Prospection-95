@@ -96,7 +96,7 @@ export async function processMailboxJob():Promise<boolean>{
  return true;
 }
 
-export async function refreshMailboxThread():Promise<boolean>{
+export async function refreshMailboxThread(onHistoryPending?:()=>void):Promise<boolean>{
  const selected=await sqlOne<{id:string;token:string}>(`with candidate as (
   select t.id from app.mailbox_threads t join app.gmail_accounts a on a.id=t.account_id
   where a.deleted_at is null and a.credential_id is not null and a.status in ('active','suspended')
@@ -117,6 +117,7 @@ export async function refreshMailboxThread():Promise<boolean>{
   const delta=await fetchMailboxDelta({email:t.email,credentialId:t.credential_id,cursor:{mailbox:"__UNIFIED_ALL__",lastUid:Number(t.history_uid),uidValidity:t.history_uidvalidity},
    maxMessages:25,...(state.threadId?{threadId:state.threadId}:{correspondent:t.correspondent})});
   await recordMailboxMessages({id:t.account_id,email:t.email,credentialId:t.credential_id},delta.messages);
+  if(delta.hasMore)onHistoryPending?.();
   await sqlQuery(`update app.mailbox_threads set unread=$2,archived=$3,last_synced_at=clock_timestamp(),
    last_error_code=case when draft_remote_body is not null then 'gmail_draft_changed'
     when exists(select 1 from app.mailbox_sync_jobs where thread_id=$1::uuid and status='failed') then 'gmail_sync_failed' else null end,

@@ -1,3 +1,4 @@
+import { workerGovernor } from "../lib/worker-idle.mts";
 import { randomUUID } from "node:crypto";
 import type { Config, Context } from "@netlify/functions";
 import { z } from "zod";
@@ -98,17 +99,18 @@ async function logMutation(identity: AdminIdentity, requestId: string, input: {
   await auditEvent({ actor: identity.email, requestId, ...input });
 }
 
-async function health(): Promise<Response> {
+async function health(checkDatabase = false): Promise<Response> {
   const configured = Boolean(env("DATABASE_URL"));
-  let database = false;
-  if (configured) database = await pingDatabase().catch(() => false);
+  let database: boolean | null = null;
+  if (configured && checkDatabase) database = await pingDatabase().catch(() => false);
   return json({
-    status: database ? "ok" : "degraded",
+    status: configured && database !== false ? "ok" : "degraded",
     service: "prospection-95-api",
     database,
+    databaseChecked: checkDatabase && configured,
     configured,
     time: new Date().toISOString(),
-  }, database ? 200 : 503);
+  }, configured && database !== false ? 200 : 503);
 }
 
 async function updateSettings(request: Request, identity: AdminIdentity, requestId: string): Promise<Response> {
@@ -1148,10 +1150,15 @@ export default async function handler(request: Request, _context: Context): Prom
     const parts = routeParts(request);
     if (parts.length === 1 && parts[0] === "health") {
       requireMethod(request, "GET");
-      return await health();
+      const checkDatabase = new URL(request.url).searchParams.get("database") === "1";
+      if (checkDatabase) await requireAdmin(request);
+      return await health(checkDatabase);
     }
     const identity = await requireAdmin(request);
-    return await privateRoute(request, parts, identity, requestId);
+    await workerGovernor.noteActivity();
+    const response = await privateRoute(request, parts, identity, requestId);
+    if (request.method !== "GET" && response.ok) await workerGovernor.noteActivity();
+    return response;
   } catch (error) {
     return handleError(error, requestId);
   }

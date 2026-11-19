@@ -1,5 +1,6 @@
 import { useCallback, useEffect, useRef, useState } from "react";
 import { api } from "../lib/api";
+import { pollWhileActive } from "../lib/activity-polling";
 import type { DashboardData } from "../types";
 
 export function useAppData(enabled: boolean) {
@@ -43,17 +44,10 @@ export function useAppData(enabled: boolean) {
   useEffect(() => {
     void refresh();
     if (!enabled) return;
-    const update = () => {
-      if (document.visibilityState === "visible") void refresh(true);
-    };
-    const timer = window.setInterval(update, 30_000);
-    window.addEventListener("focus", update);
-    document.addEventListener("visibilitychange", update);
+    const stopPolling = pollWhileActive(() => void refresh(true), 30_000);
     return () => {
       requestId.current++;
-      window.clearInterval(timer);
-      window.removeEventListener("focus", update);
-      document.removeEventListener("visibilitychange", update);
+      stopPolling();
     };
   }, [enabled, refresh]);
 

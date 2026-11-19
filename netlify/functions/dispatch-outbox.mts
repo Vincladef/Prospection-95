@@ -1,4 +1,5 @@
 import { randomInt, randomUUID } from "node:crypto";
+import { workerGovernor } from "../lib/worker-idle.mts";
 import { setTimeout as delay } from "node:timers/promises";
 import type { Config, Context } from "@netlify/functions";
 import { isProductionOutboundEnabled } from "../lib/auth.mts";
@@ -65,6 +66,7 @@ export default async function dispatchOutbox(_request: Request, _context: Contex
   if (!isProductionOutboundEnabled()) {
     return workerResult(worker, { ok: true, skipped: "outbound_disabled" });
   }
+  if (!await workerGovernor.shouldRun("dispatch")) return workerResult(worker, { ok: true, skipped: "idle" });
   try {
     // One independent opportunity in five each minute keeps the previous
     // average throughput without imposing a fixed five-minute rhythm.
@@ -92,7 +94,13 @@ export default async function dispatchOutbox(_request: Request, _context: Contex
        left join app.campaigns c on c.id = leased.campaign_id`,
       [worker],
     );
-    if (!job) return workerResult(worker, { ok: true, scheduled: Number(scheduled?.count ?? 0), leased: 0 });
+    if (!job) {
+      const next = await sqlOne<{ at: string | null }>(`select min(due_at) as at from app.outbox_jobs
+        where status in ('requested','pending','scheduled','deferred') and due_at > clock_timestamp()`);
+      await workerGovernor.rest("dispatch", next?.at ? new Date(next.at).getTime() : undefined);
+      return workerResult(worker, { ok: true, scheduled: Number(scheduled?.count ?? 0), leased: 0 });
+    }
+    await workerGovernor.keepActive("dispatch");
     if (!job.credential_id || job.to_addresses.length !== 1 || !isEmail(job.to_addresses[0]) || !isEmail(job.from_address)) {
       await finishCertainFailure(job, "invalid_mail_envelope", false);
       return workerResult(worker, { ok: false, jobId: job.id, state: "failed", code: "invalid_mail_envelope" });
@@ -240,6 +248,7 @@ export default async function dispatchOutbox(_request: Request, _context: Contex
     }
     return workerResult(worker, { ok: true, scheduled: Number(scheduled?.count ?? 0), jobId: job.id, state: result.state });
   } catch (error) {
+    await workerGovernor.quotaFailure("dispatch", error);
     return workerFailure(worker, error);
   }
 }

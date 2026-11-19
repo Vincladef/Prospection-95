@@ -14,6 +14,10 @@ vi.mock("../tracking.mts", () => ({ prepareTrackedMessage: mocks.prepare, tracki
 vi.mock("../mailbox-sync.mts", () => ({refreshConversation:mocks.refresh}));
 vi.mock("../unified-mailbox-sync.mts",()=>({refreshUnifiedConversation:mocks.refreshUnified}));
 
+vi.mock("../worker-idle.mts", () => ({
+  workerGovernor: { shouldRun: async () => true, rest: async () => {}, keepActive: async () => {}, quotaFailure: async () => {} },
+}));
+
 import dispatch, { config } from "../../functions/dispatch-outbox.mts";
 const run = () => dispatch(new Request("https://example.test"), {} as Context);
 
@@ -50,6 +54,7 @@ describe("random outbound pacing", () => {
     let release!: () => void;
     mocks.delay.mockImplementationOnce(() => new Promise<void>((resolve) => { release = resolve; }));
     const pending = run();
+    await Promise.resolve(); // The off-database idle hint is checked before pacing.
     expect(mocks.delay).toHaveBeenCalledWith(jitter);
     expect(mocks.randomInt).toHaveBeenNthCalledWith(2, 3_001);
     expect(mocks.sqlOne).not.toHaveBeenCalled();
