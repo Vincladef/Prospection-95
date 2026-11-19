@@ -1,0 +1,22 @@
+name: Application checks
+on:
+  push:
+  pull_request:
+permissions:
+  contents: read
+jobs:
+  check:
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    env:
+      VITE_NEON_AUTH_URL: https://ep-cold-base-ba45cek7.neonauth.c-8.eu-central-1.aws.neon.tech/prospection95/auth
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+      - run: npm ci
+      - run: npm run check
+      - run: git diff --check
+      - run: npx --yes netlify-cli build --offline --context production

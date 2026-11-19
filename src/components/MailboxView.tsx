@@ -1,5 +1,6 @@
 import {Fragment,useCallback,useEffect,useRef,useState} from "react";
 import {api} from "../lib/api";
+import {pollWhileActive} from "../lib/activity-polling";
 import type {Campaign,MailboxDetail,MailboxFolder,MailboxMessage,MailboxPage,MailboxThread} from "../types";
 import {responseIsClosed,responseLabels} from "../lib/response-classification";
 import "./MailboxView.css";
@@ -29,8 +30,7 @@ export function MailboxView({campaigns,onOpenCampaign,onOpenProspect}:{campaigns
   }).catch(e=>{if(!controller.signal.aborted)setError(e instanceof Error?e.message:"Chargement impossible");}).finally(()=>{if(current===generation.current)setLoading(false);});
   return()=>controller.abort();
  },[campaign,account,folder,filter,search,page,refreshTick]);
- useEffect(()=>{const update=()=>{if(document.visibilityState==="visible")refresh();};const timer=setInterval(update,15000);
-  window.addEventListener("focus",update);return()=>{clearInterval(timer);window.removeEventListener("focus",update);};},[refresh]);
+ useEffect(()=>pollWhileActive(refresh,15000),[refresh]);
  const campaignLabel=campaign==="none"?"Sans campagne":campaigns.find(c=>c.id===campaign)?.name??"Toutes les campagnes";
  const accountLabel=data?.accounts.find(a=>a.id===account)?.email??"Tous les comptes Gmail";
  const counts=data?.counts;const accounts=data?.accounts??[];

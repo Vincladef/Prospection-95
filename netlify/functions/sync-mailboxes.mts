@@ -1,4 +1,5 @@
 import { randomUUID } from "node:crypto";
+import { workerGovernor } from "../lib/worker-idle.mts";
 import type { Config, Context } from "@netlify/functions";
 import { sqlOne, sqlQuery } from "../lib/db.mts";
 import { fetchMailboxDelta } from "../lib/imap.mts";
@@ -16,7 +17,7 @@ interface ClaimedMailbox {
   recent_since: string;
 }
 
-async function claimMailbox(): Promise<ClaimedMailbox | null> {
+async function claimMailbox(interactive: boolean, visited: string[]): Promise<ClaimedMailbox | null> {
   return sqlOne<ClaimedMailbox>(`
     with candidate as (
       select a.id as account_id, a.email, a.credential_id,
@@ -34,7 +35,11 @@ async function claimMailbox(): Promise<ClaimedMailbox | null> {
       where a.deleted_at is null and a.status in ('active','suspended')
         and a.credential_id is not null
         and (c.last_attempt_at is null or c.last_attempt_at < clock_timestamp() - interval '2 minutes')
-      order by c.last_success_at nulls first, a.last_sync_at nulls first, a.created_at
+        and not ((a.id::text || ':' || box.mailbox_name) = any($2::text[]))
+        and (c.last_success_at is null or c.caught_up_at is null or c.last_success_at <
+          case when $1::boolean then clock_timestamp() - interval '2 minutes'
+            else date_bin(interval '15 minutes', clock_timestamp(), '2000-01-01'::timestamptz) end)
+      order by (box.mailbox_name='INBOX') desc, c.last_success_at nulls first, a.last_sync_at nulls first, a.created_at
       for update of a skip locked limit 1
     ), claimed as (
       insert into app.imap_cursors
@@ -51,26 +56,14 @@ async function claimMailbox(): Promise<ClaimedMailbox | null> {
            claimed.mailbox_name, claimed.uidvalidity, claimed.last_uid, candidate.recent_since
     from claimed join candidate on candidate.account_id = claimed.account_id
       and candidate.mailbox_name = claimed.mailbox_name
-  `);
+  `, [interactive, visited]);
 }
 
-export default async function syncMailboxes(_request: Request, _context: Context): Promise<Response> {
-  const worker = `netlify-imap-${randomUUID()}`;
+async function syncOneMailbox(worker: string, interactive: boolean, visited: string[]): Promise<Response> {
   let claimed: ClaimedMailbox | null = null;
   try {
-    // Historical empty plain parts must recover even after their IMAP cursor has advanced.
-    const recoveredReplies = await recoverReplyContent().catch(() => {
-      console.error("reply_content_recovery_failed", { worker });
-      return null;
-    });
-    // Bounded retention maintenance uses the existing worker, no extra schedule.
-    await sqlQuery(`delete from app.interaction_buckets where ctid in (
-      select ctid from app.interaction_buckets where bucket_hour<clock_timestamp()-interval '90 days' limit 1000)`);
-    await sqlQuery(`delete from app.reading_sessions where id in (
-      select id from app.reading_sessions where started_at<clock_timestamp()-interval '90 days' limit 1000)`);
-    await sqlQuery(`delete from app.open_contexts where ctid in (select ctid from app.open_contexts where bucket_hour<clock_timestamp()-interval '90 days' limit 1000)`);
-    claimed = await claimMailbox();
-    if (!claimed) return workerResult(worker, { ok: true, claimed: 0, recoveredReplies });
+    claimed = await claimMailbox(interactive, visited);
+    if (!claimed) return workerResult(worker, { ok: true, claimed: 0 });
     const delta = await fetchMailboxDelta({
       email: claimed.email,
       credentialId: claimed.credential_id,
@@ -99,8 +92,9 @@ export default async function syncMailboxes(_request: Request, _context: Context
        where id = $1::uuid`,
       [claimed.account_id],
     );
-    return workerResult(worker, { ok: true, accountId: claimed.account_id, fetched: delta.messages.length, recorded, resetRequired: delta.resetRequired, recoveredReplies });
+    return workerResult(worker, { ok: true, accountId: claimed.account_id, mailboxName: claimed.mailbox_name, fetched: delta.messages.length, recorded, resetRequired: delta.resetRequired, hasMore: delta.hasMore !== false });
   } catch (error) {
+    await workerGovernor.quotaFailure("mailboxes", error);
     if (claimed) {
       const code = String((error as { code?: unknown }).code ?? (error as Error).name ?? "imap_sync_failed").slice(0, 120);
       await sqlQuery(`
@@ -114,6 +108,51 @@ export default async function syncMailboxes(_request: Request, _context: Context
         [claimed.account_id, code],
       ).catch(() => undefined);
     }
+    return workerFailure(worker, error);
+  }
+}
+
+export default async function syncMailboxes(_request: Request, _context: Context): Promise<Response> {
+  const worker = `netlify-imap-${randomUUID()}`;
+  if (!await workerGovernor.shouldRun("mailboxes")) return workerResult(worker, { ok: true, skipped: "idle" });
+  const started = Date.now();
+  try {
+    const interactive = await workerGovernor.isInteractive();
+    // The same incremental cursors are processed in a bounded batch. A quiet
+    // account cannot postpone all the other accounts until the next idle probe.
+    const recoveredReplies = await recoverReplyContent().catch(async error => {
+      if ((error as {code?: string})?.code === "53000" || /exceeded.*quota|quota.*exceeded/i.test(String((error as Error)?.message))) throw error;
+      console.error("reply_content_recovery_failed", { worker });
+      return 0;
+    });
+    // Retention is housekeeping, so one shared daily slot is sufficient.
+    const utc = new Date();
+    if (utc.getUTCHours() === 0 && utc.getUTCMinutes() < 15) {
+      await sqlQuery(`delete from app.interaction_buckets where ctid in (
+        select ctid from app.interaction_buckets where bucket_hour<clock_timestamp()-interval '90 days' limit 1000)`);
+      await sqlQuery(`delete from app.reading_sessions where id in (
+        select id from app.reading_sessions where started_at<clock_timestamp()-interval '90 days' limit 1000)`);
+      await sqlQuery(`delete from app.open_contexts where ctid in (
+        select ctid from app.open_contexts where bucket_hour<clock_timestamp()-interval '90 days' limit 1000)`);
+    }
+    const visited: string[] = [];
+    let hasMore = recoveredReplies > 0;
+    let fetched = 0;
+    let exhausted = false;
+    for (let index = 0; index < 15 && Date.now() - started < 150_000; index++) {
+      const response = await syncOneMailbox(worker, interactive, visited);
+      const result = await response.json() as { ok: boolean; claimed?: number; accountId?: string; mailboxName?: string; fetched?: number; hasMore?: boolean; code?: string };
+      if (!result.ok) return workerResult(worker, { ...result });
+      if (result.claimed === 0) { exhausted = true; break; }
+      if (result.accountId && result.mailboxName) visited.push(result.accountId + ":" + result.mailboxName);
+      fetched += result.fetched ?? 0;
+      hasMore ||= !!result.hasMore;
+    }
+    if (!exhausted || hasMore) await workerGovernor.keepActive("mailboxes");
+    else await workerGovernor.rest("mailboxes");
+    return workerResult(worker, { ok: true, mailboxes: visited.length, fetched, recoveredReplies, catchup: !exhausted || hasMore });
+  } catch (error) {
+    await workerGovernor.quotaFailure("mailboxes", error);
     return workerFailure(worker, error);
   }
 }
