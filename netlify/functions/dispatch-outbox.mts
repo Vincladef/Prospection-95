@@ -61,6 +61,20 @@ async function finishCertainFailure(job: LeasedMessage, code: string, retryable:
   );
 }
 
+async function dispatchHint(): Promise<{ ready: boolean; at: string | null } | null> {
+  return sqlOne<{ ready: boolean; at: string | null }>(`
+    with work as (
+      select case when status in ('reserved','running')
+        then coalesce(lease_expires_at,clock_timestamp())
+        else coalesce(due_at,clock_timestamp()) end as at
+      from app.outbox_jobs
+      where status in ('requested','pending','scheduled','deferred','reserved','running')
+    )
+    select coalesce(bool_or(at<=clock_timestamp()),false) as ready,
+      min(at) filter(where at>clock_timestamp()) as at from work
+  `);
+}
+
 export default async function dispatchOutbox(_request: Request, _context: Context): Promise<Response> {
   const worker = `netlify-dispatch-${randomUUID()}`;
   if (!isProductionOutboundEnabled()) {
@@ -68,6 +82,18 @@ export default async function dispatchOutbox(_request: Request, _context: Contex
   }
   if (!await workerGovernor.shouldRun("dispatch")) return workerResult(worker, { ok: true, skipped: "idle" });
   try {
+    let scheduled: { count: number } | null = null;
+    // An empty probe shares the other workers' wake-up slot. The random SMTP
+    // lottery must not postpone this probe and extend Neon's idle timeout.
+    if (await workerGovernor.shouldProbe("dispatch")) {
+      scheduled = await sqlOne<{ count: number }>("select app.schedule_due_messages(50) as count");
+      const hint = await dispatchHint();
+      if (!hint?.ready) {
+        await workerGovernor.rest("dispatch", hint?.at ? new Date(hint.at).getTime() : undefined);
+        return workerResult(worker, { ok: true, scheduled: Number(scheduled?.count ?? 0), leased: 0 });
+      }
+      await workerGovernor.keepActive("dispatch");
+    }
     // One independent opportunity in five each minute keeps the previous
     // average throughput without imposing a fixed five-minute rhythm.
     // Wait BEFORE leasing: no quota slot or expiring lease is held while idle,
@@ -76,7 +102,7 @@ export default async function dispatchOutbox(_request: Request, _context: Contex
       return workerResult(worker, { ok: true, skipped: "random_pacing" });
     }
     await delay(randomInt(3_001));
-    const scheduled = await sqlOne<{ count: number }>(
+    scheduled ??= await sqlOne<{ count: number }>(
       `select app.schedule_due_messages(50) as count`,
     );
     const job = await sqlOne<LeasedMessage>(
@@ -95,8 +121,7 @@ export default async function dispatchOutbox(_request: Request, _context: Contex
       [worker],
     );
     if (!job) {
-      const next = await sqlOne<{ at: string | null }>(`select min(due_at) as at from app.outbox_jobs
-        where status in ('requested','pending','scheduled','deferred') and due_at > clock_timestamp()`);
+      const next = await dispatchHint();
       await workerGovernor.rest("dispatch", next?.at ? new Date(next.at).getTime() : undefined);
       return workerResult(worker, { ok: true, scheduled: Number(scheduled?.count ?? 0), leased: 0 });
     }

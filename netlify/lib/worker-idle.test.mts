@@ -69,7 +69,7 @@ describe("worker sleep hints", () => {
   });
   it("does not treat an unrelated error as a quota suspension", async () => {
     const f = fixture();
-    await f.governor.quotaFailure("dispatch", new Error("transient"));
+    await f.governor.quotaFailure("dispatch", new Error("account_daily_quota_exceeded"));
     expect(f.storage.setJSON).not.toHaveBeenCalled();
   });
   it("groups idle probes instead of waking the database once per minute", async () => {
@@ -83,4 +83,15 @@ describe("worker sleep hints", () => {
     }
     expect(probes).toBe(16); // Four shared wakes/hour, four worker probes at each wake.
   });
+  it("probes an idle dispatcher but leaves active SMTP pacing alone", async () => {
+    const f = fixture();
+    expect(await f.governor.shouldProbe("dispatch")).toBe(true);
+    await f.governor.keepActive("dispatch");
+    expect(await f.governor.shouldProbe("dispatch")).toBe(false);
+    f.advance(180_000);
+    expect(await f.governor.shouldProbe("dispatch")).toBe(true);
+    await f.governor.noteActivity();
+    expect(await f.governor.shouldProbe("dispatch")).toBe(false);
+  });
+
 });
