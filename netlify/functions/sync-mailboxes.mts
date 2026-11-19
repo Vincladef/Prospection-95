@@ -121,7 +121,7 @@ export default async function syncMailboxes(_request: Request, _context: Context
     // The same incremental cursors are processed in a bounded batch. A quiet
     // account cannot postpone all the other accounts until the next idle probe.
     const recoveredReplies = await recoverReplyContent().catch(async error => {
-      if ((error as {code?: string})?.code === "53000" || /exceeded.*quota|quota.*exceeded/i.test(String((error as Error)?.message))) throw error;
+      if ((error as {code?: string})?.code === "53000" || /your (?:account|project|account or project) has exceeded the quota/i.test(String((error as Error)?.message))) throw error;
       console.error("reply_content_recovery_failed", { worker });
       return 0;
     });

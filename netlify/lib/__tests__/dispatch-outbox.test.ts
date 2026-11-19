@@ -15,7 +15,7 @@ vi.mock("../mailbox-sync.mts", () => ({refreshConversation:mocks.refresh}));
 vi.mock("../unified-mailbox-sync.mts",()=>({refreshUnifiedConversation:mocks.refreshUnified}));
 
 vi.mock("../worker-idle.mts", () => ({
-  workerGovernor: { shouldRun: async () => true, rest: async () => {}, keepActive: async () => {}, quotaFailure: async () => {} },
+  workerGovernor: { shouldRun: async () => true, shouldProbe: async () => false, rest: async () => {}, keepActive: async () => {}, quotaFailure: async () => {} },
 }));
 
 import dispatch, { config } from "../../functions/dispatch-outbox.mts";

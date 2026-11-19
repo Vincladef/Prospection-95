@@ -36,6 +36,16 @@ export function createWorkerGovernor(store: () => HintStore, now = Date.now) {
         return valid(activity, ACTIVE_MS) && activity.kind === "active" && activity.until > now();
       } catch { warning(); return true; }
     },
+    async shouldProbe(worker: IdleWorker): Promise<boolean> {
+      try {
+        const [state, activity] = await Promise.all([
+          store().get(worker, { type: "json" }),
+          store().get("interactive", { type: "json" }),
+        ]);
+        if (valid(activity, ACTIVE_MS) && activity.kind === "active" && activity.until > now()) return false;
+        return !(valid(state, IDLE_CHECK_MS) && state.kind === "active" && state.until > now());
+      } catch { warning(); return false; }
+    },
     async isInteractive(): Promise<boolean> {
       try {
         const value = await store().get("interactive", { type: "json" });
@@ -53,7 +63,7 @@ export function createWorkerGovernor(store: () => HintStore, now = Date.now) {
     noteActivity() { return write("interactive", "active", now() + ACTIVE_MS); },
     async quotaFailure(worker: IdleWorker, error: unknown) {
       const detail = error as { code?: unknown; message?: unknown };
-      if (detail?.code === "53000" || /exceeded.*quota|quota.*exceeded/i.test(String(detail?.message ?? ""))) {
+      if (detail?.code === "53000" || /your (?:account|project|account or project) has exceeded the quota/i.test(String(detail?.message ?? ""))) {
         await write(worker, "quota", now() + IDLE_CHECK_MS);
       }
     },

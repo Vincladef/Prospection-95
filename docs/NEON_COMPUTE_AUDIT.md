@@ -97,3 +97,13 @@ Les données sont fictives. La recette vérifie plusieurs comptes, l'absence
 de relecture inutile dans le même quart d'heure, le rafraîchissement interactif,
 la poursuite d'un historique incomplet et le délai entre deux tentatives.
 Ce test ne constitue pas une migration ni une validation sur la production Neon.
+
+## Alignement des contrôles SMTP à vide
+
+Le dispatcher vérifie la présence de travaux après la programmation normale,
+avant de jouer la loterie SMTP lorsqu'il sort d'un repos. Si la file est vide,
+il rend immédiatement la main et partage ainsi le réveil des autres workers.
+Cette vérification inclut les baux expirés et la prochaine échéance connue.
+La loterie et l'attente aléatoire avant toute prise de bail restent appliquées
+dès qu'un travail est disponible. Une erreur de quota commercial n'est pas
+confondue avec le refus de quota de la plateforme Neon.

@@ -2,7 +2,7 @@ import { beforeEach, describe, expect, it, vi } from "vitest";
 import type { Context } from "@netlify/functions";
 
 vi.mock("../worker-idle.mts", () => ({
-  workerGovernor: { shouldRun: vi.fn(), rest: vi.fn(), keepActive: vi.fn(), quotaFailure: vi.fn(), isInteractive: vi.fn(), noteActivity: vi.fn() },
+  workerGovernor: { shouldRun: vi.fn(), shouldProbe: vi.fn(), rest: vi.fn(), keepActive: vi.fn(), quotaFailure: vi.fn(), isInteractive: vi.fn(), noteActivity: vi.fn() },
 }));
 vi.mock("../db.mts", () => ({ sqlOne: vi.fn(), sqlQuery: vi.fn(), sqlTransaction: vi.fn(), pingDatabase: vi.fn() }));
 vi.mock("../auth.mts", () => ({ isProductionOutboundEnabled: vi.fn(() => true) }));
@@ -18,6 +18,7 @@ vi.mock("../tracking.mts", () => ({ prepareTrackedMessage: vi.fn(), trackingBase
 vi.mock("node:crypto", () => ({ randomUUID: vi.fn(() => "worker-test"), randomInt: vi.fn(() => 0) }));
 vi.mock("node:timers/promises", () => ({ setTimeout: vi.fn(async () => undefined) }));
 
+import { randomInt } from "node:crypto";
 import { sqlOne, sqlQuery } from "../db.mts";
 import { isProductionOutboundEnabled } from "../auth.mts";
 import { workerGovernor } from "../worker-idle.mts";
@@ -43,6 +44,7 @@ describe("idle workers and bounded catch-up", () => {
     vi.mocked(isProductionOutboundEnabled).mockReturnValue(true);
     vi.mocked(workerGovernor.shouldRun).mockResolvedValue(true);
     vi.mocked(workerGovernor.isInteractive).mockResolvedValue(false);
+    vi.mocked(workerGovernor.shouldProbe).mockResolvedValue(false);
     vi.mocked(recoverReplyContent).mockResolvedValue(0);
     vi.mocked(recoverFalseSentDraft).mockResolvedValue(undefined as never);
     vi.mocked(sqlQuery).mockResolvedValue([]);
@@ -83,4 +85,23 @@ describe("idle workers and bounded catch-up", () => {
     expect(workerGovernor.keepActive).toHaveBeenCalledWith("unified");
     expect(workerGovernor.rest).not.toHaveBeenCalled();
   });
+  it("does not let random SMTP pacing stagger an empty idle probe", async () => {
+    vi.mocked(workerGovernor.shouldProbe).mockResolvedValue(true);
+    vi.mocked(sqlOne).mockResolvedValueOnce({ count: 0 }).mockResolvedValueOnce({ ready: false, at: null });
+    expect(await (await dispatch(request(), context)).json()).toMatchObject({ ok: true, leased: 0 });
+    expect(workerGovernor.rest).toHaveBeenCalledWith("dispatch", undefined);
+    expect(randomInt).not.toHaveBeenCalled();
+    expect(sqlOne).toHaveBeenCalledTimes(2);
+    expect(sendGmailMessage).not.toHaveBeenCalled();
+  });
+  it("retains the random SMTP lottery after discovering due work", async () => {
+    vi.mocked(workerGovernor.shouldProbe).mockResolvedValue(true);
+    vi.mocked(randomInt).mockReturnValue(4 as never);
+    vi.mocked(sqlOne).mockResolvedValueOnce({ count: 1 }).mockResolvedValueOnce({ ready: true, at: null });
+    expect(await (await dispatch(request(), context)).json()).toMatchObject({ skipped: "random_pacing" });
+    expect(workerGovernor.keepActive).toHaveBeenCalledWith("dispatch");
+    expect(vi.mocked(sqlOne).mock.calls.some(([query]) => query.includes("app.lease_outbox_jobs"))).toBe(false);
+    expect(sendGmailMessage).not.toHaveBeenCalled();
+  });
+
 });
