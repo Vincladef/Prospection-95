@@ -6,6 +6,7 @@ export function pollWhileActive(
 ): () => void {
   let lastActivity = Date.now();
   let lastRefresh = Date.now();
+  let lastResume = Number.NEGATIVE_INFINITY;
   const visible = () => document.visibilityState === "visible";
   const active = () => visible() && Date.now() - lastActivity < idleMs;
   const update = (force = false) => {
@@ -19,9 +20,9 @@ export function pollWhileActive(
     if (wasIdle) update(true);
   };
   const resume = () => {
-    if (!visible()) return;
-    lastActivity = Date.now();
-    update(true);
+    if (!visible() || Date.now() - lastResume < 1_000) return;
+    lastResume = lastActivity = lastRefresh = Date.now();
+    refresh();
   };
   const events = ["pointerdown", "pointermove", "keydown", "wheel", "touchstart"] as const;
   for (const event of events) window.addEventListener(event, activity, { passive: true });

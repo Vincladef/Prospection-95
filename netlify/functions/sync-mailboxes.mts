@@ -56,7 +56,7 @@ async function claimMailbox(interactive: boolean, visited: string[]): Promise<Cl
            claimed.mailbox_name, claimed.uidvalidity, claimed.last_uid, candidate.recent_since
     from claimed join candidate on candidate.account_id = claimed.account_id
       and candidate.mailbox_name = claimed.mailbox_name
-  `, [interactive, visited]);
+  `, [interactive, [...visited]]);
 }
 
 async function syncOneMailbox(worker: string, interactive: boolean, visited: string[]): Promise<Response> {
@@ -138,19 +138,21 @@ export default async function syncMailboxes(_request: Request, _context: Context
     const visited: string[] = [];
     let hasMore = recoveredReplies > 0;
     let fetched = 0;
+    let recorded = 0;
     let exhausted = false;
     for (let index = 0; index < 15 && Date.now() - started < 150_000; index++) {
       const response = await syncOneMailbox(worker, interactive, visited);
-      const result = await response.json() as { ok: boolean; claimed?: number; accountId?: string; mailboxName?: string; fetched?: number; hasMore?: boolean; code?: string };
+      const result = await response.json() as { ok: boolean; claimed?: number; accountId?: string; mailboxName?: string; fetched?: number; recorded?: number; hasMore?: boolean; code?: string };
       if (!result.ok) return workerResult(worker, { ...result });
       if (result.claimed === 0) { exhausted = true; break; }
       if (result.accountId && result.mailboxName) visited.push(result.accountId + ":" + result.mailboxName);
       fetched += result.fetched ?? 0;
+      recorded += result.recorded ?? 0;
       hasMore ||= !!result.hasMore;
     }
     if (!exhausted || hasMore) await workerGovernor.keepActive("mailboxes");
     else await workerGovernor.rest("mailboxes");
-    return workerResult(worker, { ok: true, mailboxes: visited.length, fetched, recoveredReplies, catchup: !exhausted || hasMore });
+    return workerResult(worker, { ok: true, claimed: visited.length, mailboxes: visited.length, fetched, recorded, recoveredReplies, catchup: !exhausted || hasMore });
   } catch (error) {
     await workerGovernor.quotaFailure("mailboxes", error);
     return workerFailure(worker, error);
